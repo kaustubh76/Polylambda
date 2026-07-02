@@ -67,3 +67,32 @@ def test_replay_pure_math():
              {"timestamp": 30, "price": 0.9, "size": 100.0}]
     assert _realized_jump_logit(fills, 20) > 0                      # price jumped up across the event
     assert _reward_proxy(fills) > 0
+
+
+def test_jump_drift_zero_at_neutral_price():
+    # copysign(x, 0.0) returns +x; a neutral price (p=0.5, logit 0) must yield ZERO directional drift
+    from estimators.lambda_engine import estimate_lambda
+    import data.base_rates as br
+
+    orig = br.category_counts_hf
+    br.category_counts_hf = lambda: {"politics": {"n_markets": 1000, "n_resolved": 900}}
+    try:
+        out = estimate_lambda("0xabc", {"category": "politics", "price": 0.5}, dispute_counts={"politics": 9})
+    finally:
+        br.category_counts_hf = orig
+    assert out.jump_drift == 0.0                                    # neutral → no YES/NO bias
+    assert out.e_loss > 0.0                                         # magnitude still positive
+
+
+def test_replay_market_arm_logic_uses_category_signal():
+    # arm C (lambda_select) must key off the CATEGORY dispute rate, and controls must be handled right
+    from forwardtest.replay_ablation import _replay_market
+    fills = [{"timestamp": 10, "price": 0.5, "size": 1000.0},
+             {"timestamp": 30, "price": 0.6, "size": 1000.0}]
+    # CONTROL (disputeTs None), signal FIRES (0.01 > 0.001): C blanket-avoids → 0; B has no jump → == A
+    fired = _replay_market("c", fills, None, lambda_star=0.001, lambda_select=0.01)
+    assert fired["pnl_C"] == 0.0
+    assert fired["pnl_A"] == fired["pnl_B"] and fired["pnl_A"] > 0
+    # CONTROL, signal does NOT fire (0.01 < 0.05): all arms keep the safe market → equal, C not penalized
+    kept = _replay_market("c", fills, None, lambda_star=0.05, lambda_select=0.01)
+    assert kept["pnl_A"] == kept["pnl_B"] == kept["pnl_C"] > 0
