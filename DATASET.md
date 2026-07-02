@@ -36,11 +36,12 @@ Exchange launched late 2022. The "since 2020" back-history lives in the FPMM-era
 (`fpmm_transaction` etc.), *not* in the fill tape PolyLambda's σ consumes. (Correction vs the
 headline.)
 
-**Volume is overwhelmingly recent** (`fills_by_year`, exact — sums to 1,172,658,611):
+**Volume is overwhelmingly recent** (`fills_by_year`; the exact per-year counts sum to 1,172,658,611 —
+the table shows rounded M-notation for readability, so the displayed values do not sum exactly):
 
 | Year | 2022 | 2023 | 2024 | 2025 | 2026 |
 |---|---:|---:|---:|---:|---:|
-| Fills | 3,161 | 328,176 | 57.6M | 241.2M | **873.5M** |
+| Fills | 3,161 | 328,176 | ~57.6M | ~241.2M | **~873.5M** |
 
 **74% of the entire tape is 2026 alone.** This has a sharp consequence for λ (see §5): the disputes
 that are *derivable + HF-joinable* (V2/Legacy adapters) live in the **thin 2022–2024 era**, while the
@@ -147,13 +148,17 @@ OOv2 `DisputePrice` logs straight from Polygon via a keyless public RPC (`eth_ge
 derives `conditionId = keccak256(adapter ++ keccak256(ancillaryData) ++ 2)`, and joins to HF. The
 derivation was validated **723/723** against HF for the **UMA CTF Adapter V2 + Legacy**.
 
-**One hard limitation, measured not assumed:** the keccak derivation does NOT work for the **NegRisk**
-adapter (0/56 across every variant) — NegRisk assigns sequential questionIds via NegRiskIdLib, so
-conditionId is not a function of the OO ancillaryData. NegRisk disputes are **counted (963) but not
-label-joined**; recovering them needs the NegRiskAdapter's own on-chain events (the local indexer).
-Polymarket moved most recent markets to NegRisk, so `data/disputes.py` skews to the 2022–2024 V2 era —
-which is where HF `market_data` overlaps anyway. This is exactly the `DECISIONS.md #3/#13` adapter
-caveat, now quantified.
+**One hard limitation, measured exhaustively:** the keccak derivation does NOT work for the **NegRisk**
+adapter. I tested **4 derivations across 2 contracts and 2 event types** — all join HF at **0%**:
+`keccak(negRiskAdapter, keccak(ancillary), 2)` (0/56), and from the NegRisk `QuestionResolved`
+questionID: `keccak(0x2f5e…, qid, 2)` (0/60), `keccak(0xd91E…, qid, 2)` (0/60), and `qid == conditionId`
+(0/60). NegRisk assigns questionIds via NegRiskIdLib and prepares conditions through its own adapter
+path, so the conditionId is **not recoverable from the external UMA/OO events** — it needs the
+NegRiskAdapter's own condition-preparation events, which only the local indexer (or HF's `condition`
+table, keyed by an id we can't reconstruct) has. NegRisk disputes are therefore **counted (963) but not
+label-joined**. Polymarket moved most recent markets to NegRisk, so `data/disputes.py` covers the
+2022–2024 V2/Legacy era. This is `DECISIONS.md #3/#13`, now proven with data — the local indexer is
+genuinely mandatory for NegRisk.
 
 ## 5b. Dispute base rates — the λ signal, from real data (723 disputes)
 
@@ -221,8 +226,39 @@ in milliseconds.
 ## 8. Reproduce
 
 ```bash
-pip install -r requirements.txt          # adds duckdb, huggingface_hub, pyarrow
-python -m data.dossier                    # §3–5 (cheap: single-file + metadata)
+pip install -r requirements.txt          # adds duckdb, huggingface_hub, pyarrow, eth-utils/eth-abi
+python -m data.dossier                    # §3–5 (cheap: single-file + metadata + dispute base rates)
 python -m data.dossier --full             # + §1 counts and wash prevalence (full scans)
-pytest tests/test_data_fills.py           # deriveFill SQL↔TS parity (offline)
+pytest tests/test_data_fills.py tests/test_disputes.py   # deriveFill + deriveConditionId parity (offline)
+
+# dispute labels (no Docker) → λ + the replay-ablation, end-to-end:
+python -m data.disputes                   # backfill OOv2 disputes via keyless RPC → .data_cache/disputes.json
+python -c "from data.cache import prefetch_state_tables, materialize_slice; \
+           from data.disputes import load_disputes; prefetch_state_tables(); \
+           materialize_slice([d['conditionId'] for d in load_disputes()][:12], years=(2022,2023))"
+python -m forwardtest.replay_ablation     # arms A/B/C × λ*-grid on real disputes, net of forgone rewards
 ```
+
+**Verified end-to-end, control-matched** (56 disputed + 223 control markets, 2022–2023). The λ signal
+is the **category dispute base rate** (not per-market volatility), so `λ*` is scaled to that range
+(~0.0003–0.009). Corrected arm P&L (pnl_net / sharpe), across the λ*-grid:
+
+| arm | λ*=0.0005 | λ*=0.005 | λ*=0.01 |
+|---|---:|---:|---:|
+| diffusion_only (λ off) | 1408.6 / 0.167 | 1408.6 / 0.167 | 1408.6 / 0.167 |
+| **lambda_jump** (surgical exit) | **1536.8 / 0.183** | 1502.9 / 0.179 | 1408.6 / 0.167 |
+| lambda_select (blanket avoidance) | 620.6 / 0.112 | 1102.4 / 0.138 | 1408.6 / 0.167 |
+
+Two things this (post-fix, control-matched) result gets right that the first pass did not: (1) **the
+λ*-sensitivity is real** — all arms **converge to diffusion at λ*=0.01** (above every category base rate
+→ the signal never fires → B=C=A, a clean sanity check the buggy version failed because a hardcoded
+`proposal_detected=True` short-circuited the threshold); (2) **arm C actually tests category selection**
+(the base rate), not volatility. The finding: **λ_jump beats diffusion by ~9% at low λ*** (1536.8 vs
+1408.6) with the edge shrinking as fewer exits fire; **λ_select is worst** — at λ*=0.0005 it forfeits
+**977 of reward** to avoid only **189 of loss** (blanket category avoidance forfeits reward income),
+recovering toward diffusion as λ* rises and it avoids fewer markets. **The edge is the surgical exit,
+not blanket avoidance** (DECISIONS.md §A) — now on *correct* math, with matched controls. Honest
+caveats: **n=56 disputed** (underpowered — read via `power_calc`); fill-tape mid (no order book);
+2022–2023 *thin* era only (the 2024+ NegRisk-dominated liquid era needs the local indexer); simplified
+reward model. The primary edge proof — formerly a `NotImplementedError` — now runs on real,
+control-matched data with an interpretable, correctly-computed signal.
