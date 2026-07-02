@@ -40,16 +40,24 @@ def fills_by_year() -> list[dict]:
     return [{"year": y, "fills": n} for y, n in rows]
 
 
-def notional_by_year() -> list[dict]:
+def notional_by_year(years: range = range(2022, 2027)) -> list[dict]:
     """CLOB notional (USD) per year — reads amount columns, so it needs a stable connection (a single
-    bad remote monthly file trips ZSTD). Best-effort; use fills_by_year() for a robust growth stat."""
+    bad remote monthly file trips ZSTD). PER-YEAR ISOLATED: a year that won't decompress is reported
+    as notional_usd=None (skipped) instead of failing the whole scan. Best-effort; fills_by_year() is
+    the robust growth stat."""
     from .fills import DERIVE_FILL_SQL
 
-    sql = f"""
-        WITH f AS (SELECT o.year, {DERIVE_FILL_SQL} FROM '{_OF}' o)
-        SELECT year, round(sum(price * size)) AS notional_usd FROM f GROUP BY year ORDER BY year
-    """
-    return [{"year": y, "notional_usd": v} for y, v in query(sql)]
+    out = []
+    for y in years:
+        sql = f"""
+            WITH f AS (SELECT {DERIVE_FILL_SQL} FROM '{_OF}' o WHERE o.year = {y})
+            SELECT round(sum(price * size)) FROM f
+        """
+        try:
+            out.append({"year": y, "notional_usd": query(sql)[0][0]})
+        except Exception as e:  # noqa: BLE001 - a flaky remote file shouldn't sink other years
+            out.append({"year": y, "notional_usd": None, "error": type(e).__name__})
+    return out
 
 
 def category_denominators() -> list[dict]:

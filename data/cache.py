@@ -73,13 +73,25 @@ def materialize_slice(condition_ids: list[str], *, overwrite: bool = True,
 
     toks_cids = _in_list(condition_ids)
     dst = os.path.join(CACHE_DIR, "order_filled")
+    if overwrite and os.path.isdir(dst):
+        import shutil
+
+        shutil.rmtree(dst)  # a stale partition dir + OVERWRITE_OR_IGNORE trips DuckDB type inference
+    # SELECT explicit, cast columns (NOT o.*) — parquet schema can drift across year partitions, and
+    # `SELECT *` over a partition union then trips DuckDB's "don't know what type" inference.
     copy_sql = f"""
         COPY (
             WITH toks AS (
                 SELECT DISTINCT id AS tok FROM '{table_path("market_data")}'
                 WHERE condition IN ({toks_cids})
             )
-            SELECT o.* FROM '{table_path("order_filled", prefer_cache=False)}' o
+            SELECT o.maker::VARCHAR AS maker, o.taker::VARCHAR AS taker,
+                   o.timestamp::VARCHAR AS timestamp,
+                   o.makerAssetId::VARCHAR AS makerAssetId, o.takerAssetId::VARCHAR AS takerAssetId,
+                   o.makerAmountFilled::VARCHAR AS makerAmountFilled,
+                   o.takerAmountFilled::VARCHAR AS takerAmountFilled,
+                   o.fee::VARCHAR AS fee, o.year::BIGINT AS year
+            FROM '{table_path("order_filled", prefer_cache=False)}' o
             WHERE (o.makerAssetId IN (SELECT tok FROM toks)
                    OR o.takerAssetId IN (SELECT tok FROM toks))
                   {year_filter}

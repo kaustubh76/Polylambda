@@ -6,7 +6,8 @@ need dispute labels from elsewhere. This pulls `DisputePrice` logs straight from
 public RPC (`eth_getLogs`, no Docker, no indexer), decodes the ancillaryData, derives the CTF
 `conditionId`, and joins to the HF dataset.
 
-VERIFIED derivation (validated 29/29 against HF `condition.id` + `market_data`):
+VERIFIED derivation (validated against HF `condition.id` only — NOT market_data, which is missing
+~132k FPMM-era/unlabeled conditions; 29/29 in an early spot-check, then 723/723 on the full backfill):
   questionId  = keccak256(ancillaryData)                         # as emitted by the OO event
   conditionId = keccak256(adapter ++ questionId ++ uint256(2))   # Gnosis CTF getConditionId
 This is the Python twin of indexer/src/lib.ts:deriveConditionId — the SAME formula.
@@ -151,13 +152,22 @@ def dispute_counts_by_category() -> dict[str, int]:
     if not cids:
         return {}
     inl = ",".join(f"'{c}'" for c in cids)
+    # category per disputed condition FROM market_data — but market_data is missing ~132k FPMM-era /
+    # unlabeled conditions, so some disputed conditionIds have no row here. We must NOT drop those:
+    # look up the category where available, then default the rest to 'other' so ALL disputed markets
+    # are counted (the earlier version silently dropped the unlabeled ones from the numerator).
     rows = query(f"""
-        SELECT {category_case_sql()} AS category, count(DISTINCT condition) AS n
+        SELECT condition, any_value({category_case_sql()}) AS category
         FROM '{table_path('market_data')}'
         WHERE condition IN ({inl})
-        GROUP BY 1
+        GROUP BY condition
     """)
-    return {cat: n for cat, n in rows}
+    cat_of = {cond: cat for cond, cat in rows}
+    counts: dict[str, int] = {}
+    for c in cids:
+        cat = cat_of.get(c, "other")  # FPMM-era / unlabeled → 'other', never dropped
+        counts[cat] = counts.get(cat, 0) + 1
+    return counts
 
 
 if __name__ == "__main__":
