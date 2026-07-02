@@ -1,0 +1,20 @@
+# PolyLambda — Python deps (estimators + pricing + execution + forward-test)
+numpy>=1.26
+pandas>=2.1
+scikit-learn>=1.4
+python-dotenv>=1.0
+requests>=2.31
+websockets>=12.0
+pytest>=8.0
+
+# --- historical data layer (data/*, over the HF dataset via DuckDB) ---
+# Queries moose-code/polymarket-onchain-v1 in place (hf://) — no 127GB download.
+duckdb>=1.1          # httpfs + hf:// parquet scans; also runs the deriveFill SQL
+huggingface_hub>=0.24  # optional: HF_TOKEN auth for higher rate limits on big prior-corpus builds
+pyarrow>=16          # parquet read/write for the local .data_cache slice
+
+# --- Polymarket CLOB client (execution, step 4). CLOB V2 ONLY. ---
+# ⚠ Do NOT use `py-clob-client` — it is archived / CLOB V1 / non-functional vs production.
+# Use the official Polymarket py-sdk (github.com/Polymarket/py-sdk). Confirm the exact
+# pip/import name at install time before pinning, e.g.:
+#   pip install git+https://github.com/Polymarket/py-sdk.git

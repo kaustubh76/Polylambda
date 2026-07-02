@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# env / secrets
+.env
+
+# node / envio (indexer has its own .gitignore too)
+node_modules/
+generated/
+
+# excalidraw backups
+*.excalidraw.bak*
+
+# scratch
+*.log
+
+# local DuckDB cache of the HF dataset slice (data/cache.py)
+.data_cache/

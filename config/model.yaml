@@ -1,0 +1,31 @@
+# PolyLambda model parameters. Start CONSERVATIVE; FREEZE before the forward-test
+# (see DECISIONS.md #11 — tuning 5 knobs on ~0-3 live dispute events is fitting noise).
+# Publish lambda_star sensitivity curves from the historical replay, not one tuned point.
+
+# --- Avellaneda-Stoikov (pricing/quote.py) ---
+gamma: 0.5              # risk aversion (higher = wider spreads, faster inventory shedding)
+k: 5.0                 # order-arrival / liquidity (higher = fills fall off faster from mid)
+kappa: 1.0             # jump-premium weight  (NOTE: distinct from k)
+min_horizon: 0.02      # (T-t)->0 guard: floor on effective horizon
+boundary_floor: 0.002  # minimum price-space half-spread near 0/1
+base_inventory_cap: 100.0
+
+# --- sigma estimator (estimators/sigma.py) ---
+ewma_b: 0.94           # EWMA memory knob (0-1): high = smooth/slow, low = twitchy/fast
+shrinkage_strength: 0.5   # pull per-market sigma toward the category x price-level prior
+min_trades_for_sigma: 20  # volume/trade-count floor (below this, use the prior)
+
+# --- lambda engine (estimators/lambda_engine.py) ---
+lambda_star: 0.15      # exit threshold for lambda_jump (reward-aware gate still applies)
+lambda_v1: base_rate   # v1 scope: category base-rate + a few point-in-time-safe features
+
+# --- positioning (build the engine to support BOTH; ablation decides) ---
+positioning: both      # reward_farmer | jump_avoid | both
+
+# --- historical data layer (data/*, over the HF dataset via DuckDB) ---
+data:
+  source: hf                       # mirrors DATA_SOURCE; env wins if set
+  fill_limit: 5000                 # per-market tape cap for sigma
+  prior_min_markets_per_cell: 30   # (category x price-bucket) floor before trusting a sigma prior
+  prior_sample_per_category: 2000  # stratified market sample for the prior corpus (1.85M is infeasible)
+  control_ratio: 3                 # matched non-disputed controls per disputed market for the replay
