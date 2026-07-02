@@ -107,7 +107,11 @@ def estimate_lambda(market_conditionid: str, features: dict,
     # replay calibrates jump_drift/e_loss from the HF realized post-resolution move.
     p = float(features.get("price", 0.5))
     logit_p = math.log(min(max(p, 1e-6), 1 - 1e-6) / (1 - min(max(p, 1e-6), 1 - 1e-6)))
-    jump_drift = math.copysign(kappa_loss, logit_p) * lambda_jump
+    # NB: guard logit_p == 0 (p == 0.5) — math.copysign(x, 0.0) returns +x (the sign of +0.0), which
+    # would leak a spurious positive/YES drift at a perfectly neutral price. A neutral market has no
+    # directional jump, so jump_drift must be exactly 0 there.
+    direction = 0.0 if logit_p == 0.0 else math.copysign(kappa_loss, logit_p)
+    jump_drift = direction * lambda_jump
     e_loss = kappa_loss * lambda_jump
 
     return LambdaOutput(lambda_select=lambda_select, lambda_jump=lambda_jump,
