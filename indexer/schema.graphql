@@ -1,0 +1,75 @@
+## PolyLambda indexer schema.
+## Corrected data model (see ../DECISIONS.md):
+##  - conditionId = keccak256(adapter, questionId, 2); there is NO opaque requestId.
+##  - ResolutionRequest is keyed by (conditionId + requestTimestamp) so each RESET round is a
+##    distinct row (two-strikes: 1st dispute auto-resets, 2nd escalates to the DVM).
+##  - Reconciliation is measured on the ELIGIBLE set with counted exclusion buckets (ReconStatus).
+
+type Market {
+  id: ID!                 # = conditionId
+  questionId: String!
+  ancillaryData: String   # stamped ancillaryData (from adapter QuestionInitialized)
+  oracle: String!         # the adapter address that prepared the condition
+  outcomeSlotCount: Int!
+  status: String!         # OPEN | REQUESTED | PROPOSED | DISPUTED | RESET | RESOLVED
+  currentRound: Int!      # bumps on each QuestionReset (two-strikes); points at the live request
+  finalOutcome: String    # payout vector once ConditionResolution fires (null until resolved)
+  preparedAt: BigInt
+  resolvedAt: BigInt
+}
+
+## Resolution lifecycle (populated in STEP 2, once OOv2/adapter handlers are wired).
+type ResolutionRequest {
+  id: ID!                 # = conditionId + "-" + round  (distinct per reset round)
+  market: Market!
+  requestTimestamp: BigInt!
+  round: Int!             # 0 = first request, 1 = after first (auto-reset) dispute, ...
+  proposer: String
+  bond: BigInt
+  proposedPrice: String   # raw int256 from OO ProposePrice (1e18=YES, 0=NO, 5e17=UNRESOLVABLE)
+  proposedOutcome: String # decoded: YES | NO | UNRESOLVABLE | OTHER
+  status: String!         # REQUESTED | PROPOSED | DISPUTED | RESOLVED
+}
+
+type Dispute {
+  id: ID!                 # = requestId + "-" + logIndex
+  request: ResolutionRequest!
+  disputer: String!
+  disputeTs: BigInt!
+  round: Int!
+}
+
+## CLOB fill tape (from CTFExchange OrderFilled) — feeds sigma and fair value.
+type Fill {
+  id: ID!                 # = txHash + "-" + logIndex
+  market: Market          # resolved via TokenRegistered (tokenId -> conditionId); may be null pre-map
+  tokenId: String!        # ERC-1155 positionId (the outcome token that traded)
+  maker: String!
+  taker: String!
+  price: Float!           # derived: collateral per outcome token, in (0,1)
+  size: Float!            # outcome-token amount filled
+  side: String!           # BUY | SELL (from maker/taker asset ids)
+  fee: BigInt!
+  timestamp: BigInt!
+  txHash: String!
+}
+
+## Maps an ERC-1155 outcome tokenId to its conditionId (from CTFExchange TokenRegistered),
+## so Fills can be joined to Markets without dynamic-contract indexing.
+type TokenMap {
+  id: ID!                 # = tokenId
+  conditionId: String!
+  complementTokenId: String!
+}
+
+## Reconciliation: 100% on the ELIGIBLE set, with every exclusion bucket counted (not dropped).
+type ReconStatus {
+  id: ID!                 # singleton "global"
+  marketsSettled: Int!
+  matched: Int!           # indexed finalOutcome == on-chain payout
+  excludedPending: Int!
+  excludedInDispute: Int!
+  excludedReorgWindow: Int!
+  excludedUnsupportedAdapter: Int!
+  updatedAt: BigInt!
+}

@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=./node_modules/envio/evm.schema.json
+#
+# PolyLambda indexer — Polymarket lifecycle + CLOB fills on Polygon (chain 137).
+# Scoped v1 (binary markets). Addresses verified in ../DECISIONS.md (re-confirm on Polygonscan).
+# Modeled on the reference repo github.com/enviodev/polymarket-indexer (adapted, scoped subset).
+#
+# NOTE: inline `event:` signatures are used (no ABI json files needed), matching how the
+# reference repo declares its V2 contracts.
+
+name: polylambda-indexer
+description: PolyLambda — Polymarket lifecycle + CLOB fills (binary v1)
+
+field_selection:
+  transaction_fields:
+    - hash
+    - from
+    - to
+
+contracts:
+  # --- Market lifecycle + payouts (drives Market + reconciliation) ---
+  # KEPT as a cheap cross-check (1.12M conditions vs 1.17B fills): lets recon validate the HF
+  # `condition.payoutNumerators` against a locally-indexed payout, guarding HF snapshot head-lag.
+  - name: ConditionalTokens
+    events:
+      - event: "ConditionPreparation(bytes32 indexed conditionId, address indexed oracle, bytes32 indexed questionId, uint256 outcomeSlotCount)"
+      - event: "ConditionResolution(bytes32 indexed conditionId, address indexed oracle, bytes32 indexed questionId, uint256 outcomeSlotCount, uint256[] payoutNumerators)"
+
+  # --- CLOB fill tape — REMOVED (now sourced from the HF dataset via data/*). ---
+  # The HF dataset `order_filled` (1.17B) + `market_data` (tokenId↔conditionId) supply the fill tape
+  # and the token map, so indexing CTFExchange locally (a days-long 1.17B-event backfill) is pure
+  # duplication. If you ever need the live head tape, re-enable this block AND its handlers.
+  # - name: CTFExchange
+  #   events:
+  #     - event: "OrderFilled(bytes32 indexed orderHash, address indexed maker, address indexed taker, uint256 makerAssetId, uint256 takerAssetId, uint256 makerAmountFilled, uint256 takerAmountFilled, uint256 fee)"
+  #     - event: "TokenRegistered(uint256 indexed token0, uint256 indexed token1, bytes32 indexed conditionId)"
+
+  # --- STEP 2: resolution lifecycle (proposal / dispute / settle) — THE NET-NEW PIECE ---
+  # HF indexes UmaSportsOracle, NOT generic OOv2, so these dispute/proposal events are the ONLY
+  # mandatory local indexing (they produce the ~dispute labels lambda + the replay-ablation need).
+  # Event signatures VERIFIED from source:
+  #   UmaCtfAdapter: github.com/Polymarket/uma-ctf-adapter (src/interfaces/IUmaCtfAdapter.sol)
+  #   OptimisticOracleV2: github.com/UMAprotocol/protocol (.../optimistic-oracle-v2/interfaces/OptimisticOracleV2Interface.sol)
+  # Join: questionID = keccak256(ancillaryData); conditionId = keccak256(adapter, questionID, 2).
+  - name: UmaCtfAdapter
+    events:
+      - event: "QuestionInitialized(bytes32 indexed questionID, uint256 indexed requestTimestamp, address indexed creator, bytes ancillaryData, address rewardToken, uint256 reward, uint256 proposalBond)"
+      - event: "QuestionReset(bytes32 indexed questionID)"
+      - event: "QuestionResolved(bytes32 indexed questionID, int256 indexed settledPrice, uint256[] payouts)"
+
+  - name: OptimisticOracleV2
+    events:
+      - event: "ProposePrice(address indexed requester, address indexed proposer, bytes32 identifier, uint256 timestamp, bytes ancillaryData, int256 proposedPrice, uint256 expirationTimestamp, address currency)"
+      - event: "DisputePrice(address indexed requester, address indexed proposer, address indexed disputer, bytes32 identifier, uint256 timestamp, bytes ancillaryData, int256 proposedPrice)"
+      - event: "Settle(address indexed requester, address indexed proposer, address indexed disputer, bytes32 identifier, uint256 timestamp, bytes ancillaryData, int256 price, uint256 payout)"
+
+chains:
+  - id: 137
+    # Scoped to the OOv2 dispute lifecycle only → the event volume is orders of magnitude below
+    # OrderFilled, so a FULL historical backfill is now feasible (that's what unlocks the ~184
+    # historical disputes the replay-ablation needs). Set start_block to the earliest UMA CTF
+    # Adapter / OOv2 deployment on Polygon (Polymarket resolution began ~2022).
+    # ⚠ Confirm the adapter deployment block on polygonscan.com before running; ~28M ≈ early 2022.
+    start_block: 28000000
+    contracts:
+      - name: ConditionalTokens
+        address: "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"
+      # CTFExchange removed — the fill tape + token map come from the HF dataset (see data/*).
+      # - name: CTFExchange
+      #   address:
+      #     - "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E"
+      #     - "0xC5d563A36AE78145C45a50134d48A1215220f80a"
+      - name: UmaCtfAdapter
+        address: "0x6A9D222616C90FcA5754cd1333cFD9b7fb6a4F74"
+      - name: OptimisticOracleV2
+        address: "0xeE3Afe347D5C74317041E2618C49534dAf887c24"
