@@ -21,6 +21,7 @@ contracts:
   # KEPT as a cheap cross-check (1.12M conditions vs 1.17B fills): lets recon validate the HF
   # `condition.payoutNumerators` against a locally-indexed payout, guarding HF snapshot head-lag.
   - name: ConditionalTokens
+    handler: src/EventHandlers.ts   # Envio v3 auto-loads from src/handlers/ by default; point it here
     events:
       - event: "ConditionPreparation(bytes32 indexed conditionId, address indexed oracle, bytes32 indexed questionId, uint256 outcomeSlotCount)"
       - event: "ConditionResolution(bytes32 indexed conditionId, address indexed oracle, bytes32 indexed questionId, uint256 outcomeSlotCount, uint256[] payoutNumerators)"
@@ -42,12 +43,14 @@ contracts:
   #   OptimisticOracleV2: github.com/UMAprotocol/protocol (.../optimistic-oracle-v2/interfaces/OptimisticOracleV2Interface.sol)
   # Join: questionID = keccak256(ancillaryData); conditionId = keccak256(adapter, questionID, 2).
   - name: UmaCtfAdapter
+    handler: src/EventHandlers.ts
     events:
       - event: "QuestionInitialized(bytes32 indexed questionID, uint256 indexed requestTimestamp, address indexed creator, bytes ancillaryData, address rewardToken, uint256 reward, uint256 proposalBond)"
       - event: "QuestionReset(bytes32 indexed questionID)"
       - event: "QuestionResolved(bytes32 indexed questionID, int256 indexed settledPrice, uint256[] payouts)"
 
   - name: OptimisticOracleV2
+    handler: src/EventHandlers.ts
     events:
       - event: "ProposePrice(address indexed requester, address indexed proposer, bytes32 identifier, uint256 timestamp, bytes ancillaryData, int256 proposedPrice, uint256 expirationTimestamp, address currency)"
       - event: "DisputePrice(address indexed requester, address indexed proposer, address indexed disputer, bytes32 identifier, uint256 timestamp, bytes ancillaryData, int256 proposedPrice)"
@@ -55,11 +58,19 @@ contracts:
 
 chains:
   - id: 137
+    # Data source: HyperSync (primary, ~1000x faster) needs ENVIO_API_TOKEN in indexer/.env
+    # (free at envio.dev/app/api-tokens). The keyless RPC below is kept as a FALLBACK for reliability.
+    # (To run WITHOUT a token, change `for: fallback` → `for: sync`; the full backfill will be slow.)
+    rpc:
+      - url: https://polygon.gateway.tenderly.co
+        for: fallback
     # Scoped to the OOv2 dispute lifecycle only → the event volume is orders of magnitude below
     # OrderFilled, so a FULL historical backfill is now feasible (that's what unlocks the ~184
     # historical disputes the replay-ablation needs). Set start_block to the earliest UMA CTF
     # Adapter / OOv2 deployment on Polygon (Polymarket resolution began ~2022).
     # ⚠ Confirm the adapter deployment block on polygonscan.com before running; ~28M ≈ early 2022.
+    # Full backfill: captures ConditionPreparation (at market creation) + the later dispute — both are
+    # needed for the NegRisk lookup join. Raise this to a recent block only for a quick smoke.
     start_block: 28000000
     contracts:
       - name: ConditionalTokens
@@ -70,6 +81,11 @@ chains:
       #     - "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E"
       #     - "0xC5d563A36AE78145C45a50134d48A1215220f80a"
       - name: UmaCtfAdapter
-        address: "0x6A9D222616C90FcA5754cd1333cFD9b7fb6a4F74"
+        # V2 + NegRisk UMA CTF Adapter + Legacy — all share the same QuestionInitialized/Reset/Resolved
+        # signatures. The lookup handlers (QuestionIndex/RequestIndex) make NegRisk disputes joinable.
+        address:
+          - "0x6A9D222616C90FcA5754cd1333cFD9b7fb6a4F74"  # V2
+          - "0x2F5e3684cb1F318ec51b00Edba38d79Ac2c0aA9d"  # NegRisk UMA CTF Adapter
+          - "0x71392E133063CC0D16F40E1F9B60227404Bc03f7"  # Legacy
       - name: OptimisticOracleV2
         address: "0xeE3Afe347D5C74317041E2618C49534dAf887c24"

@@ -62,6 +62,23 @@ type TokenMap {
   complementTokenId: String!
 }
 
+## ADAPTER-AGNOSTIC JOIN INDICES (so disputes link to conditionId WITHOUT keccak-deriving — which
+## fails for NegRisk, whose questionIds come from NegRiskIdLib, not keccak(ancillary)):
+##  - QuestionIndex: the authoritative questionId -> conditionId map, straight from the CTF
+##    ConditionPreparation event (whose conditionId IS the HF conditionId). Works for every oracle.
+##  - RequestIndex: (adapter + requestTimestamp) -> conditionId, from the adapter's QuestionInitialized;
+##    an OO ProposePrice/DisputePrice/Settle carries (requester=adapter, timestamp=requestTimestamp),
+##    so it looks up its conditionId here — no derivation needed.
+type QuestionIndex {
+  id: ID!                 # = questionId
+  conditionId: String!
+}
+
+type RequestIndex {
+  id: ID!                 # = lower(adapterAddress) + "-" + requestTimestamp
+  conditionId: String!
+}
+
 ## Reconciliation: 100% on the ELIGIBLE set, with every exclusion bucket counted (not dropped).
 type ReconStatus {
   id: ID!                 # singleton "global"

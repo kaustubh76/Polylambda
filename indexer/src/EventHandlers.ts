@@ -15,12 +15,16 @@
  *   OptimisticOracleV2.DisputePrice   -> Dispute, Market DISPUTED
  *   OptimisticOracleV2.Settle         -> ResolutionRequest RESOLVED
  *
- * JOIN (verified from source): the adapter computes questionID = keccak256(ancillaryData) and calls
- * ctf.prepareCondition(address(this), questionID, 2), so:
- *     conditionId = keccak256(abi.encodePacked(adapterAddress, questionID, 2))
- * Adapter events carry questionID directly; OO events carry ancillaryData (=> questionID) and the
- * requester (= adapter). OO events for markets we haven't indexed (or non-Polymarket requesters)
- * simply find no Market and are skipped.
+ * JOIN (adapter-agnostic LOOKUP — supports V2 AND NegRisk):
+ *   ConditionPreparation emits the conditionId DIRECTLY (its conditionId IS the HF one) → QuestionIndex
+ *     maps questionId -> conditionId for every oracle.
+ *   QuestionInitialized (V2 + NegRisk) resolves conditionId via QuestionIndex[questionID] (keccak
+ *     fallback for V2 if ConditionPreparation hasn't landed yet) and writes RequestIndex keyed by
+ *     (adapter, requestTimestamp).
+ *   OO ProposePrice/DisputePrice/Settle carry (requester=adapter, timestamp=requestTimestamp) → they
+ *     read conditionId from RequestIndex (keccak fallback for V2). NegRisk conditionIds are NOT
+ *     keccak-derivable (NegRiskIdLib), so the lookup is what makes NegRisk disputes joinable.
+ * OO events for non-Polymarket requesters find no RequestIndex/Market and are skipped.
  */
 import { ConditionalTokens, UmaCtfAdapter, OptimisticOracleV2 } from "generated";
 import { deriveConditionId, questionIdFromAncillary, decodeOutcome } from "./lib";
@@ -45,6 +49,8 @@ ConditionalTokens.ConditionPreparation.handler(async ({ event, context }) => {
     preparedAt: existing?.preparedAt ?? BigInt(event.block.timestamp),
     resolvedAt: existing?.resolvedAt,
   });
+  // Authoritative questionId -> conditionId, direct from chain (works for EVERY adapter incl. NegRisk).
+  context.QuestionIndex.set({ id: event.params.questionId, conditionId: event.params.conditionId });
 });
 
 ConditionalTokens.ConditionResolution.handler(async ({ event, context }) => {
@@ -76,7 +82,10 @@ ConditionalTokens.ConditionResolution.handler(async ({ event, context }) => {
 // STEP 2 — resolution lifecycle
 // ===========================================================================
 UmaCtfAdapter.QuestionInitialized.handler(async ({ event, context }) => {
-  const conditionId = deriveConditionId(event.srcAddress, event.params.questionID);
+  // conditionId from the authoritative QuestionIndex (ConditionPreparation) — works for NegRisk;
+  // fall back to the keccak derivation for V2 if ConditionPreparation hasn't been seen yet.
+  const qi = await context.QuestionIndex.get(event.params.questionID);
+  const conditionId = qi?.conditionId ?? deriveConditionId(event.srcAddress, event.params.questionID);
   const m = await context.Market.get(conditionId);
   context.Market.set({
     id: conditionId,
@@ -100,6 +109,11 @@ UmaCtfAdapter.QuestionInitialized.handler(async ({ event, context }) => {
     proposedPrice: undefined,
     proposedOutcome: undefined,
     status: "REQUESTED",
+  });
+  // (adapter, requestTimestamp) -> conditionId, so the OO events (requester=adapter, timestamp) link back.
+  context.RequestIndex.set({
+    id: `${event.srcAddress.toLowerCase()}-${event.params.requestTimestamp}`,
+    conditionId,
   });
 });
 
@@ -132,8 +146,8 @@ UmaCtfAdapter.QuestionResolved.handler(async ({ event, context }) => {
 });
 
 OptimisticOracleV2.ProposePrice.handler(async ({ event, context }) => {
-  const questionId = questionIdFromAncillary(event.params.ancillaryData);
-  const conditionId = deriveConditionId(event.params.requester, questionId);
+  const ri = await context.RequestIndex.get(`${event.params.requester.toLowerCase()}-${event.params.timestamp}`);
+  const conditionId = ri?.conditionId ?? deriveConditionId(event.params.requester, questionIdFromAncillary(event.params.ancillaryData));
   const m = await context.Market.get(conditionId);
   if (!m) return; // not one of our (indexed) markets
   const rrId = `${conditionId}-${m.currentRound}`;
@@ -153,8 +167,8 @@ OptimisticOracleV2.ProposePrice.handler(async ({ event, context }) => {
 });
 
 OptimisticOracleV2.DisputePrice.handler(async ({ event, context }) => {
-  const questionId = questionIdFromAncillary(event.params.ancillaryData);
-  const conditionId = deriveConditionId(event.params.requester, questionId);
+  const ri = await context.RequestIndex.get(`${event.params.requester.toLowerCase()}-${event.params.timestamp}`);
+  const conditionId = ri?.conditionId ?? deriveConditionId(event.params.requester, questionIdFromAncillary(event.params.ancillaryData));
   const m = await context.Market.get(conditionId);
   if (!m) return;
   const rrId = `${conditionId}-${m.currentRound}`;
@@ -171,8 +185,8 @@ OptimisticOracleV2.DisputePrice.handler(async ({ event, context }) => {
 });
 
 OptimisticOracleV2.Settle.handler(async ({ event, context }) => {
-  const questionId = questionIdFromAncillary(event.params.ancillaryData);
-  const conditionId = deriveConditionId(event.params.requester, questionId);
+  const ri = await context.RequestIndex.get(`${event.params.requester.toLowerCase()}-${event.params.timestamp}`);
+  const conditionId = ri?.conditionId ?? deriveConditionId(event.params.requester, questionIdFromAncillary(event.params.ancillaryData));
   const m = await context.Market.get(conditionId);
   if (!m) return;
   const rr = await context.ResolutionRequest.get(`${conditionId}-${m.currentRound}`);
