@@ -36,6 +36,18 @@ Exchange launched late 2022. The "since 2020" back-history lives in the FPMM-era
 (`fpmm_transaction` etc.), *not* in the fill tape PolyLambda's σ consumes. (Correction vs the
 headline.)
 
+**Volume is overwhelmingly recent** (`fills_by_year`, exact — sums to 1,172,658,611):
+
+| Year | 2022 | 2023 | 2024 | 2025 | 2026 |
+|---|---:|---:|---:|---:|---:|
+| Fills | 3,161 | 328,176 | 57.6M | 241.2M | **873.5M** |
+
+**74% of the entire tape is 2026 alone.** This has a sharp consequence for λ (see §5): the disputes
+that are *derivable + HF-joinable* (V2/Legacy adapters) live in the **thin 2022–2024 era**, while the
+**liquid 2025–2026 markets are NegRisk** (underivable from OO events). So the joinable disputes are
+largely where the liquidity *isn't* — the historical replay on them is real but low-liquidity; the
+high-liquidity dispute replay needs the local indexer's NegRisk coverage.
+
 ---
 
 ## 2. Verified schema facts (these drive every query in `data/`)
