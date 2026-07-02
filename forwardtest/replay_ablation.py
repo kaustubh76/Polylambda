@@ -106,35 +106,59 @@ def _reward_proxy(fills: list[dict]) -> float:
     return sum(f["size"] for f in fills if 0.10 <= f["price"] <= 0.90) * 1e-4
 
 
-def _replay_market(cid: str, fills: list[dict], disputeTs: int | None,
-                   lambda_star: float, *, inventory: float = 10.0) -> dict:
-    """Per-market arm contributions. Reuses the pure sigma core + should_exit gate.
+EXIT_REWARD_FRACTION = 0.4  # reward (uptime) forgone by pulling liquidity early to dodge a jump
 
-    Returns {avoided_loss, forgone_rewards, pnl_A, pnl_B, pnl_C} for one market.
+
+def _replay_market(cid: str, fills: list[dict], disputeTs: int | None,
+                   lambda_star: float, lambda_select: float, *, inventory: float = 10.0) -> dict:
+    """Per-market arm contributions, driven by the CATEGORY dispute base rate (`lambda_select`).
+
+    The SAME lambda signal (category dispute-proneness) feeds both jump arms; they differ in ACTION
+    (DECISIONS.md A — two consumers of one hazard signal):
+      * arm A (diffusion, lambda OFF): always hold through resolution.
+      * arm B (lambda_jump): REWARD-AWARE surgical exit — pull before the jump only when the signal
+        fires AND the avoided jump-loss exceeds the reward forgone by exiting early. It therefore
+        NEVER exits a control (no jump to avoid → reward-aware gate blocks it).
+      * arm C (lambda_select): BLANKET-avoid every market whose CATEGORY is dispute-prone (disputed
+        AND control alike), forgoing their reward; trade the rest normally.
+    Surgical exit (B) vs blanket avoidance (C) is exactly the positioning fork the ablation adjudicates.
+
+    Returns per-arm pnl + per-arm avoided_loss / forgone_rewards (the TRUE opportunity cost, tracked
+    separately from should_exit's decision threshold).
     """
-    from estimators.sigma import estimate_sigma_from_fills
     from execution.loop import should_exit
 
     reward = _reward_proxy(fills)
-    if disputeTs is None:  # a CONTROL: no jump ever; the "cost" side of the ledger
-        # A holds & earns reward; B may wrongly exit (forgo part of reward); C wrongly filters (forgo all)
-        return {"avoided_loss": 0.0, "forgone_rewards": reward,
-                "pnl_A": reward, "pnl_B": reward, "pnl_C": 0.0}
+    jump_loss = 0.0
+    if disputeTs is not None:
+        jump = _realized_jump_logit(fills, disputeTs)          # directional move in logit space
+        jump_loss = abs(inventory * jump) + 0.05 * inventory   # adverse move + ~5c exit haircut
+    fires = lambda_select > lambda_star                        # the category dispute signal fires
 
-    sigma = estimate_sigma_from_fills(fills, prior=0.5) or 0.3
-    jump = _realized_jump_logit(fills, disputeTs)            # directional move in logit space
-    # loss to a resting MM holding `inventory` through the jump (adverse if positioned against it)
-    jump_loss = abs(inventory * jump) + 0.05 * inventory      # + ~5c haircut on exit liquidity
-    lambda_jump = min(1.0, sigma)                             # proxy intensity from vol until model exists
+    # Arm A — always hold through
+    pnl_A = reward - jump_loss
 
-    exit_now = should_exit(lambda_jump, lambda_star, e_jump_loss=jump_loss,
-                           forgone_rewards=reward, spread=0.0, proposal_detected=True)
-    avoided = jump_loss if exit_now else 0.0
-    pnl_A = reward - jump_loss                                # holds through: eats the jump
-    pnl_B = reward - (jump_loss - avoided)                    # exits when it pays: avoids the jump, keeps reward
-    pnl_C = 0.0 if lambda_jump > lambda_star else (reward - jump_loss)  # filter avoids the market entirely
-    return {"avoided_loss": avoided, "forgone_rewards": 0.0 if exit_now else reward,
-            "pnl_A": pnl_A, "pnl_B": pnl_B, "pnl_C": pnl_C}
+    # Arm B — reward-aware surgical exit. proposal_detected=False: a HISTORICAL replay has no live
+    # proposal signal, so the exit is driven purely by the lambda threshold + the reward-aware gate.
+    # should_exit fires only when (lambda_select > lambda_star) AND (jump_loss > exit_forgone), so on a
+    # control (jump_loss == 0) it correctly never exits.
+    exit_forgone = EXIT_REWARD_FRACTION * reward
+    exit_now = should_exit(lambda_select, lambda_star, e_jump_loss=jump_loss,
+                           forgone_rewards=exit_forgone, spread=0.0, proposal_detected=False)
+    if exit_now:
+        pnl_B, avoided_B, forgone_B = reward - exit_forgone, jump_loss, exit_forgone
+    else:
+        pnl_B, avoided_B, forgone_B = reward - jump_loss, 0.0, 0.0
+
+    # Arm C — blanket-avoid dispute-prone categories (skip → miss reward, avoid any loss)
+    if fires:
+        pnl_C, avoided_C, forgone_C = 0.0, jump_loss, reward
+    else:
+        pnl_C, avoided_C, forgone_C = reward - jump_loss, 0.0, 0.0
+
+    return {"pnl_A": pnl_A, "pnl_B": pnl_B, "pnl_C": pnl_C,
+            "avoided_B": avoided_B, "forgone_B": forgone_B,
+            "avoided_C": avoided_C, "forgone_C": forgone_C}
 
 
 def _sharpe(xs: list[float]) -> float:
@@ -146,28 +170,29 @@ def _sharpe(xs: list[float]) -> float:
 
 
 def run_replay(graphql_url: str, lambda_star_grid: list[float],
-               *, control_ratio: int = 3, fill_limit: int = 5000) -> list[AblationResult]:
+               *, control_ratio: int = 3, fill_limit: int = 5000,
+               disputed: list[str] | None = None, controls: list[str] | None = None) -> list[AblationResult]:
     """Historical counterfactual over disputed markets (local) + matched controls (HF).
 
     For each lambda_star, replays arms A/B/C and returns an AblationResult per (arm, lambda_star),
     net of forgone rewards, with a Sharpe across markets. Emits the pre-registered power calc.
+    `disputed`/`controls` override the auto load/sample (for a reproducible full run over a cached slice).
     """
     from data.fills import fetch_fills_hf
-    from data.metadata import derive_category, market_meta
 
     disputes = load_disputes(graphql_url)
-    disputed_ids = [d["conditionId"] for d in disputes]
     dispute_ts = {d["conditionId"]: d["disputeTs"] for d in disputes}
+    disputed_ids = disputed if disputed is not None else [d["conditionId"] for d in disputes]
 
-    # matched controls: resolved, undisputed markets in the same categories (HF).
-    controls: list[str] = []
-    if disputed_ids:
-        from data.prior_corpus import sampled_condition_ids
+    # matched controls: resolved, undisputed markets (HF). Sample only when not provided.
+    if controls is None:
+        controls = []
+        if disputed_ids:
+            from data.prior_corpus import sampled_condition_ids
 
-        cats = {market_meta(c).get("category") if market_meta(c) else "other" for c in disputed_ids}
-        pool = [c for c in sampled_condition_ids(per_category=control_ratio * len(disputed_ids))
-                if c not in set(disputed_ids)]
-        controls = pool[: control_ratio * len(disputed_ids)]
+            pool = [c for c in sampled_condition_ids(per_category=control_ratio * len(disputed_ids))
+                    if c not in set(disputed_ids)]
+            controls = pool[: control_ratio * len(disputed_ids)]
 
     # pre-registered power calc (honest read of a null)
     exp = power_calc(len(disputed_ids) + len(controls), dispute_rate=0.011, resting_fraction=1.0)
@@ -185,24 +210,52 @@ def run_replay(graphql_url: str, lambda_star_grid: list[float],
             continue
         contribs[cid] = fills
 
+    # report PROCESSED counts (markets with fills), not raw label counts — no over-statement
+    n_disp_proc = sum(1 for cid in contribs if cid in dispute_ts)
+    n_ctrl_proc = len(contribs) - n_disp_proc
+    print(f"[replay] processed {n_disp_proc} disputed + {n_ctrl_proc} control markets (with fills)")
+
+    # lambda_select per market = the CATEGORY dispute base rate (disputes/resolved). This is the real
+    # lambda signal both jump arms consume — NOT per-market volatility. Note these rates are ~0.0004-
+    # 0.009, so lambda_star_grid must be scaled to that range (a 0.05-0.30 grid never fires).
+    from data.base_rates import category_base_rate, category_counts_hf
+    from data.disputes import dispute_counts_by_category
+    from data.hf import query, table_path
+    from data.metadata import category_case_sql
+
+    counts = category_counts_hf()
+    dcounts = dispute_counts_by_category()
+    cids = list(contribs)
+    inl = ",".join(f"'{c}'" for c in cids)
+    cat_of = {c: cat for c, cat in query(
+        f"SELECT condition, any_value({category_case_sql()}) FROM '{table_path('market_data')}' "
+        f"WHERE condition IN ({inl}) GROUP BY condition")}
+    lam_sel = {c: category_base_rate(cat_of.get(c, "other"), dcounts, counts)["rate"] for c in cids}
+    lo, hi = min(lam_sel.values()), max(lam_sel.values())
+    print(f"[replay] lambda_select (category base rate) range: {lo:.4f}..{hi:.4f}")
+
     results: list[AblationResult] = []
     for ls in lambda_star_grid:
-        pnl_A, pnl_B, pnl_C, avoided, forgone = [], [], [], 0.0, 0.0
+        pnl_A, pnl_B, pnl_C = [], [], []
+        av_B = fo_B = av_C = fo_C = 0.0
         for cid, fills in contribs.items():
-            m = _replay_market(cid, fills, dispute_ts.get(cid), ls)
+            m = _replay_market(cid, fills, dispute_ts.get(cid), ls, lam_sel[cid])
             pnl_A.append(m["pnl_A"]); pnl_B.append(m["pnl_B"]); pnl_C.append(m["pnl_C"])
-            avoided += m["avoided_loss"]; forgone += m["forgone_rewards"]
-        for arm, pnl in (("diffusion_only", pnl_A), ("lambda_jump", pnl_B), ("lambda_select", pnl_C)):
+            av_B += m["avoided_B"]; fo_B += m["forgone_B"]; av_C += m["avoided_C"]; fo_C += m["forgone_C"]
+        # Sharpe is over the SAME fixed market universe for every arm (a skipped market contributes a
+        # real 0 return), so the three arms are directly comparable at each lambda_star.
+        for arm, pnl, av, fo in (("diffusion_only", pnl_A, 0.0, 0.0),
+                                 ("lambda_jump", pnl_B, av_B, fo_B),
+                                 ("lambda_select", pnl_C, av_C, fo_C)):
             results.append(AblationResult(
-                arm=arm, lambda_star=ls, n_disputes=len(disputed_ids), n_controls=len(controls),
-                pnl_net_of_rewards=sum(pnl), sharpe=_sharpe(pnl),
-                avoided_loss=avoided if arm != "diffusion_only" else 0.0,
-                forgone_rewards=forgone if arm != "diffusion_only" else 0.0))
+                arm=arm, lambda_star=ls, n_disputes=n_disp_proc, n_controls=n_ctrl_proc,
+                pnl_net_of_rewards=sum(pnl), sharpe=_sharpe(pnl), avoided_loss=av, forgone_rewards=fo))
     return results
 
 
 if __name__ == "__main__":
     url = os.environ.get("GRAPHQL_URL", "http://localhost:8080/v1/graphql")
-    for r in run_replay(url, [0.05, 0.1, 0.15, 0.2, 0.3]):
-        print(f"  {r.arm:<15} l*={r.lambda_star:<5} pnl_net={r.pnl_net_of_rewards:+.2f} "
+    # lambda_star grid scaled to CATEGORY dispute base rates (~0.0004-0.009), not the old 0.05-0.30.
+    for r in run_replay(url, [0.0005, 0.001, 0.002, 0.005, 0.01]):
+        print(f"  {r.arm:<15} l*={r.lambda_star:<7} pnl_net={r.pnl_net_of_rewards:+.2f} "
               f"sharpe={r.sharpe:+.2f} avoided={r.avoided_loss:.2f} forgone={r.forgone_rewards:.2f}")
