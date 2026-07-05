@@ -19,6 +19,14 @@ of the OO ancillaryData — it can only be recovered from the NegRiskAdapter's o
 (what the scoped local indexer reads). NegRisk disputes are therefore COUNTED but not label-joined
 here; run the local indexer to cover them. Polymarket moved most recent markets to NegRisk, so this
 source skews to the 2023–2024 V2 era (which is exactly where HF's market_data overlaps anyway).
+
+DEEPER STRUCTURAL FINDING (2026-07-03, from the live local indexer — `load_disputes_from_indexer`):
+even when the indexer supplies the AUTHORITATIVE NegRisk conditionId (read directly from
+ConditionPreparation, not derived), NegRisk conditions are STILL absent from HF entirely — a same-era
+spot-check joined V2 disputes 147/147 (100%) but NegRisk 0/104 (0%), and HF `market_data` is not
+head-lagged (1.85M rows, endDate -> 2028). So HF does not carry NegRisk trading data under the
+underlying conditionId; NegRisk disputes are valuable as LABELS but have no HF fill tape to join.
+That is why `load_disputes_from_indexer` TAGS each row `hf_joinable` instead of assuming a join.
 """
 from __future__ import annotations
 
@@ -46,6 +54,13 @@ START_BLOCK = int(os.environ.get("DISPUTE_START_BLOCK", "33000000"))   # ~early 
 HF_CUTOFF_BLOCK = int(os.environ.get("HF_CUTOFF_BLOCK", "85948287"))   # dataset head; markets past it aren't in HF
 CHUNK = 500_000
 CACHE = os.path.join(os.environ.get("DATA_CACHE_DIR", ".data_cache"), "disputes.json")
+
+# --- local Envio indexer (Hasura) source: covers V2 + NegRisk + Legacy via the ConditionPreparation
+# lookup (authoritative conditionId), NOT keccak derivation. See load_disputes_from_indexer. ---
+GRAPHQL_URL = os.environ.get("GRAPHQL_URL", "http://localhost:8080/v1/graphql")
+HASURA_SECRET = os.environ.get("HASURA_ADMIN_SECRET", "testing")
+# Market.oracle (lowercased) -> adapter label. Reuses the RPC-path adapter set (V2/Legacy) + NegRisk.
+ADAPTER_OF = {**DERIVABLE, NEGRISK: "negrisk"}
 
 
 def _pad(addr: str) -> str:
@@ -136,8 +151,122 @@ def build_dispute_cache(*, refetch: bool = False, log=print) -> dict:
     return out
 
 
+def _gql(query_str: str, *, url: str | None = None, secret: str | None = None, timeout: int = 60):
+    """POST a GraphQL query to the local Hasura (admin secret auto-attached); return the `data` object."""
+    url = url or GRAPHQL_URL
+    secret = HASURA_SECRET if secret is None else secret
+    headers = {"Content-Type": "application/json"}
+    if secret:
+        headers["x-hasura-admin-secret"] = secret
+    req = urllib.request.Request(url, data=json.dumps({"query": query_str}).encode(), headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        out = json.loads(r.read())
+    if out.get("errors"):
+        raise RuntimeError(out["errors"])
+    return out["data"]
+
+
+def load_disputes_from_indexer(graphql_url: str | None = None, *, joinable_only: bool = False,
+                               page: int = 1000, log=None) -> list[dict]:
+    """Dispute labels from the scoped local Envio indexer (Hasura) — V2 + NegRisk + Legacy.
+
+    Unlike the RPC path (V2/Legacy only, via keccak derivation), the indexer reads the AUTHORITATIVE
+    conditionId from ConditionPreparation, so NegRisk disputes are captured too. But NegRisk conditions
+    are structurally ABSENT from the HF dataset (verified: same-era V2 join 100% / NegRisk 0%; HF is not
+    head-lagged — see the module docstring / DATASET.md §5), so each row carries `hf_joinable`: True iff
+    its conditionId is in HF `condition` (i.e. it has HF fills + a derivable category).
+
+    Returns [{conditionId, disputeTs, adapter, disputer, proposer, proposedOutcome, round, questionId,
+              hf_joinable}]. `joinable_only=True` keeps only the HF-joinable (V2/Legacy) subset — the
+    set the replay + category base-rate can actually join to HF fills.
+    """
+    url = graphql_url or GRAPHQL_URL
+    rows: list[dict] = []
+    offset = 0
+    while True:
+        q = ("query { Dispute(limit: %d, offset: %d, order_by: {disputeTs: asc}) "
+             "{ disputer disputeTs round request { proposer proposedOutcome requestTimestamp "
+             "market { id oracle questionId } } } }" % (page, offset))
+        batch = _gql(q, url=url).get("Dispute", [])
+        if not batch:
+            break
+        for d in batch:
+            req = d.get("request") or {}
+            mkt = req.get("market") or {}
+            cid = mkt.get("id")
+            if not cid:
+                continue
+            orc = (mkt.get("oracle") or "").lower()
+            rows.append({
+                "conditionId": cid,
+                "disputeTs": int(d.get("disputeTs") or 0),
+                # named adapter where known; else the raw oracle address (honest + traceable)
+                "adapter": ADAPTER_OF.get(orc) or orc or "unknown",
+                "disputer": d.get("disputer"),
+                "proposer": req.get("proposer"),
+                "proposedOutcome": req.get("proposedOutcome"),
+                "round": d.get("round"),
+                "questionId": mkt.get("questionId"),
+            })
+        offset += len(batch)
+        if log:
+            log(f"  fetched {offset} disputes from indexer")
+        if len(batch) < page:
+            break
+    # NegRisk: the indexer's conditionId is a PHANTOM (keccak from the 0x2f5e OO adapter) that exists
+    # nowhere on-chain — NegRisk markets TRADE under a conditionId whose oracle is the NegRiskAdapter
+    # 0xd91E80cF…. Recover it from the NegRiskOperator map (keyed by the UMA questionId our rows carry)
+    # so NegRisk disputes join HF exactly like V2/Legacy. Cache-only: if the map isn't built yet, NegRisk
+    # rows keep tradeableConditionId=None and stay unjoinable (no regression, no implicit network scan).
+    nmap: dict[str, dict] = {}
+    try:
+        from .negrisk_map import load_negrisk_map
+        nmap = load_negrisk_map()
+    except Exception as e:  # pragma: no cover - defensive
+        if log:
+            log(f"  negrisk map unavailable ({str(e)[:60]}); NegRisk falls back to phantom cid")
+    for r in rows:
+        if r["adapter"] == "negrisk":
+            m = nmap.get(r.get("questionId") or "")
+            r["tradeableConditionId"] = m["tradeableConditionId"] if m else None
+        else:
+            r["tradeableConditionId"] = r["conditionId"]  # V2/Legacy trade under the same conditionId
+
+    # hf_joinable: membership of the EFFECTIVE join key (tradeable cid where recovered, else the
+    # indexer conditionId) in the FULL HF `condition` table. Prefer the local cache when present
+    # (a complete 1.117M-row copy, verified == remote), else the remote single file.
+    join_cids = list({(r.get("tradeableConditionId") or r["conditionId"]) for r in rows})
+    joined: set[str] = set()
+    cpath = table_path("condition")
+    for i in range(0, len(join_cids), 5000):
+        inl = ",".join(f"'{c}'" for c in join_cids[i:i + 5000])
+        joined |= {x[0] for x in query(f"SELECT id FROM '{cpath}' WHERE id IN ({inl})")}
+    for r in rows:
+        r["hf_joinable"] = (r.get("tradeableConditionId") or r["conditionId"]) in joined
+    if joinable_only:
+        rows = [r for r in rows if r["hf_joinable"]]
+    return rows
+
+
 def load_disputes() -> list[dict]:
-    """[{conditionId, disputeTs, adapter, disputer}] for HF-joinable V2/Legacy disputes (cached)."""
+    """[{conditionId, disputeTs, adapter, disputer}] for HF-joinable disputes.
+
+    Default (DATA_SOURCE=hf): the offline RPC cache (V2/Legacy, 723, keccak-derived). When
+    DATA_SOURCE=graphql, source from the local Envio indexer instead (V2+NegRisk+Legacy, joinable
+    subset), falling back to the RPC cache if the indexer is unreachable.
+    """
+    if os.environ.get("DATA_SOURCE") == "graphql":
+        try:
+            rows = load_disputes_from_indexer(joinable_only=True)
+            if rows:
+                # Use the EFFECTIVE HF join key so downstream fill fetches resolve for NegRisk too:
+                # tradeableConditionId (recovered from the NegRisk map) for NegRisk, native cid otherwise.
+                # Returning the phantom cid here would pass the joinable filter yet fetch zero fills.
+                return [{"conditionId": r.get("tradeableConditionId") or r["conditionId"],
+                         "disputeTs": r["disputeTs"],
+                         "adapter": r["adapter"], "disputer": r["disputer"]} for r in rows]
+        except Exception:
+            pass  # indexer down → offline RPC cache below
     data = build_dispute_cache()
     return [{"conditionId": d["conditionId"], "disputeTs": d.get("disputeTs", 0),
              "adapter": d["adapter"], "disputer": d["disputer"]} for d in data["disputes"]]
