@@ -43,20 +43,23 @@ validated **723/723** for the V2 + Legacy adapters. The local Envio indexer is s
 OOv2 dispute lifecycle (the one net-new piece); NegRisk disputes join HF via the recovered tradeable
 conditionId (`data/negrisk_map.py`, see §5), so all adapters are covered.
 
-## 3. The λ signal (real base rates)
+## 3. The λ signal (real base rates — ALL adapters, regenerated 2026-07-05)
 
-Joining the 723 disputes to derived categories, the per-category dispute base rate is starkly ordered:
+Joining all **1,527 unique disputed markets** (V2 + NegRisk + Legacy + other, from the 1,794 release
+disputes) to derived categories, the per-category dispute base rate is starkly ordered:
 
 | Category | Rate | | Category | Rate |
 |---|---:|---|---|---:|
-| **politics** | **0.92%** | | tech-ai | 0.22% |
-| geopolitics | 0.57% | | sports | 0.10% |
-| economics | 0.39% | | **crypto** | **0.042%** |
+| **entertainment** | **2.11%** | | tech-ai | 0.52% |
+| **politics** | **1.83%** | | sports | 0.17% |
+| economics | 1.28% | | **crypto** | **0.085%** |
+| geopolitics | 0.91% | | | |
 
-**Politics is ~22× more dispute-prone than crypto.** This is exactly what `λ_select` captures — the
-market-selection edge, now in data (this table's numerators are the V2/Legacy RPC-cache 723; the NegRisk
-map adds ~940 more numerators — regenerating over the full adapter set is a follow-up; the ordering is
-the signal).
+**Politics is ~22× more dispute-prone than crypto** (1.83% vs 0.085%) — and the NegRisk-era numerators
+reveal **entertainment as the most dispute-prone category** (2.11%; it looked near-safe at 0.11% on the
+V2/Legacy-only numerators, n=3 vs n=59 now — culture/award markets with ambiguous resolution criteria).
+This is exactly what `λ_select` captures: the market-selection edge, now on the full adapter set with
+Wilson CIs (DATASET.md §5b).
 
 ## 4. The primary edge proof (historical replay-ablation)
 

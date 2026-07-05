@@ -227,28 +227,32 @@ realized logit jump).
 - Counts grow until the backfill reaches HF head (~block 85.9M); regenerate any time with
   `python -m data.export_disputes` (add `--with-price-context` for the pre/post price columns).
 
-## 5b. Dispute base rates — the λ signal, from real data (723 disputes)
+## 5b. Dispute base rates — the λ signal, ALL adapters (1,527 disputed markets)
 
-`data/disputes.py` recovered **723 HF-joined V2/Legacy disputes**. Joined to derived categories, the
-per-category dispute base rate (disputes / resolved markets) is:
+Regenerated 2026-07-05 over the FULL adapter set (V2 + NegRisk + Legacy + other; the 1,794 release
+disputes collapse to **1,527 unique disputed markets** via the effective join cid). Per-category
+dispute base rate (disputed / resolved markets), with Wilson 95% CIs:
 
-| Category | Disputes | Resolved | Rate |
-|---|---:|---:|---:|
-| **politics** | 146 | 15,953 | **0.92%** |
-| **geopolitics** | 46 | 8,026 | **0.57%** |
-| economics | 4 | 1,014 | 0.39% |
-| tech-ai | 23 | 10,298 | 0.22% |
-| entertainment | 3 | 2,793 | 0.11% |
-| sports | 91 | 87,854 | 0.10% |
-| **crypto** | 72 | 170,446 | **0.042%** |
-| other | 162 | 563,325 | 0.029% |
+| Category | Disputes | Resolved | Rate | Wilson 95% |
+|---|---:|---:|---:|---|
+| **entertainment** | 59 | 2,793 | **2.11%** | [1.64%, 2.72%] |
+| **politics** | 292 | 15,953 | **1.83%** | [1.63%, 2.05%] |
+| economics | 13 | 1,014 | 1.28% | [0.75%, 2.18%] |
+| geopolitics | 73 | 8,026 | 0.91% | [0.72%, 1.14%] |
+| tech-ai | 54 | 10,298 | 0.52% | [0.40%, 0.68%] |
+| sports | 150 | 87,854 | 0.17% | [0.15%, 0.20%] |
+| other | 742 | 563,325 | 0.13% | [0.12%, 0.14%] |
+| **crypto** | 144 | 170,446 | **0.085%** | [0.072%, 0.099%] |
 
-**This is the market-selection edge the thesis needs, in real numbers: politics markets are ~22× more
-dispute-prone than crypto** (0.92% vs 0.042%), and politics + geopolitics dominate disputes despite
-being a small share of markets. This is precisely what `λ_select` is supposed to capture — avoid or
-size down the dispute-prone categories. (These 723 are the V2/Legacy RPC-cache numerators; with the
-NegRisk map the indexer now adds ~940 NegRisk numerators too — regenerating the base-rate table over
-the full adapter set is a follow-up. The cross-category *ordering* is the signal either way.)
+**The NegRisk numerators change the story materially.** On V2/Legacy alone (the old 723-only table),
+entertainment looked near-safe (0.11%, n=3); with the NegRisk era included it is the **most
+dispute-prone category (2.11%, n=59)** — culture/award markets with ambiguous resolution criteria.
+Politics doubles to 1.83%. The headline selection edge survives and sharpens: **politics is still ~22×
+more dispute-prone than crypto** (1.83% vs 0.085%), and the top of the table (entertainment, politics,
+economics, geopolitics) is exactly what `λ_select` should avoid or size down. Reproduce with
+`DATA_SOURCE=graphql python -c "from data.dossier import dispute_base_rates; print(dispute_base_rates())"`.
+(Old V2/Legacy-only rates for comparison: politics 0.92%, geopolitics 0.57%, crypto 0.042% — those were
+lower bounds, missing the 2024+ NegRisk numerators.)
 
 ---
 
