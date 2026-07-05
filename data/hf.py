@@ -32,9 +32,19 @@ TABLE_LAYOUT: dict[str, str] = {
     "split": "partitioned",
     "merge": "partitioned",
     "fee_refunded": "partitioned",
+    "neg_risk_conversion": "partitioned",
     "condition": "single",
     "market_data": "single",
     "user_position": "single",
+    # State tables the σ/replay layer originally ignored — registered 2026-07-05 (verified via the
+    # live repo tree + DESCRIBE). `position`/`orderbook` power token-level joins + volume-based control
+    # matching; `market`/`game`/`neg_risk_event` document the multi-outcome (NegRisk) structure.
+    "position": "single",
+    "orderbook": "single",
+    "market_open_interest": "single",
+    "neg_risk_event": "single",
+    "market": "single",
+    "game": "single",
 }
 
 # Verified column registry (from live DESCRIBE, 2026-07-01). All VARCHAR unless noted.
@@ -51,6 +61,17 @@ COLUMNS: dict[str, list[str]] = {
                        "takerAmountFilled", "year"],
     "split": ["id", "timestamp", "stakeholder", "condition", "amount", "year"],
     "merge": ["id", "timestamp", "stakeholder", "condition", "amount", "year"],
+    # Registered 2026-07-05 (columns from live DESCRIBE). All VARCHAR unless noted.
+    "position": ["id", "condition", "outcomeIndex"],  # id = CTF positionId (tokenId) -> condition
+    "orderbook": ["id", "tradesQuantity", "buysQuantity", "sellsQuantity", "collateralVolume",
+                  "scaledCollateralVolume", "collateralBuyVolume", "scaledCollateralBuyVolume",
+                  "collateralSellVolume", "scaledCollateralSellVolume"],  # id = tokenId; per-token volume
+    "market_open_interest": ["id", "amount"],         # id = conditionId
+    "neg_risk_event": ["id", "feeBps", "questionCount"],  # id = negRiskMarketId
+    "market": ["id", "gameId", "state", "marketType", "underdog", "line", "payouts"],  # payouts VARCHAR[]
+    "game": ["id", "ancillaryData", "ordering", "state", "homeScore", "awayScore"],
+    "neg_risk_conversion": ["id", "timestamp", "stakeholder", "negRiskMarketId", "amount",
+                            "indexSet", "questionCount", "year"],  # year BIGINT
 }
 
 
