@@ -1,0 +1,54 @@
+{
+  "dataset": "polymarket-oov2-disputes-v1",
+  "total_disputes": 1774,
+  "hf_joinable": 1774,
+  "hf_joinable_pct": 100.0,
+  "by_adapter": {
+    "v2": 723,
+    "negrisk": 943,
+    "0x157ce2d672854c848c9b79c49a8cc6cc89176a49": 108
+  },
+  "by_adapter_joinable": {
+    "v2": {
+      "total": 723,
+      "joinable": 723
+    },
+    "negrisk": {
+      "total": 943,
+      "joinable": 943
+    },
+    "0x157ce2d672854c848c9b79c49a8cc6cc89176a49": {
+      "total": 108,
+      "joinable": 108
+    }
+  },
+  "by_category_joinable": {
+    "other": 821,
+    "tech-ai": 72,
+    "politics": 367,
+    "sports": 158,
+    "economics": 17,
+    "geopolitics": 110,
+    "crypto": 154,
+    "entertainment": 65,
+    "null": 10
+  },
+  "by_year": {
+    "2022": 1,
+    "2023": 83,
+    "2024": 452,
+    "2025": 1053,
+    "2026": 185
+  },
+  "dispute_ts_min": 1672249334,
+  "dispute_ts_max": 1773089877,
+  "date_min": "2022-12-28",
+  "date_max": "2026-03-09",
+  "parquet_rows": 1774,
+  "recon": {
+    "pass_rate": 1.0,
+    "eligible": 21216,
+    "matched": 21216,
+    "no_ground_truth": 112638
+  }
+}
