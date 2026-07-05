@@ -42,8 +42,8 @@ DATASET_NAME = "polymarket-oov2-disputes-v1"
 
 # Deterministic column order for the released parquet.
 COLUMNS = ["conditionId", "questionId", "adapter", "hf_joinable", "category",
-           "disputeTs", "disputeDate", "round", "disputer", "proposer", "proposedOutcome",
-           "preDisputePrice", "postDisputePrice", "realizedJumpLogit"]
+           "disputeTs", "disputeDate", "requestTimestamp", "round", "disputer", "proposer",
+           "proposedOutcome", "preDisputePrice", "postDisputePrice", "realizedJumpLogit"]
 
 
 def _dt(ts: int) -> datetime.datetime:
@@ -122,6 +122,7 @@ def build_rows(graphql_url: str | None = None, *, with_price_context: bool = Fal
             "category": cat_of.get(cid) if d["hf_joinable"] else None,
             "disputeTs": ts,
             "disputeDate": _iso(ts),
+            "requestTimestamp": d.get("requestTimestamp"),
             "round": d.get("round"),
             "disputer": d.get("disputer"),
             "proposer": d.get("proposer"),
@@ -216,8 +217,9 @@ at **{recon_line}**.
 | `adapter` | string | `v2` · `negrisk` · `legacy` (the UMA CTF adapter that owns the request) |
 | `hf_joinable` | bool | `true` iff `conditionId` ∈ `moose-code` `condition` (all adapters; false only when the NegRisk map could not resolve a market, or the market post-dates the HF cutoff) |
 | `category` | string | coarse keyword-derived category (crypto/politics/sports/…); null when not joinable |
-| `disputeTs` | int64 | dispute timestamp (epoch seconds) |
-| `disputeDate` | string | `YYYY-MM-DD` |
+| `disputeTs` | int64 | TRUE dispute block timestamp (epoch seconds) — resolved from the dispute tx's block |
+| `disputeDate` | string | `YYYY-MM-DD` (from `disputeTs`) |
+| `requestTimestamp` | int64 | the UMA OO *price-request* timestamp the dispute references (can precede the dispute tx by hours; this is what the raw `DisputePrice` event carries) |
 | `round` | int | reset round (0 = first request; bumps on each two-strikes reset) |
 | `disputer` / `proposer` | string | on-chain addresses |
 | `proposedOutcome` | string | the disputed proposal: `YES` / `NO` / `UNRESOLVABLE` / `OTHER` |

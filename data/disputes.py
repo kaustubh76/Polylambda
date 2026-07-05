@@ -20,13 +20,20 @@ of the OO ancillaryData — it can only be recovered from the NegRiskAdapter's o
 here; run the local indexer to cover them. Polymarket moved most recent markets to NegRisk, so this
 source skews to the 2023–2024 V2 era (which is exactly where HF's market_data overlaps anyway).
 
-DEEPER STRUCTURAL FINDING (2026-07-03, from the live local indexer — `load_disputes_from_indexer`):
-even when the indexer supplies the AUTHORITATIVE NegRisk conditionId (read directly from
-ConditionPreparation, not derived), NegRisk conditions are STILL absent from HF entirely — a same-era
-spot-check joined V2 disputes 147/147 (100%) but NegRisk 0/104 (0%), and HF `market_data` is not
-head-lagged (1.85M rows, endDate -> 2028). So HF does not carry NegRisk trading data under the
-underlying conditionId; NegRisk disputes are valuable as LABELS but have no HF fill tape to join.
-That is why `load_disputes_from_indexer` TAGS each row `hf_joinable` instead of assuming a join.
+CORRECTION (2026-07-05) to the earlier "NegRisk structurally absent from HF" claim: that finding was
+an artifact of PHANTOM conditionIds. Our indexer's QuestionInitialized handler keccak-falls-back to
+`deriveConditionId(0x2f5e…, umaQuestionID)` for NegRisk — an id that never exists on-chain (no
+ConditionPreparation anywhere), which is what joined 0%. The TRADEABLE NegRisk conditions (oracle =
+NegRiskAdapter 0xd91E…) ARE fully present in HF; the UMA→tradeable bridge is recovered on-chain from
+NegRiskOperator QuestionPrepared logs by `data/negrisk_map.py` (132,004 questions, 100% in HF).
+`load_disputes_from_indexer` applies that map: each row carries `tradeableConditionId`, and
+`hf_joinable` is computed on the EFFECTIVE key (tradeable-or-raw) — final release joins 100% across
+all adapters (V2 723/723, NegRisk 963/963, other 108/108).
+
+Timestamps: the indexer's `Dispute.disputeTs` is the OO REQUEST timestamp (event.params.timestamp),
+which can precede the dispute tx by hours. `dispute_block_timestamps` recovers the TRUE block time per
+dispute tx (Dispute.id = txHash-logIndex → receipt → block), cached; `load_disputes_from_indexer`
+transparently overrides `disputeTs` with it and keeps the original as `requestTimestamp`.
 """
 from __future__ import annotations
 
@@ -166,26 +173,85 @@ def _gql(query_str: str, *, url: str | None = None, secret: str | None = None, t
     return out["data"]
 
 
+BLOCK_TS_CACHE = os.path.join(os.environ.get("DATA_CACHE_DIR", ".data_cache"), "dispute_block_ts.json")
+
+
+def _load_block_ts_cache() -> dict[str, int]:
+    """{txHash: blockTs} from the local cache; {} when not built (never scans the network)."""
+    try:
+        with open(BLOCK_TS_CACHE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def dispute_block_timestamps(graphql_url: str | None = None, *, refetch: bool = False,
+                             log=print) -> dict[str, int]:
+    """Build {disputeTxHash: true block timestamp} for every indexer Dispute; cache to disk.
+
+    The Dispute entity stores no block field, but its id is `txHash-logIndex` — so the tx hash is
+    recoverable, and eth_getTransactionReceipt → eth_getBlockByNumber yields the true block time.
+    ~1 RPC receipt per unique tx + 1 block fetch per unique block (blocks are deduped); incremental —
+    already-cached txs are skipped unless refetch=True.
+    """
+    cache = {} if refetch else _load_block_ts_cache()
+    ids = _gql("query { Dispute { id } }", url=graphql_url).get("Dispute", [])
+    txs = sorted({(d.get("id") or "").rsplit("-", 1)[0] for d in ids} - {""} - set(cache))
+    if log and txs:
+        log(f"  resolving block timestamps for {len(txs)} dispute txs "
+            f"({len(cache)} already cached)")
+    block_of: dict[str, int] = {}
+    for i, tx in enumerate(txs):
+        try:
+            rcpt = _rpc("eth_getTransactionReceipt", [tx])
+            block_of[tx] = int(rcpt["blockNumber"], 16)
+        except Exception as e:
+            if log:
+                log(f"  receipt failed for {tx[:14]}…: {str(e)[:80]}")
+        if log and i and i % 200 == 0:
+            log(f"  receipts {i}/{len(txs)}")
+    ts_of_block: dict[int, int] = {}
+    for b in sorted(set(block_of.values())):
+        try:
+            ts_of_block[b] = int(_rpc("eth_getBlockByNumber", [hex(b), False])["timestamp"], 16)
+        except Exception as e:
+            if log:
+                log(f"  block {b} failed: {str(e)[:80]}")
+    for tx, b in block_of.items():
+        if b in ts_of_block:
+            cache[tx] = ts_of_block[b]
+    os.makedirs(os.path.dirname(BLOCK_TS_CACHE), exist_ok=True)
+    with open(BLOCK_TS_CACHE, "w") as f:
+        json.dump(cache, f)
+    if log:
+        log(f"  block-ts cache: {len(cache)} txs -> {BLOCK_TS_CACHE}")
+    return cache
+
+
 def load_disputes_from_indexer(graphql_url: str | None = None, *, joinable_only: bool = False,
                                page: int = 1000, log=None) -> list[dict]:
     """Dispute labels from the scoped local Envio indexer (Hasura) — V2 + NegRisk + Legacy.
 
-    Unlike the RPC path (V2/Legacy only, via keccak derivation), the indexer reads the AUTHORITATIVE
-    conditionId from ConditionPreparation, so NegRisk disputes are captured too. But NegRisk conditions
-    are structurally ABSENT from the HF dataset (verified: same-era V2 join 100% / NegRisk 0%; HF is not
-    head-lagged — see the module docstring / DATASET.md §5), so each row carries `hf_joinable`: True iff
-    its conditionId is in HF `condition` (i.e. it has HF fills + a derivable category).
+    Unlike the RPC path (V2/Legacy only, via keccak derivation), the indexer captures NegRisk disputes
+    too. For NegRisk the indexer's conditionId is a PHANTOM (see module docstring); the on-chain
+    tradeable conditionId is recovered via `data/negrisk_map.py` and carried as `tradeableConditionId`,
+    and `hf_joinable` is computed on the EFFECTIVE key (tradeable-or-raw) — 100% joinable across all
+    adapters once the map cache is built.
 
-    Returns [{conditionId, disputeTs, adapter, disputer, proposer, proposedOutcome, round, questionId,
-              hf_joinable}]. `joinable_only=True` keeps only the HF-joinable (V2/Legacy) subset — the
-    set the replay + category base-rate can actually join to HF fills.
+    `disputeTs` is the TRUE dispute block time when the block-ts cache exists (see
+    `dispute_block_timestamps`); the indexer's raw value (the OO REQUEST timestamp, which can precede
+    the dispute tx by hours) is preserved as `requestTimestamp`.
+
+    Returns [{conditionId, tradeableConditionId, disputeId, disputeTs, requestTimestamp, adapter,
+              disputer, proposer, proposedOutcome, round, questionId, hf_joinable}].
+    `joinable_only=True` keeps only rows whose effective cid joins HF (fills + category available).
     """
     url = graphql_url or GRAPHQL_URL
     rows: list[dict] = []
     offset = 0
     while True:
         q = ("query { Dispute(limit: %d, offset: %d, order_by: {disputeTs: asc}) "
-             "{ disputer disputeTs round request { proposer proposedOutcome requestTimestamp "
+             "{ id disputer disputeTs round request { proposer proposedOutcome requestTimestamp "
              "market { id oracle questionId } } } }" % (page, offset))
         batch = _gql(q, url=url).get("Dispute", [])
         if not batch:
@@ -199,7 +265,9 @@ def load_disputes_from_indexer(graphql_url: str | None = None, *, joinable_only:
             orc = (mkt.get("oracle") or "").lower()
             rows.append({
                 "conditionId": cid,
+                "disputeId": d.get("id"),                       # txHash-logIndex (block-ts join key)
                 "disputeTs": int(d.get("disputeTs") or 0),
+                "requestTimestamp": int(d.get("disputeTs") or 0),  # OO request ts (raw indexer value)
                 # named adapter where known; else the raw oracle address (honest + traceable)
                 "adapter": ADAPTER_OF.get(orc) or orc or "unknown",
                 "disputer": d.get("disputer"),
@@ -231,6 +299,17 @@ def load_disputes_from_indexer(graphql_url: str | None = None, *, joinable_only:
             r["tradeableConditionId"] = m["tradeableConditionId"] if m else None
         else:
             r["tradeableConditionId"] = r["conditionId"]  # V2/Legacy trade under the same conditionId
+
+    # TRUE block time: the indexer's disputeTs is the OO REQUEST timestamp (event.params.timestamp),
+    # not the dispute tx's block time — it can be hours earlier and would split pre/post fills wrongly.
+    # Override from the cached txHash→blockTs map when present (built by dispute_block_timestamps);
+    # cache-only here so a missing cache degrades to the request ts, never a network scan.
+    bts = _load_block_ts_cache()
+    if bts:
+        for r in rows:
+            tx = (r.get("disputeId") or "").rsplit("-", 1)[0]
+            if tx in bts:
+                r["disputeTs"] = int(bts[tx])
 
     # hf_joinable: membership of the EFFECTIVE join key (tradeable cid where recovered, else the
     # indexer conditionId) in the FULL HF `condition` table. Prefer the local cache when present

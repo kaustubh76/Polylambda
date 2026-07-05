@@ -49,7 +49,12 @@ def test_load_disputes_from_indexer_adapter_map_and_hf_joinable(monkeypatch):
 
     payload = [mk("0xcv2", V2), mk("0xcnr", NR), mk("0xcleg", LEG), mk("0xcoth", OTHER)]
     monkeypatch.setattr(dz, "_gql", lambda q, **kw: {"Dispute": payload})
-    # HF `condition` contains everything EXCEPT the NegRisk conditionId (the structural gap)
+    # No negrisk map + no block-ts cache (hermetic: never read the real .data_cache)
+    import data.negrisk_map as nm
+    monkeypatch.setattr(nm, "load_negrisk_map", lambda: {})
+    monkeypatch.setattr(dz, "_load_block_ts_cache", lambda: {})
+    # HF `condition` contains everything EXCEPT the NegRisk PHANTOM cid (without the map, a NegRisk
+    # row falls back to the phantom conditionId, which never exists on-chain → unjoinable)
     monkeypatch.setattr(dz, "query", lambda sql, params=None: [("0xcv2",), ("0xcleg",), ("0xcoth",)])
 
     rows = dz.load_disputes_from_indexer("http://x")
@@ -59,10 +64,51 @@ def test_load_disputes_from_indexer_adapter_map_and_hf_joinable(monkeypatch):
     assert by_cid["0xcleg"]["adapter"] == "legacy"
     assert by_cid["0xcoth"]["adapter"] == OTHER.lower()      # unmapped -> raw address, not "unknown"
     assert by_cid["0xcv2"]["hf_joinable"] is True
-    assert by_cid["0xcnr"]["hf_joinable"] is False           # NegRisk absent from HF
-    # joinable_only drops the NegRisk label row
+    assert by_cid["0xcnr"]["hf_joinable"] is False           # phantom cid without the map → unjoinable
+    # joinable_only drops the unmapped NegRisk row
     joinable = dz.load_disputes_from_indexer("http://x", joinable_only=True)
     assert {r["conditionId"] for r in joinable} == {"0xcv2", "0xcleg", "0xcoth"}
+
+
+def test_load_disputes_from_indexer_negrisk_map_recovers_join(monkeypatch):
+    """With the negrisk map cached, a NegRisk dispute joins HF via its TRADEABLE conditionId."""
+    import data.disputes as dz
+    import data.negrisk_map as nm
+
+    NR = "0x2f5e3684cb1f318ec51b00edba38d79ac2c0aa9d"
+    payload = [{"id": "0xaaa-7", "disputer": "0xd", "disputeTs": "1700000000", "round": 0,
+                "request": {"proposer": "0xp", "proposedOutcome": "NO", "requestTimestamp": "1700000000",
+                            "market": {"id": "0xphantom", "oracle": NR, "questionId": "0xq_uma"}}}]
+    monkeypatch.setattr(dz, "_gql", lambda q, **kw: {"Dispute": payload})
+    monkeypatch.setattr(nm, "load_negrisk_map",
+                        lambda: {"0xq_uma": {"tradeableConditionId": "0xtrade", "prepBlock": 1}})
+    monkeypatch.setattr(dz, "_load_block_ts_cache", lambda: {})
+    # HF has the TRADEABLE cid, not the phantom
+    monkeypatch.setattr(dz, "query", lambda sql, params=None: [("0xtrade",)])
+
+    rows = dz.load_disputes_from_indexer("http://x", joinable_only=True)
+    assert len(rows) == 1
+    assert rows[0]["tradeableConditionId"] == "0xtrade"
+    assert rows[0]["hf_joinable"] is True                    # joined via the map, not the phantom
+
+
+def test_dispute_block_ts_override_keeps_request_timestamp(monkeypatch):
+    """disputeTs is overridden with the TRUE block time from the cache; the OO request ts is kept."""
+    import data.disputes as dz
+    import data.negrisk_map as nm
+
+    V2 = "0x6A9D222616C90FcA5754cd1333cFD9b7fb6a4F74"
+    payload = [{"id": "0xhash-12", "disputer": "0xd", "disputeTs": "1700000000", "round": 1,
+                "request": {"proposer": "0xp", "proposedOutcome": "YES", "requestTimestamp": "1700000000",
+                            "market": {"id": "0xc", "oracle": V2, "questionId": "0xq"}}}]
+    monkeypatch.setattr(dz, "_gql", lambda q, **kw: {"Dispute": payload})
+    monkeypatch.setattr(nm, "load_negrisk_map", lambda: {})
+    monkeypatch.setattr(dz, "_load_block_ts_cache", lambda: {"0xhash": 1700003600})
+    monkeypatch.setattr(dz, "query", lambda sql, params=None: [("0xc",)])
+
+    (row,) = dz.load_disputes_from_indexer("http://x")
+    assert row["disputeTs"] == 1700003600                    # true block time (from txHash of id)
+    assert row["requestTimestamp"] == 1700000000             # raw OO request ts preserved
 
 
 # --- recon: NegRisk phantom-keyed markets have no HF-comparable payout → no_ground_truth (not a mismatch) ---
