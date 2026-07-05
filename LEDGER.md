@@ -132,6 +132,72 @@ Next first action: set `ENVIO_API_TOKEN` in indexer/.env → `envio dev` full ba
 
 ---
 
+## Day 07 — 2026-07-03
+Phase: 3 → Track A — release the dispute-label dataset + lock the V2/Legacy proof (indexer now live)
+Learn: the running local indexer DECIDES the NegRisk question. It captures NegRisk disputes with the
+       **authoritative** on-chain conditionId (from ConditionPreparation, not derived), yet those
+       conditions are **0% joinable to HF** — V2 100% (147/147) vs NegRisk 0% (0/104) in the SAME
+       2024–25 era, and HF `market_data` endDate→2028 (not head-lagged). So the powered NegRisk replay
+       is blocked at the **data layer** (no HF fill tape under the underlying conditionId), NOT the
+       indexer. The indexer's real payoff: it cross-validates the 723 (V2 100% HF-join), reconciles
+       `finalOutcome` vs HF `payoutNumerators` at pass_rate 1.0, and yields the net-new public
+       dispute-label dataset HF lacks.
+Build: `data/disputes.py` `load_disputes_from_indexer` (V2+NegRisk+Legacy, `hf_joinable` flag; primary
+       when `DATA_SOURCE=graphql`); `recon/check.py` `excluded_no_ground_truth` bucket + self-contained
+       paginated/authed fetch; `data/export_disputes.py` → `dataset_release/polymarket-oov2-disputes-v1/`
+       (parquet + HF card + stats, recon-provenance baked in); DATASET.md §5a/§5c + METHODOLOGY §5
+       corrected to the data-layer finding.
+Done-Checks:
+- [x] `load_disputes_from_indexer`: 1000+ disputes; **V2 659/659 (100%) HF-joinable, NegRisk 0/350 (0%)**
+- [x] recon at scale vs live indexer: **pass_rate=1.0000 on 25,873 eligible**; `no_ground_truth` bucket = NegRisk gap
+- [x] export: `dataset_release/…/disputes.parquet` (~1,300 rows) + README card + stats.json; DOUBLE price cols
+- [x] indexer-sourced replay (`DATA_SOURCE=graphql`): λ_jump > diffusion > λ_select at λ*=0.0005, converge at λ*=0.01 ✓
+- [x] **40 pytest green** (+2: `load_disputes_from_indexer` adapter/join map, recon `no_ground_truth` bucket)
+- [ ] regenerate FINAL export/recon/full 56+223 replay when the backfill reaches HF head (~block 85.9M; at ~76.9M now)
+Gate status: on-track — the dispute-label release + the corrected proof stand; the NegRisk fill gap is
+       documented as a data-layer limit, not an indexer failure.
+Next first action: at backfill completion → `python -m data.export_disputes` (+ `--with-price-context`)
+       + `python -m recon.check` + the full indexer-sourced replay; then `huggingface-cli upload`.
+
+---
+
+## Day 08 — 2026-07-05
+Phase: 3 → Track A — OVERTURN the NegRisk finding: it IS in HF; unblock the powered replay
+Learn: the Day 07 "NegRisk 0% joinable / data-layer-blocked" verdict was **WRONG** — an artifact of our
+       indexer's PHANTOM conditionId (`QuestionInitialized` falls back to `deriveConditionId(0x2f5e…)`,
+       fabricating an id that exists nowhere on-chain). NegRisk markets TRADE under a conditionId whose
+       oracle is the NegRiskAdapter `0xd91E80cF…`, recoverable from the NegRiskOperator
+       `0x71523d0f…` `QuestionPrepared` event (topic3=UMA qid, topic2=qid_d91e); tradeable cid =
+       keccak(d91e ++ qid_d91e ++ 2). Root cause of the wrong probe: **tenderly `eth_getLogs` silently
+       returns EMPTY for >1M-block ranges** (chunk ≤400k + positive control). Also: HF ships ~10 tables
+       we never registered (`position`/`orderbook`/`neg_risk_event`/…); `SNAPSHOT.json` pins the cutoff
+       (block 85,948,287 = 2026-04-24). And `Dispute.disputeTs` is the OO REQUEST ts, not block time.
+Build: `data/negrisk_map.py` (Operator scan → {umaQid: tradeableCid}, canary + tests); registered 7 HF
+       tables in `data/hf.py` (verified vs live schema); wired the tradeable cid through
+       `load_disputes_from_indexer`, `load_disputes`, `replay_ablation.load_disputes` (the last was
+       silently replaying every NegRisk dispute AS A CONTROL), and `export_disputes.py` (released
+       `conditionId` = effective join key). Corrected DATASET §5/§5a/§5b′/§5c + METHODOLOGY §5. (Recon
+       left V2/Legacy-only: a NegRisk finalOutcome bridge was tried and REVERTED — the indexer keys
+       NegRisk finalOutcome by the phantom cid, so bridging the truth lookup mismatched; recon can't
+       validate a phantom-keyed outcome without an indexer change.)
+Done-Checks:
+- [x] NegRisk map: **132,004 questions, 100.0% tradeable cids in HF**; derivation validated 6/6 (HF join + ConditionPreparation agreement)
+- [x] dispute join rate: **NegRisk 0/350 → 943/943 (100%)**; every adapter 100% (V2 723/723, other 108/108)
+- [x] recon stays **pass_rate 1.0000 on the eligible V2/Legacy set** (~21k at this checkpoint; NegRisk
+      phantom-keyed finalOutcome isn't HF-comparable → stays in no_ground_truth; the DATASET join uses the tradeable cid, 100%)
+- [x] **powered NegRisk-2024 replay** (26 disputed + 132 controls, materialized slice): λ_jump 1888.7
+      (sh 0.375) > diffusion 1882.2 (0.373) > λ_select 0.0 at λ*=0.0005; converge at λ*=0.01 ✓
+- [x] export pipeline validated (scratch dir; Day 07 snapshot preserved): 1774 rows, 100% joinable, NegRisk categorized
+- [x] **44 pytest green** (+`test_negrisk_map`, recon bridge test rewritten)
+- [ ] FINAL in-place export + recon + full powered replay when the backfill reaches the HF cutoff (~85.95M; at ~84.26M)
+- [ ] follow-ups: regenerate λ base-rate table over all adapters; enrich `disputeTs` with true block time; commit (awaiting go-ahead)
+Gate status: on-track — the project's biggest documented limitation is DISPROVEN; NegRisk is fully
+       joinable and the powered liquid-era edge proof holds. Work is uncommitted pending user go-ahead.
+Next first action: at backfill cutoff → in-place `python -m data.export_disputes --with-price-context`
+       + `python -m recon.check` + full powered replay; then commit + `huggingface-cli upload`.
+
+---
+
 ## Day NN — YYYY-MM-DD
 Phase:
 Learn:

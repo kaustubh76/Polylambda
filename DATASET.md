@@ -43,11 +43,13 @@ the table shows rounded M-notation for readability, so the displayed values do n
 |---|---:|---:|---:|---:|---:|
 | Fills | 3,161 | 328,176 | ~57.6M | ~241.2M | **~873.5M** |
 
-**74% of the entire tape is 2026 alone.** This has a sharp consequence for λ (see §5): the disputes
-that are *derivable + HF-joinable* (V2/Legacy adapters) live in the **thin 2022–2024 era**, while the
-**liquid 2025–2026 markets are NegRisk** (underivable from OO events). So the joinable disputes are
-largely where the liquidity *isn't* — the historical replay on them is real but low-liquidity; the
-high-liquidity dispute replay needs the local indexer's NegRisk coverage.
+**74% of the entire tape is 2026 alone.** The liquid **2025–2026 markets are NegRisk** (multi-outcome),
+so reaching the powered high-liquidity replay requires joining NegRisk disputes to the HF fill tape.
+That join is now **solved** (see §5): NegRisk markets trade under a conditionId whose oracle is the
+NegRiskAdapter, recoverable on-chain from the NegRiskOperator, and those tradeable conditions are
+**100% present in HF**. The earlier claim here — that NegRisk was "structurally absent from HF" — was an
+artifact of joining on the indexer's phantom conditionId, and is **corrected in §5**. With the map
+(`data/negrisk_map.py`) the liquid-era replay runs on real HF fills (§5b).
 
 ---
 
@@ -148,17 +150,82 @@ OOv2 `DisputePrice` logs straight from Polygon via a keyless public RPC (`eth_ge
 derives `conditionId = keccak256(adapter ++ keccak256(ancillaryData) ++ 2)`, and joins to HF. The
 derivation was validated **723/723** against HF for the **UMA CTF Adapter V2 + Legacy**.
 
-**One hard limitation, measured exhaustively:** the keccak derivation does NOT work for the **NegRisk**
-adapter. I tested **4 derivations across 2 contracts and 2 event types** — all join HF at **0%**:
-`keccak(negRiskAdapter, keccak(ancillary), 2)` (0/56), and from the NegRisk `QuestionResolved`
-questionID: `keccak(0x2f5e…, qid, 2)` (0/60), `keccak(0xd91E…, qid, 2)` (0/60), and `qid == conditionId`
-(0/60). NegRisk assigns questionIds via NegRiskIdLib and prepares conditions through its own adapter
-path, so the conditionId is **not recoverable from the external UMA/OO events** — it needs the
-NegRiskAdapter's own condition-preparation events, which only the local indexer (or HF's `condition`
-table, keyed by an id we can't reconstruct) has. NegRisk disputes are therefore **counted (963) but not
-label-joined**. Polymarket moved most recent markets to NegRisk, so `data/disputes.py` covers the
-2022–2024 V2/Legacy era. This is `DECISIONS.md #3/#13`, now proven with data — the local indexer is
-genuinely mandatory for NegRisk.
+**The derivation from OO ancillary does NOT work for NegRisk** — that part still holds: `keccak(adapter,
+keccak(ancillary), 2)` joins NegRisk at 0%, because NegRisk assigns questionIds via NegRiskIdLib, not
+from the OO ancillaryData. But that is a statement about the *derivation path*, **not** about HF
+coverage — and §5a below corrects the coverage claim. `data/disputes.py`'s keccak path covers the
+V2/Legacy era (validated 723/723); NegRisk is recovered a different way (the NegRiskOperator lookup, §5a).
+
+### 5a. NegRisk IS in HF — the "0% joinable" finding was a phantom-conditionId artifact (CORRECTED 2026-07-05)
+
+The 2026-07-03 verdict below was **wrong**, and finding out why is the load-bearing result of this
+project. The claim was: NegRisk disputes join HF at 0% *even with the authoritative on-chain
+conditionId*, so NegRisk is structurally absent from HF and the powered replay is data-layer-blocked.
+
+What actually happens: NegRisk markets resolve through the UMA OOv2 under a UMA `questionId`, but they
+**trade** under a *different* conditionId whose oracle is the **NegRiskAdapter** `0xd91E80cF…`. Our
+indexer's `QuestionInitialized` handler, lacking a `ConditionPreparation` for that tradeable condition,
+falls back to `deriveConditionId(0x2f5e…, questionId)` — which fabricates a **phantom conditionId that
+exists nowhere on-chain**. Joining *that* to HF is what returned 0%. The real tradeable conditions are
+**100% present in HF**.
+
+The bridge is recoverable from chain and was validated end-to-end:
+- The **NegRiskOperator** `0x71523d0f655B41E805Cec45b17163f528B59B820` emits `QuestionPrepared`
+  (topic0 `0xcdc45423…`) with `topic3 = requestId = the UMA questionId` and `topic2 = questionId_d91e`.
+- `tradeableConditionId = keccak256(0xd91E80cF… ++ questionId_d91e ++ uint256(2))`.
+- `data/negrisk_map.py` scans the Operator once and builds this map: **132,004 NegRisk questions,
+  100.0% of their tradeable conditionIds present in HF `condition`**. Validated on independent disputes
+  across crypto/F1/politics/weather/NFL — each recovered conditionId both joins HF `market_data` **and**
+  agrees with the on-chain `ConditionPreparation`.
+
+**Dispute-level result (via the map):** every adapter now joins HF **100%** — V2 723/723, **NegRisk
+943/943 (was 0/350)**, other 108/108. What made the earlier probe wrong was a **measurement trap**:
+tenderly `eth_getLogs` silently returns EMPTY (not an error) for block ranges ≳1M, so scans that looked
+like "0 events found" were really "range too wide"; every scan here uses ≤400k chunks + a positive control.
+
+Reconciliation (`recon.check`, indexed `finalOutcome` == HF `payoutNumerators`) stays **pass_rate =
+1.0000 on the eligible V2/Legacy set** (exact count in `stats.json`, grows with the backfill). NegRisk stays in the `no_ground_truth` bucket here — but
+for a *different* reason than the old "absent from HF" story: the indexer stores NegRisk `finalOutcome`
+under the **phantom** conditionId, while HF keys the real tradeable one, so there is no phantom-keyed
+payout to compare. NegRisk still JOINS HF via the tradeable cid for the dataset + replay (above);
+recon's finalOutcome check simply can't validate a phantom-keyed outcome (reconciling it would need the
+indexer to key the tradeable conditionId — an indexer change, out of recon's scope).
+
+### 5b′. Powered NegRisk-era replay (the Day 04 goal, now unblocked)
+
+With the map, the ablation runs on **real HF fills** for the liquid NegRisk era (2024 slice materialized
+locally; 26 disputed + 132 control markets processed). The ordering **holds in the liquid era**, matching
+the earlier V2-era result:
+
+| arm | λ*=0.0005 pnl (Sharpe) | at λ*=0.01 |
+|---|---|---|
+| **λ_jump** (surgical exit) | **+1888.7 (0.375)** | converges to diffusion |
+| diffusion (always hold) | +1882.2 (0.373) | +1882.2 |
+| λ_select (blanket avoid) | +0.0 (0.000) — forgoes 1895 reward to avoid 13 loss | +1073.6 |
+
+λ_jump's reward-aware surgical exit beats always-hold (avoids 8.0 jump-loss for 1.45 forgone reward) and
+crushes blanket-avoidance; arms converge at λ*=0.01 (|jump−diffusion| = 1.2), so the λ*-sensitivity is
+real. Small N (surgical, not a headline Sharpe), but the **conclusion — surgical exit > avoidance —
+holds on real liquid-era NegRisk data**, no longer just the thin V2 era.
+
+### 5c. Released artifact — `polymarket-oov2-disputes-v1` (the missing dispute layer)
+
+`data/export_disputes.py` packages the indexer's disputes as a **releasable companion dataset** — the
+OOv2 dispute events `moose-code` lacks — written to `dataset_release/polymarket-oov2-disputes-v1/`
+(`disputes.parquet` + `stats.json` + a HuggingFace `README.md` card). One row per `DisputePrice`, all
+adapters, keyed by `conditionId` so it joins `moose-code` directly. Columns: `conditionId`,
+`questionId`, `adapter` (v2/negrisk/legacy/raw-address), `hf_joinable`, `category`, `disputeTs`/`Date`,
+`round`, `disputer`, `proposer`, `proposedOutcome`, + optional fill-tape price context (pre/post price +
+realized logit jump).
+
+- **~1,770 disputes** (V2 ~720 · NegRisk ~940 · other ~110) over 2022 → 2026; **100% `hf_joinable`**
+  across all adapters — the released `conditionId` is the effective HF join key (tradeable cid for
+  NegRisk, recovered via `data/negrisk_map.py`; native for V2/Legacy), so NegRisk rows now carry a
+  `category` and join the fill tape.
+- The DuckDB join recipe + the NegRisk map explainer are baked into the card. License `CC-BY-4.0` (matches upstream).
+- Publish (needs creds): `huggingface-cli upload <ns>/polymarket-oov2-disputes-v1 dataset_release/polymarket-oov2-disputes-v1 . --repo-type dataset`.
+- Counts grow until the backfill reaches HF head (~block 85.9M); regenerate any time with
+  `python -m data.export_disputes` (add `--with-price-context` for the pre/post price columns).
 
 ## 5b. Dispute base rates — the λ signal, from real data (723 disputes)
 
@@ -179,8 +246,9 @@ per-category dispute base rate (disputes / resolved markets) is:
 **This is the market-selection edge the thesis needs, in real numbers: politics markets are ~22× more
 dispute-prone than crypto** (0.92% vs 0.042%), and politics + geopolitics dominate disputes despite
 being a small share of markets. This is precisely what `λ_select` is supposed to capture — avoid or
-size down the dispute-prone categories. (Caveat: numerators are V2/Legacy-only while denominators
-include NegRisk markets, so these are **lower bounds**; the cross-category *ordering* is the signal.)
+size down the dispute-prone categories. (These 723 are the V2/Legacy RPC-cache numerators; with the
+NegRisk map the indexer now adds ~940 NegRisk numerators too — regenerating the base-rate table over
+the full adapter set is a follow-up. The cross-category *ordering* is the signal either way.)
 
 ---
 
@@ -237,6 +305,11 @@ python -c "from data.cache import prefetch_state_tables, materialize_slice; \
            from data.disputes import load_disputes; prefetch_state_tables(); \
            materialize_slice([d['conditionId'] for d in load_disputes()][:12], years=(2022,2023))"
 python -m forwardtest.replay_ablation     # arms A/B/C × λ*-grid on real disputes, net of forgone rewards
+
+# WITH the local Envio indexer (Docker up) → V2+NegRisk labels + recon + the release artifact:
+GRAPHQL_URL=http://localhost:8080/v1/graphql python -m recon.check   # pass_rate + no_ground_truth (NegRisk gap)
+python -m data.export_disputes            # → dataset_release/polymarket-oov2-disputes-v1/{disputes.parquet,README.md,stats.json}
+DATA_SOURCE=graphql python -m forwardtest.replay_ablation            # same replay, disputes sourced from the indexer
 ```
 
 **Verified end-to-end, control-matched** (56 disputed + 223 control markets, 2022–2023). The λ signal
@@ -259,6 +332,14 @@ Two things this (post-fix, control-matched) result gets right that the first pas
 recovering toward diffusion as λ* rises and it avoids fewer markets. **The edge is the surgical exit,
 not blanket avoidance** (DECISIONS.md §A) — now on *correct* math, with matched controls. Honest
 caveats: **n=56 disputed** (underpowered — read via `power_calc`); fill-tape mid (no order book);
-2022–2023 *thin* era only (the 2024+ NegRisk-dominated liquid era needs the local indexer); simplified
-reward model. The primary edge proof — formerly a `NotImplementedError` — now runs on real,
-control-matched data with an interpretable, correctly-computed signal.
+2022–2023 *thin* era only; simplified reward model. The primary edge proof — formerly a
+`NotImplementedError` — now runs on real, control-matched data with an interpretable,
+correctly-computed signal.
+
+**Indexer-sourced confirmation (2026-07-03).** With `DATA_SOURCE=graphql`, `run_replay` now sources the
+disputed labels from the **local Envio indexer** instead of the RPC path. Over the identical cached
+slice, all 56 disputed conditionIds are confirmed present in the indexer's joinable set (an independent
+cross-check of the RPC-derived labels), and the arm table reproduces. The 2024+ NegRisk-dominated liquid
+era **remains out of reach for this replay** — not for lack of dispute labels (the indexer has them) but
+because HF carries no NegRisk fill tape to join by conditionId (§5a); a powered liquid-era replay would
+require a local NegRisk fill backfill, which is out of scope.

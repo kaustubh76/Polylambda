@@ -40,7 +40,8 @@ denominators — but **not** OOv2 dispute events. Dispute labels come from
 [data/disputes.py](data/disputes.py), which pulls OOv2 `DisputePrice` logs via a keyless RPC (no
 Docker), derives `conditionId = keccak256(adapter ++ keccak256(ancillary) ++ 2)`, and joins to HF —
 validated **723/723** for the V2 + Legacy adapters. The local Envio indexer is scoped down to only the
-OOv2 dispute lifecycle (the one net-new piece), and remains **mandatory for NegRisk** (see §5).
+OOv2 dispute lifecycle (the one net-new piece); NegRisk disputes join HF via the recovered tradeable
+conditionId (`data/negrisk_map.py`, see §5), so all adapters are covered.
 
 ## 3. The λ signal (real base rates)
 
@@ -53,8 +54,9 @@ Joining the 723 disputes to derived categories, the per-category dispute base ra
 | economics | 0.39% | | **crypto** | **0.042%** |
 
 **Politics is ~22× more dispute-prone than crypto.** This is exactly what `λ_select` captures — the
-market-selection edge, now in data (numerators are V2/Legacy-only over all-adapter denominators →
-lower bounds; the ordering is the signal).
+market-selection edge, now in data (this table's numerators are the V2/Legacy RPC-cache 723; the NegRisk
+map adds ~940 more numerators — regenerating over the full adapter set is a follow-up; the ordering is
+the signal).
 
 ## 4. The primary edge proof (historical replay-ablation)
 
@@ -81,16 +83,28 @@ result was corrected after an adversarial review found the first pass had a hard
 `proposal_detected=True` (which bypassed the λ* threshold) and filtered arm C on volatility instead of
 the category rate. **This is a positive signal, not a proof:** see §5.
 
+**Liquid-era confirmation (2026-07-05, NegRisk 2024 slice, 26 disputed + 132 controls).** With the
+NegRisk map unblocking the fill join, the same ablation on the *liquid* NegRisk era reproduces the
+ordering: at λ*=0.0005, **λ_jump 1888.7 / 0.375 > diffusion 1882.2 / 0.373 > λ_select 0.0** (λ_select
+forfeits ~1895 reward to avoid ~13 loss), converging at λ*=0.01 (|λ_jump − diffusion| = 1.2). Small-N
+and surgical, but the conclusion — surgical exit > avoidance — now holds on real 2024 NegRisk fills, not
+only the thin V2 era.
+
 ## 5. Honest limitations
 
-1. **NegRisk gap (the big one).** 963 disputes — the 2024+ high-liquidity era — are not recoverable
-   from external UMA/OO events. I tested **4 keccak derivations** (across 2 contracts × 2 event types:
-   ancillary keccak, and `QuestionResolved` questionID × two oracle addresses × identity) — all **0%
-   HF-join** (DATASET.md §5) — plus a `ConditionPreparation`-event angle, which fires at market
-   *creation* not resolution (0 logs in the resolution-era range). NegRisk assigns questionIds via
-   NegRiskIdLib and prepares conditions through its own path; recovering them needs the NegRiskAdapter's
-   own events — i.e., the scoped local indexer. So the replay above covers the *thin* 2022–2023 era,
-   not where most liquidity/disputes live.
+1. **NegRisk gap — RESOLVED (2026-07-05), not a limitation.** The 2024+ high-liquidity disputes are
+   NegRisk, and a prior version of this doc called them "structurally absent from HF" (V2 100% / NegRisk
+   0% join). That was **wrong** — an artifact of joining on the indexer's *phantom* conditionId (a
+   `deriveConditionId(0x2f5e…)` fallback that exists nowhere on-chain). NegRisk markets **trade** under a
+   conditionId whose oracle is the NegRiskAdapter `0xd91E80cF…`, recovered from the NegRiskOperator's
+   `QuestionPrepared` event (`data/negrisk_map.py`: 132,004 questions mapped, **100% present in HF**).
+   With the map, **every adapter joins HF 100%** — V2 723/723, **NegRisk 943/943 (was 0/350)** — and the
+   powered liquid-era replay runs on real fills (§4). Recon's `finalOutcome` check stays **pass_rate 1.0
+   on the eligible V2/Legacy set**; NegRisk stays in the `no_ground_truth` bucket only because the
+   indexer keys its `finalOutcome` by the phantom cid (not an HF gap — the join itself is 100%). Root
+   cause of the earlier error: tenderly `eth_getLogs` silently returns empty for >1M-block ranges, so
+   "0 found" was really "range too wide". The remaining honest caveats are #2–#4 below (power, no order
+   book, jurisdiction), not a data gap.
 2. **Statistical power.** ~1% dispute rate; the replay is small-N and underpowered — read it through the
    `power_calc`, report the CI, do not over-claim.
 3. **No order book.** The replay uses the fill-tape mid (per scope); it tests whether the λ_jump *exit*
@@ -99,7 +113,9 @@ the category rate. **This is a positive signal, not a proof:** see §5.
    replay needs no live trading and is the always-valid headline.
 
 ## 6. Reproduce
-See [DATASET.md](DATASET.md) §8. `pytest tests/` (36 green) covers deriveFill/deriveConditionId parity,
-the data-layer contracts, and the pure cores; `python -m data.dossier` reproduces the numbers; the
-dispute + replay pipeline runs end-to-end with `python -m data.disputes` → `materialize_slice` →
-`python -m forwardtest.replay_ablation`.
+See [DATASET.md](DATASET.md) §8. `pytest tests/` (**40 green**) covers deriveFill/deriveConditionId
+parity, the data-layer contracts, the indexer dispute source + recon buckets, and the pure cores;
+`python -m data.dossier` reproduces the numbers; the dispute + replay pipeline runs end-to-end with
+`python -m data.disputes` → `materialize_slice` → `python -m forwardtest.replay_ablation`. With the
+local indexer up: `python -m recon.check` (pass_rate + NegRisk `no_ground_truth` bucket) and
+`python -m data.export_disputes` (the released `polymarket-oov2-disputes-v1` companion dataset).
