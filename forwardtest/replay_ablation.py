@@ -75,21 +75,18 @@ def load_disputes(graphql_url: str) -> list[dict]:
         except Exception:
             return []
 
-    import requests
-
-    q = """query { Dispute { disputeTs request { market { id } } } }"""
+    # DATA_SOURCE=graphql: the scoped local Envio indexer (V2+NegRisk+Legacy). Restrict to the
+    # HF-joinable subset AND key on the EFFECTIVE join cid (tradeableConditionId for NegRisk, recovered
+    # from the NegRisk map; native conditionId for V2/Legacy) so the conditionId→HF-fill join resolves
+    # for NegRisk too. Returning the phantom NegRisk conditionId here silently replays every NegRisk
+    # dispute AS A CONTROL (dispute_ts miss → no jump_loss), erasing the entire NegRisk-era signal.
     try:
-        r = requests.post(graphql_url, json={"query": q}, timeout=30)
-        r.raise_for_status()
-        rows = r.json().get("data", {}).get("Dispute", []) or []
+        from data.disputes import load_disputes_from_indexer
+
+        return [{"conditionId": r.get("tradeableConditionId") or r["conditionId"], "disputeTs": r["disputeTs"]}
+                for r in load_disputes_from_indexer(graphql_url, joinable_only=True)]
     except Exception:
         return []
-    out = []
-    for d in rows:
-        cid = (((d.get("request") or {}).get("market") or {}).get("id"))
-        if cid:
-            out.append({"conditionId": cid, "disputeTs": int(d.get("disputeTs") or 0)})
-    return out
 
 
 def _realized_jump_logit(fills: list[dict], event_ts: int) -> float:
