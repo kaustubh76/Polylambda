@@ -21,8 +21,8 @@ backbone — but it does **not** index the UMA **OptimisticOracleV2** proposal/d
 companion dataset fills exactly that gap: every on-chain `DisputePrice` on a Polymarket UMA CTF adapter,
 linked to its Gnosis CTF `conditionId` so it joins the `moose-code` tables directly.
 
-- **1774 disputes** across adapters (v2=723 · negrisk=943 · 0x157ce2d672854c848c9b79c49a8cc6cc89176a49=108), 2022-12-28 → 2026-03-09.
-- **1774 (100.0%) are HF-joinable** — across **all** adapters. The
+- **1794 disputes** across adapters (v2=723 · negrisk=963 · 0x157ce2d672854c848c9b79c49a8cc6cc89176a49=108), 2022-12-28 → 2026-04-09.
+- **1794 (100.0%) are HF-joinable** — across **all** adapters. The
   released `conditionId` is the effective `moose-code` join key: for NegRisk (multi-outcome) markets that
   is the **tradeable** conditionId recovered from the NegRiskOperator (see the NegRisk map below), not the
   UMA-side id; for V2/Legacy it is the native conditionId. Every joinable row carries a derived `category`
@@ -37,7 +37,7 @@ Produced by the PolyLambda scoped Envio indexer (`indexer/`, chain 137 / Polygon
   `conditionId` is resolved via the lookup above (no keccak derivation — which fails for NegRisk).
 
 Reconciliation: the indexer's resolved `finalOutcome` matches `moose-code` `condition.payoutNumerators`
-at **pass_rate = 1.0000 on 21,216 eligible V2/Legacy markets**.
+at **pass_rate = 1.0000 on 29,349 eligible V2/Legacy markets**.
 
 ## Schema (`disputes.parquet`)
 | column | type | notes |

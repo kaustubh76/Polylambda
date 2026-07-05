@@ -187,14 +187,18 @@ Done-Checks:
       phantom-keyed finalOutcome isn't HF-comparable → stays in no_ground_truth; the DATASET join uses the tradeable cid, 100%)
 - [x] **powered NegRisk-2024 replay** (26 disputed + 132 controls, materialized slice): λ_jump 1888.7
       (sh 0.375) > diffusion 1882.2 (0.373) > λ_select 0.0 at λ*=0.0005; converge at λ*=0.01 ✓
-- [x] export pipeline validated (scratch dir; Day 07 snapshot preserved): 1774 rows, 100% joinable, NegRisk categorized
-- [x] **44 pytest green** (+`test_negrisk_map`, recon bridge test rewritten)
-- [ ] FINAL in-place export + recon + full powered replay when the backfill reaches the HF cutoff (~85.95M; at ~84.26M)
+- [x] **44 pytest green** (+`test_negrisk_map`, recon bridge test rewritten); adversarial review workflow: 0 regressions
+- [x] backfill reached the **HF cutoff** (block 85,960,271 > 85,948,287) after 22 self-healing runs
+- [x] **FINAL export at cutoff**: `dataset_release/` = **1,794 disputes, 100% joinable** (V2 723/723,
+      **NegRisk 963/963**, other 108/108), 2022-12-28 → 2026-04-09; recon **pass_rate 1.0 on 29,349 eligible** V2/Legacy
+- [~] price-context (`--with-price-context`) + broader multi-year powered replay: materializing the full
+      disputed+control fill slice (year-by-year; remote hf:// order_filled reads are slow/flaky)
 - [ ] follow-ups: regenerate λ base-rate table over all adapters; enrich `disputeTs` with true block time; commit (awaiting go-ahead)
-Gate status: on-track — the project's biggest documented limitation is DISPROVEN; NegRisk is fully
-       joinable and the powered liquid-era edge proof holds. Work is uncommitted pending user go-ahead.
-Next first action: at backfill cutoff → in-place `python -m data.export_disputes --with-price-context`
-       + `python -m recon.check` + full powered replay; then commit + `huggingface-cli upload`.
+Gate status: DONE (core) — the project's biggest documented limitation is DISPROVEN; NegRisk is fully
+       joinable (963/963), the powered liquid-era edge proof holds, the backfill reached the HF cutoff,
+       and the final release (1,794 disputes, 100% joinable, recon 1.0) is regenerated. Uncommitted pending go-ahead.
+Next first action: finish price-context + broader replay off the materialized slice; then commit the
+       session's work + `huggingface-cli upload <ns>/polymarket-oov2-disputes-v1 …` (both await user go-ahead).
 
 ---
 
