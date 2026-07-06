@@ -16,7 +16,9 @@ def test_all_new_modules_import():
                 # execution engine (C-track): imports must stay network-free (clob.py lazy-imports
                 # requests; paper.py imports only clob's read path; runner/ablation are pure)
                 "config.loader", "execution.clob", "execution.paper", "execution.loop",
-                "forwardtest.session_log", "forwardtest.runner", "forwardtest.ablation"):
+                "forwardtest.session_log", "forwardtest.runner", "forwardtest.ablation",
+                # brain-integration additions (imports stay network-free; sklearn/duckdb lazy)
+                "estimators.hazard", "data.calibrate"):
         importlib.import_module(mod)
 
 

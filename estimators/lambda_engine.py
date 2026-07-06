@@ -36,6 +36,11 @@ class LambdaOutput:
 # point-in-time-safe features only (no lookahead, no post-dispute signals)
 SAFE_FEATURES = ("category_base_rate", "market_size", "proposer_reliability", "latency_anomaly")
 
+# E[loss|jump] scaling, CALIBRATED from the released dispute layer (mean |realizedJumpLogit| = 0.76,
+# data/calibrate.py) — replaces the old 0.05 placeholder. Kept as a module constant so this file
+# stays import-pure; callers (config-driven) pass cfg.kappa_loss to override.
+DEFAULT_KAPPA_LOSS = 0.76
+
 
 def category_base_rate(category: str, dispute_counts: dict[str, int] | None = None,
                        counts: dict[str, dict] | None = None) -> dict:
@@ -81,7 +86,7 @@ def fit_hazard(labeled_rows):
 
 def estimate_lambda(market_conditionid: str, features: dict,
                     *, dispute_counts: dict[str, int] | None = None,
-                    model=None, kappa_loss: float = 0.05) -> LambdaOutput:
+                    model=None, kappa_loss: float = DEFAULT_KAPPA_LOSS) -> LambdaOutput:
     """base-rate prior (+ optional hazard) -> lambda_select + lambda_jump + directional jump + CI.
 
     `features` must carry SAFE_FEATURES (incl. 'category'); `model` is an optional fitted hazard.

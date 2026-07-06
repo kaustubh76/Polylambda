@@ -14,8 +14,13 @@ at a few hundred obs/cell (config: prior_sample_per_category, prior_min_markets_
 """
 from __future__ import annotations
 
+import json
+import os
+
 from .fills import fetch_fills_hf
 from .metadata import market_meta
+
+SIGMA_PRIOR_CACHE = os.path.join(os.environ.get("DATA_CACHE_DIR", ".data_cache"), "sigma_prior.json")
 
 
 def build_sigma_observation_corpus(condition_ids: list[str], *, min_trades: int = 20,
@@ -36,6 +41,31 @@ def build_sigma_observation_corpus(condition_ids: list[str], *, min_trades: int 
         sig = estimate_sigma_from_fills(fills, prior=0.5, b=b, min_trades=min_trades)
         obs.append({"category": cat, "price": med, "sigma": sig})
     return obs
+
+
+def build_and_cache_sigma_prior(condition_ids: list[str] | None = None, *, per_category: int = 300,
+                                min_trades: int = 20, b: float = 0.94,
+                                path: str = SIGMA_PRIOR_CACHE) -> list[dict]:
+    """Build the (category, price, sigma) corpus and cache it to JSON for the live loop.
+
+    Intended flow (see module docstring): materialize a stratified slice first so fetch_fills reads
+    the local cache in ms, not the remote 1.17B tape. Returns the observation list and writes it to
+    `path`; `estimators.sigma.category_price_prior` consumes it via load_sigma_prior()."""
+    if condition_ids is None:
+        condition_ids = sampled_condition_ids(per_category=per_category)
+    obs = build_sigma_observation_corpus(condition_ids, min_trades=min_trades, b=b)
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(obs, f)
+    return obs
+
+
+def load_sigma_prior(path: str = SIGMA_PRIOR_CACHE) -> list[dict] | None:
+    """The cached (category, price, sigma) corpus, or None if it hasn't been built yet."""
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        return json.load(f)
 
 
 def sampled_condition_ids(per_category: int = 2000) -> list[str]:

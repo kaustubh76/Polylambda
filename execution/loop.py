@@ -141,7 +141,8 @@ def tick(state: MarketState, book: dict, now_ts: float, cfg, clob, log=None,
     T_t = max((state.end_date_ts - now_ts) / 86400.0, 0.0)  # days (min_horizon guards ~0)
     mid = estimate_fair_value(book, T_t)
     sigma = estimate_sigma_from_fills(clob.tape(state.token_id), prior=state.sigma_prior,
-                                      b=cfg.ewma_b, min_trades=cfg.min_trades_for_sigma)
+                                      b=cfg.ewma_b, min_trades=cfg.min_trades_for_sigma,
+                                      strength=getattr(cfg, "shrinkage_strength", 20.0))
 
     lam_on = state.arm == "lambda_on" and state.lam is not None
     lam_jump = state.lam.lambda_jump if lam_on else 0.0
@@ -156,7 +157,7 @@ def tick(state: MarketState, book: dict, now_ts: float, cfg, clob, log=None,
     if lam_on and state.inventory != 0.0:
         cur_bid = book["bids"][0][0]
         cur_ask = book["asks"][0][0]
-        qsize = cfg.quote_size * (LIGHT_FACTOR if state.defensive else 1.0)
+        qsize = cfg.quote_size * (getattr(cfg, "light_factor", LIGHT_FACTOR) if state.defensive else 1.0)
         mstate = {"mid": mid, "our_bid": cur_bid, "our_ask": cur_ask,
                   "bid_size": qsize, "ask_size": qsize,
                   "max_incentive_spread": micro.get("max_incentive_spread", 0.0),
@@ -165,7 +166,7 @@ def tick(state: MarketState, book: dict, now_ts: float, cfg, clob, log=None,
         forgone = forgone_rewards_if_exit(mstate)
         # E[jump loss] in USD: logit-space e_loss -> price-space via the local Jacobian p(1-p)
         e_jump_loss_usd = abs(state.inventory) * e_loss * mid * (1.0 - mid)
-        reduce_size = abs(state.inventory) * REDUCE_FRACTION
+        reduce_size = abs(state.inventory) * getattr(cfg, "reduce_fraction", REDUCE_FRACTION)
         spread_cost = 0.5 * (cur_ask - cur_bid) * reduce_size
         if should_exit(lam_jump, cfg.lambda_star, e_jump_loss_usd, forgone, spread_cost,
                        proposal_detected):
@@ -200,16 +201,35 @@ def tick(state: MarketState, book: dict, now_ts: float, cfg, clob, log=None,
     except ValueError:
         pass                                               # boundary regime: skip this tick
     if bid is not None:
-        size = max(min_size, cfg.quote_size * (LIGHT_FACTOR if state.defensive else 1.0))
+        light = getattr(cfg, "light_factor", LIGHT_FACTOR)
+        # SIZE ∝ 1/risk (Panel F): shrink with belief-vol σ and jump intensity λ, bounded so a quiet
+        # market quotes full size and a hot one quotes small. At σ=sigma_ref and λ=0 → quote_size.
+        sigma_ref = getattr(cfg, "sigma_ref", 0.15)
+        size_floor = getattr(cfg, "size_floor", 0.25)
+        size_lambda_k = getattr(cfg, "size_lambda_k", 20.0)
+        risk_scale = min(max(sigma_ref / max(sigma, 1e-9), size_floor), 1.0) / (1.0 + size_lambda_k * lam_jump)
+        size = max(min_size, cfg.quote_size * risk_scale * (light if state.defensive else 1.0))
+        # Hard time-to-resolution inventory cap (Panel F "cap inventory hard as resolution
+        # approaches"): the allowed |position| ramps to base_inventory_cap over inventory_cap_horizon
+        # and shrinks to ~0 at resolution. Quote a side only if it does not push past the cap — so
+        # once at/over the (shrinking) cap the position can ONLY be reduced, never grown.
+        horizon = getattr(cfg, "inventory_cap_horizon_days", 3.0)
+        pos_cap = cfg.quote.base_inventory_cap * (min(1.0, T_t / horizon) if horizon > 0 else 1.0)
+        buy_size = size if state.inventory < pos_cap else 0.0      # BUY grows long → gate at +cap
+        sell_size = size if state.inventory > -pos_cap else 0.0    # SELL grows short → gate at -cap
         clob.cancel(list(state.order_ids))
-        state.order_ids = [clob.place(state.token_id, "BUY", bid, size, now_ts=now_ts),
-                           clob.place(state.token_id, "SELL", ask, size, now_ts=now_ts)]
+        oids = []
+        if buy_size >= min_size:
+            oids.append(clob.place(state.token_id, "BUY", bid, buy_size, now_ts=now_ts))
+        if sell_size >= min_size:
+            oids.append(clob.place(state.token_id, "SELL", ask, sell_size, now_ts=now_ts))
+        state.order_ids = oids
         if log:
-            log("quote", cid=state.cid, arm=state.arm, bid=bid, ask=ask, bid_size=size,
-                ask_size=size, replaced=True, order_ids=list(state.order_ids),
-                defensive=state.defensive)
+            log("quote", cid=state.cid, arm=state.arm, bid=bid, ask=ask, bid_size=buy_size,
+                ask_size=sell_size, replaced=True, order_ids=list(state.order_ids),
+                defensive=state.defensive, pos_cap=pos_cap, risk_scale=risk_scale)
         # accrue the SIMULATED reward score (same model as the exit gate — cannot diverge)
-        state.sim_reward_score += _reward_score(mid, bid, ask, size, size,
+        state.sim_reward_score += _reward_score(mid, bid, ask, buy_size, sell_size,
                                                 micro.get("max_incentive_spread", 0.0),
                                                 micro.get("reward_min_size", 0.0))
     if log:
@@ -223,13 +243,16 @@ def tick(state: MarketState, book: dict, now_ts: float, cfg, clob, log=None,
 
 
 def run_loop(markets: list, mode: str = "paper", *, n_ticks: int = 100, interval_s: float = 5.0,
-             clob=None, log=None, proposal_detector=None, cfg=None) -> list:
+             clob=None, log=None, proposal_detector=None, cfg=None, start_ts=None) -> list:
     """The main quoting loop over MarketState objects (built by forwardtest.runner).
 
     paper/paper-live: fills are SIMULATED locally (PaperClob / PaperLiveClob) — no real orders.
     live is jurisdiction-gated at the clob layer (execution.clob.LiveGateError) and out of v1.
     proposal_detector: injected callable cid -> bool; defaults to always-False — the low-latency
     proposal log-watcher is explicitly v2 (module docstring latency note).
+    start_ts: the DECISION clock origin. When given, tick i sees now = start_ts + i*interval_s, so
+    time-to-resolution (and the inventory cap) is deterministic and meaningful; the builder sets
+    market end dates relative to the same origin. When None, the wall clock is used (paper-live).
     """
     import time as _t
 
@@ -252,7 +275,7 @@ def run_loop(markets: list, mode: str = "paper", *, n_ticks: int = 100, interval
 
     by_token = {m.token_id: m for m in markets}
     for i in range(n_ticks):
-        now = _t.time()
+        now = _t.time() if start_ts is None else start_ts + i * interval_s
         for f in clob.step(now):
             s = by_token.get(f["token_id"])
             if s is None:

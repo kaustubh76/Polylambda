@@ -38,6 +38,11 @@ PAPER_UNIVERSE = [
 # actually beats forgone rewards + spread, which is rare over a short paper window — honest.
 _PAPER_KAPPA_LOSS = 1.5
 
+# The paper DECISION clock origin (fixed, so time-to-resolution and the inventory cap are
+# deterministic — no wall-clock in the sim). Markets resolve a few days out from here; run_loop is
+# handed the same origin so now = PAPER_START_TS + i*interval_s.
+PAPER_START_TS = 1_780_000_000.0  # ~2026-05-27
+
 
 def _paper_lambda(category: str, rate: float, direction: float):
     """A deterministic LambdaOutput for a paper market (no network, no HF scan)."""
@@ -60,19 +65,68 @@ def _build_paper_markets(n_markets: int, seed: int):
     from execution.loop import MarketState
 
     day = 86400.0
-    # a fixed anchor so end dates are deterministic and don't depend on wall-clock at import
-    anchor = 1_760_000_000.0  # ~2025-10, arbitrary fixed epoch
     markets = []
     for i in range(n_markets):
         category, rate = PAPER_UNIVERSE[i % len(PAPER_UNIVERSE)]
         direction = 1.0 if i % 2 == 0 else -1.0
         arm = "lambda_on" if i % 2 == 0 else "lambda_off"
-        end_ts = anchor + (7 + i) * day        # each market resolves a bit further out
+        end_ts = PAPER_START_TS + (7 + i) * day     # resolves 7..N days out from the decision origin
         markets.append(MarketState(
             cid=f"0xpaper{i:02d}", token_id=f"paper-{i:02d}", category=category, arm=arm,
             end_date_ts=end_ts, sigma_prior=0.15,
             lam=_paper_lambda(category, rate, direction) if arm == "lambda_on" else None,
         ))
+    return markets
+
+
+def select_real_markets(n_markets: int) -> list[dict]:
+    """Pick real markets to forward-test: the released disputed markets (they carry a category + a
+    pre-dispute price). Returns [{cid, category, price}] — the offline, no-network market source that
+    lets the loop run on REAL λ and σ priors (the book is still simulated in paper mode)."""
+    import duckdb
+
+    pq = "dataset_release/polymarket-oov2-disputes-v1/disputes.parquet"
+    rows = duckdb.sql(
+        f"SELECT conditionId, category, preDisputePrice FROM '{pq}' "
+        f"WHERE hf_joinable AND preDisputePrice IS NOT NULL "
+        f"ORDER BY conditionId LIMIT {int(n_markets)}").fetchall()
+    return [{"cid": c, "category": cat or "other", "price": float(p)} for c, cat, p in rows]
+
+
+def build_markets(market_rows: list[dict], *, hazard_model=None, sigma_corpus=None, cfg=None,
+                  dispute_counts=None, seed: int = 7):
+    """Build MarketState objects with REAL estimator inputs (Panel L①): λ via estimate_lambda (real
+    category base rates, or the hazard logistic when a model is passed) and σ prior via the
+    category×price corpus (falls back to cfg.sigma_ref when no corpus). Each market → exactly one arm
+    (alternating), mirroring a live ablation. Pure given (market_rows, model, corpus, cfg)."""
+    from config.loader import load_config
+    from estimators.lambda_engine import estimate_lambda
+    from estimators.sigma import category_price_prior
+    from execution.loop import MarketState
+
+    if cfg is None:
+        cfg = load_config()
+    feats_idx = {}
+    if hazard_model is not None:                       # attach the exact structural features
+        from estimators.hazard import market_feature_dicts
+
+        feats_idx = market_feature_dicts([r["cid"] for r in market_rows])
+
+    day = 86400.0
+    markets = []
+    for i, row in enumerate(market_rows):
+        cid, cat, price = row["cid"], row.get("category", "other"), float(row.get("price", 0.5))
+        features = dict(feats_idx.get(cid, {}))
+        features.update({"category": cat, "price": price})
+        lam = estimate_lambda(cid, features, dispute_counts=dispute_counts, model=hazard_model,
+                              kappa_loss=cfg.kappa_loss)
+        sig_prior = (category_price_prior(sigma_corpus, cat, price)
+                     if sigma_corpus else cfg.sigma_ref)
+        arm = "lambda_on" if i % 2 == 0 else "lambda_off"
+        markets.append(MarketState(
+            cid=cid, token_id=f"real-{i:03d}-{cid[:10]}", category=cat, arm=arm,
+            end_date_ts=PAPER_START_TS + (7 + i) * day, sigma_prior=sig_prior,
+            lam=lam if arm == "lambda_on" else None))
     return markets
 
 
@@ -85,7 +139,7 @@ def _mark_mid(book: dict) -> float:
 
 def run(mode: str = "paper", markets: list | None = None, *, n_ticks: int = 20,
         interval_s: float = 0.0, out_path: str | None = None, seed: int = 7,
-        n_markets: int = 4, cfg=None) -> dict:
+        n_markets: int = 4, cfg=None, source: str = "synthetic", hazard: bool = False) -> dict:
     """Drive execution.loop.run_loop, log every session event, and return the session summary.
 
     Logs session_start (config + per-market snapshot) → the loop's tick/quote/fill/exit stream →
@@ -104,7 +158,15 @@ def run(mode: str = "paper", markets: list | None = None, *, n_ticks: int = 20,
                            "live is jurisdiction-gated at the clob layer")
 
     if markets is None:
-        markets = _build_paper_markets(n_markets, seed)
+        if source == "data":
+            from data.prior_corpus import load_sigma_prior
+            from estimators.hazard import load_hazard_model
+
+            hm = load_hazard_model() if hazard else None
+            markets = build_markets(select_real_markets(n_markets), hazard_model=hm,
+                                    sigma_corpus=load_sigma_prior(), cfg=cfg, seed=seed)
+        else:
+            markets = _build_paper_markets(n_markets, seed)
     token_ids = [m.token_id for m in markets]
 
     if mode == "paper":
@@ -144,7 +206,7 @@ def run(mode: str = "paper", markets: list | None = None, *, n_ticks: int = 20,
                       "micro": clob.get_micro(m.token_id), "seed": seed} for m in markets])
 
         run_loop(markets, mode=mode, n_ticks=n_ticks, interval_s=interval_s, clob=clob,
-                 log=log, cfg=cfg)
+                 log=log, cfg=cfg, start_ts=PAPER_START_TS)
 
         # --- settle marks and roll up per-market / per-arm totals ---
         per_market = []
@@ -189,6 +251,7 @@ if __name__ == "__main__":
     mode = _arg("--mode", "paper")
     summary = run(mode=mode, n_ticks=int(_arg("--ticks", 20)),
                   interval_s=float(_arg("--interval", 0.0)), seed=int(_arg("--seed", 7)),
-                  n_markets=int(_arg("--markets", 4)), out_path=_arg("--out", None))
+                  n_markets=int(_arg("--markets", 4)), out_path=_arg("--out", None),
+                  source=_arg("--source", "synthetic"), hazard=("--hazard" in sys.argv))
     print(json.dumps({k: v for k, v in summary.items() if k != "per_market"}, indent=2))
     print(f"session log -> {summary['out_path']}")

@@ -61,6 +61,34 @@ V2/Legacy-only numerators, n=3 vs n=59 now — culture/award markets with ambigu
 This is exactly what `λ_select` captures: the market-selection edge, now on the full adapter set with
 Wilson CIs (DATASET.md §5b).
 
+### 3b. The engine, wired into the runtime (2026-07-06)
+
+Earlier the estimators existed but the runnable loop bypassed them (a hardcoded λ constant, a static
+σ prior). They are now fully integrated so the forward-test exercises the real brain:
+
+- **λ into the loop.** `forwardtest.runner.build_markets` (source=`data`) resolves each market's
+  `estimate_lambda` from the **real category base rates** above (+ Wilson CI, calibrated `kappa_loss`
+  = 0.76, the mean |realizedJumpLogit| over the released disputes, `data/calibrate.py`) — the engine
+  the diagram centers on, no longer a constant.
+- **σ prior into the loop.** the hierarchical (category × price-bucket) prior
+  (`data.prior_corpus` → `estimators.sigma.category_price_prior`) replaces the static 0.15; the loop
+  also honors the frozen `shrinkage_strength`.
+- **Panel-F execution.** quote **size ∝ 1/risk** (shrinks with σ and λ) and a **hard
+  time-to-resolution inventory cap** (the allowed |position| ramps to 0 at resolution, so near the
+  buzzer inventory can only be reduced) — both driven by frozen `config/model.yaml` knobs.
+
+**The structural hazard model (`estimators/hazard.py`), honestly evaluated.** The diagram's Panel-D
+λ method is a hazard/logistic on structural signals. We built it: class-weighted logistic on
+point-in-time-safe features, prior-corrected back to the ~1% natural prevalence so its output is a
+usable `λ_jump` (not the ~0.5 a balanced fit emits). The honest finding matches DECISIONS.md #9 —
+**v1 rests on the features fairly computable for both disputed and control markets
+(`category_base_rate` + `market_size`); held-out AUC ≈ 0.68** (modest discrimination, market size adds
+real signal). `proposer_reliability` and `latency_anomaly` are retained in the schema but **zeroed in
+v1**: they cannot be computed for arbitrary controls without label leakage (the indexer's
+`ResolutionRequest` doesn't cover most HF-resolved controls). At ~1% prevalence this is
+calibration-limited; **the category base rate remains the honest default**, with the hazard a
+directional overlay — not a validated edge.
+
 ## 4. The primary edge proof (historical replay-ablation)
 
 The live λ-ablation is statistically powerless in weeks (~1% dispute rate), so the primary proof is a
@@ -116,8 +144,9 @@ only the thin V2 era.
    replay needs no live trading and is the always-valid headline.
 
 ## 6. Reproduce
-See [DATASET.md](DATASET.md) §8. `pytest tests/` (**40 green**) covers deriveFill/deriveConditionId
-parity, the data-layer contracts, the indexer dispute source + recon buckets, and the pure cores;
+See [DATASET.md](DATASET.md) §8. `pytest tests/` (**101 green**) covers deriveFill/deriveConditionId
+parity, the data-layer contracts, the indexer dispute source + recon buckets, the pure cores, the
+paper forward-test engine, the wired sizing/inventory-cap, and the hazard model;
 `python -m data.dossier` reproduces the numbers; the dispute + replay pipeline runs end-to-end with
 `python -m data.disputes` → `materialize_slice` → `python -m forwardtest.replay_ablation`. With the
 local indexer up: `python -m recon.check` (pass_rate + NegRisk `no_ground_truth` bucket) and

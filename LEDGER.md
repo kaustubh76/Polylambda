@@ -290,6 +290,42 @@ Next first action: (optional) `python -m data.export_disputes --graphql-url <hos
 
 ---
 
+## Day 12 — 2026-07-06
+Phase: 3 → integration — wire the estimator BRAIN into the runtime + build the hazard λ model
+Learn: audit vs `quant-implementation-full.excalidraw` (3 agents) found the pricing core + reward-aware
+       exit complete and wired, but the **brain the diagram centers on was bypassed**: λ never flowed
+       through `estimate_lambda` (paper used a hardcoded constant; `fit_hazard` had zero callers), σ
+       shrank to a static 0.15, three config knobs were ignored, and two Panel-F decisions (size∝1/risk,
+       time-based inventory cap) were missing. Fixing the inventory cap surfaced that paper markets used
+       a stale past end-date anchor → T_t≡0; added a controlled decision clock. On the hazard model: the
+       first fit scored AUC 0.95 — a LEAKAGE artifact (proposer_reliability nonzero only for disputed
+       markets since controls had no proposer). The honest v1 rests on features fairly computable for
+       both classes (category_base_rate + market_size) → **held-out AUC 0.68**; proposer/latency zeroed
+       (can't be computed for arbitrary controls without leakage — indexer ResolutionRequest doesn't
+       cover most HF controls). Base rate stays the honest default (DECISIONS #9 confirmed, not beaten).
+Build: `estimators/hazard.py` (features + class-weighted logistic via existing `fit_hazard` + prior-
+       correction to natural prevalence + held-out AUC/Brier + JSON-persisted `LoadedHazard`);
+       `data/calibrate.py` (kappa_loss=0.76 from realizedJumpLogit); `forwardtest/runner.py`
+       `build_markets`/`select_real_markets` (+`--source data`/`--hazard`); `execution/loop.py`
+       inverse-risk sizing + time-decaying inventory cap + honors reduce_fraction/light_factor/
+       shrinkage_strength + controlled `start_ts` clock; `data/prior_corpus.py` σ-prior cache;
+       `config/{model.yaml,loader.py}` new frozen knobs. Tests: `test_hazard` (5), `test_loop_sizing`
+       (6), `test_runner` real-builder (1); import-smoke extended. METHODOLOGY §3b.
+Done-Checks:
+- [x] λ WIRED: `run(source="data")` routes markets through `estimate_lambda` — real base rates (politics 1.83% ≫ crypto 0.085%) + Wilson CI, not a constant
+- [x] hazard model built + integrated (λ_jump = calibrated logistic when `--hazard`); **held-out AUC 0.68**, honestly reported vs base rate; proposer/latency zeroed to avoid leakage
+- [x] kappa_loss calibrated (0.76 = mean |realizedJumpLogit|), replaces the 0.05 placeholder
+- [x] σ prior via category×price corpus wired (falls back to sigma_ref); `shrinkage_strength` now applied
+- [x] SIZE ∝ 1/risk + hard time-to-resolution inventory cap (position can only shrink near T→0); config knobs honored
+- [x] **101 pytest green** (+12: 6 sizing, 5 hazard, 1 real-builder)
+- [ ] live path stays DEFERRED by design (py-sdk client, pUSD wrap, Builder Codes send — jurisdiction-gated); low-latency proposal watcher still v2
+Gate status: DONE — every non-jurisdiction gap between Panels D/E/F/L and the code is closed; the paper
+       forward-test now exercises the real brain end-to-end. Live leg intentionally gated, not missing.
+Next first action: (optional) fit the hazard on proposed-but-not-disputed indexer controls (fair proposer
+       feature, v2); otherwise the base-rate engine + wired execution are ready for the paper-live tape.
+
+---
+
 ## Day NN — YYYY-MM-DD
 Phase:
 Learn:

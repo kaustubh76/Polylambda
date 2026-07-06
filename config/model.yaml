@@ -21,6 +21,17 @@ min_trades_for_sigma: 20  # volume/trade-count floor (below this, use the prior)
 # sensitivity curve (0.0005-0.01). Publish the curves, not this point (config/loader.py guards >0.05).
 lambda_star: 0.002     # exit threshold for lambda_jump (reward-aware gate still applies)
 lambda_v1: base_rate   # v1 scope: category base-rate + a few point-in-time-safe features
+# E[loss|jump] scaling: CALIBRATED from the released dispute layer's realizedJumpLogit (mean |Δlogit|
+# = 0.76 over 1,149 disputes, data/calibrate.py) — replaces the old 0.05 placeholder.
+kappa_loss: 0.76
+
+# --- execution sizing + inventory (execution/loop.py tick) ---
+# SIZE ∝ 1/risk: size = quote_size * clamp(sigma_ref/sigma, size_floor, 1) / (1 + size_lambda_k*lambda_jump)
+sigma_ref: 0.15                 # reference belief-vol: at sigma_ref (and lambda 0) size == quote_size
+size_floor: 0.25                # size never shrinks below 25% of quote_size from the sigma term
+size_lambda_k: 20.0             # lambda sensitivity of size (at lambda_jump 0.01 → size /1.2)
+inventory_cap_horizon_days: 3.0 # hard position cap ramps to base_inventory_cap over this horizon;
+                                # shrinks to ~0 at resolution so inventory can only DECREASE near T→0
 
 # --- positioning (build the engine to support BOTH; ablation decides) ---
 positioning: both      # reward_farmer | jump_avoid | both

@@ -35,6 +35,12 @@ class Config:
     min_trades_for_sigma: int = 20
     # lambda / exit
     lambda_star: float = 0.002
+    kappa_loss: float = 0.76           # E[loss|jump] scaling, calibrated (data/calibrate.py)
+    # execution sizing + inventory (execution/loop.py)
+    sigma_ref: float = 0.15            # reference belief-vol for inverse-risk sizing
+    size_floor: float = 0.25           # min size multiplier from the sigma term
+    size_lambda_k: float = 20.0        # lambda sensitivity of quote size
+    inventory_cap_horizon_days: float = 3.0  # position cap ramps over this horizon; ~0 at resolution
     # positioning + mode + risk
     positioning: str = "both"          # reward_farmer | jump_avoid | both
     mode: str = "paper"                # paper | paper-live | live (env MODE)
@@ -103,6 +109,11 @@ def load_config(path: str = DEFAULT_PATH) -> Config:
         shrinkage_strength=float(y.get("shrinkage_strength", 0.5)),
         min_trades_for_sigma=int(y.get("min_trades_for_sigma", 20)),
         lambda_star=float(y.get("lambda_star", 0.002)),
+        kappa_loss=float(y.get("kappa_loss", 0.76)),
+        sigma_ref=float(y.get("sigma_ref", 0.15)),
+        size_floor=float(y.get("size_floor", 0.25)),
+        size_lambda_k=float(y.get("size_lambda_k", 20.0)),
+        inventory_cap_horizon_days=float(y.get("inventory_cap_horizon_days", 3.0)),
         positioning=str(y.get("positioning", "both")),
         fill_limit=int(data.get("fill_limit", 5000)),
         control_ratio=int(data.get("control_ratio", 3)),

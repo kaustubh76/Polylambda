@@ -78,3 +78,21 @@ def test_live_mode_is_refused(tmp_path):
 def test_uptime_fraction_in_unit_range(tmp_path):
     summary, _ = _run(tmp_path)
     assert 0.0 <= summary["uptime_fraction"] <= 1.0
+
+
+def test_real_market_builder_uses_real_base_rate_lambda():
+    """source='data' routes markets through estimate_lambda with REAL category base rates (the
+    engine, no longer bypassed): politics is far more dispute-prone than crypto (diagram ~22×)."""
+    pytest.importorskip("duckdb")
+    from config.loader import load_config
+    from forwardtest.runner import build_markets
+
+    markets = build_markets([{"cid": "0xa", "category": "politics", "price": 0.8},
+                             {"cid": "0xb", "category": "crypto", "price": 0.5}])
+    assert [m.arm for m in markets] == ["lambda_on", "lambda_off"]
+    pol = markets[0]
+    assert pol.lam is not None and pol.lam.lambda_jump > 0 and pol.lam.ci_high > pol.lam.ci_low
+    assert markets[1].lam is None                              # lambda_off carries no engine output
+    crypto = build_markets([{"cid": "0xc", "category": "crypto", "price": 0.5}])[0]
+    assert pol.lam.lambda_jump > crypto.lam.lambda_jump        # politics ≫ crypto dispute base rate
+    assert pol.sigma_prior == load_config().sigma_ref         # σ prior falls back when no corpus
