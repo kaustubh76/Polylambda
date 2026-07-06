@@ -202,6 +202,37 @@ Next first action: finish price-context + broader replay off the materialized sl
 
 ---
 
+## Day 10 — 2026-07-06
+Phase: 3 → Track B/execution — the paper forward-test engine (runner + live ablation) is complete
+Learn: with the FROZEN A-S config (`config/model.yaml`), a paper quote sits ~5c off mid — wider than
+       the synthetic book's 1-tick touch AND the 3c reward band — so paper mode posts two-sided quotes
+       every tick but structurally never fills or earns reward credit. That is honest, not a bug: the
+       queue/fill mechanics are validated directly (`test_paper_fill`), and each market is assigned to
+       EXACTLY ONE arm (as a real live ablation must — one book can't be quoted two ways), so the runner
+       is a plumbing/schema check while the powered edge proof stays the historical replay. Confirmed the
+       loop is provably network-free: paper mode touches no socket (import-smoke + lazy imports hold).
+Build: `forwardtest/runner.py` `run()` — builds a MarketState per arm (lambda resolved ONCE at
+       session start), drives `execution.loop.run_loop`, writes the full session log
+       (session_start → tick/quote/fill/exit → session_end with per-arm totals), P&L = cash+inv·mark
+       ONLY; `forwardtest/ablation.py` `run_live_ablation()` — a pure, crash-tolerant JSONL reader that
+       splits lambda_on/off, reports the ON−OFF delta + n_disputes, and ALWAYS emits the underpowered
+       caveat; `tests/test_runner.py` (8) + `tests/test_ablation.py` (5); import-smoke extended to the
+       execution engine in `tests/test_data_layer.py`.
+Done-Checks:
+- [x] C7 runner: paper harness drives `run_loop`; session log schema-complete (session_start…session_end); both arms logged
+- [x] C8 ablation: pure reader; lambda_on/off split + ON−OFF delta + n_disputes; underpowered caveat always present
+- [x] honesty invariant TESTED: P&L = cash + inv·mark only; `sim_reward_score` reported separately, never folded in
+- [x] import-smoke extended → `config.loader`, `execution.{clob,paper,loop}`, `forwardtest.{session_log,runner,ablation}` (all network-free)
+- [x] paper smoke round-trips: `python -m forwardtest.runner --mode paper` → session log → `python -m forwardtest.ablation`
+- [x] **89 pytest green** (+13: 8 runner, 5 ablation)
+- [ ] paper-live / live: BLOCKED — need the public CLOB WS/REST (polymarket.com, ISP-blocked here) + jurisdiction (JURISDICTION.md); v2 live-client wiring stays gated behind `LiveGateError`
+Gate status: DONE — the v1 paper forward-test engine is complete and green; live paths remain intentionally gated (jurisdiction + network), not missing.
+Next first action: once network/jurisdiction allow, run `MODE=paper-live python -m forwardtest.runner
+       --mode paper-live` for 9-10 days of real-tape microstructure, then `run_live_ablation` (still
+       underpowered — corroborate against the historical replay, DECISIONS.md #11).
+
+---
+
 ## Day NN — YYYY-MM-DD
 Phase:
 Learn:

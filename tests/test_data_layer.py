@@ -12,7 +12,11 @@ def test_all_new_modules_import():
     # syntax + import smoke for everything added/rewired (lazy imports keep these network-free)
     for mod in ("data.hf", "data.fills", "data.conditions", "data.metadata", "data.base_rates",
                 "data.cache", "data.dossier", "data.prior_corpus",
-                "estimators.lambda_engine", "recon.check", "forwardtest.replay_ablation"):
+                "estimators.lambda_engine", "recon.check", "forwardtest.replay_ablation",
+                # execution engine (C-track): imports must stay network-free (clob.py lazy-imports
+                # requests; paper.py imports only clob's read path; runner/ablation are pure)
+                "config.loader", "execution.clob", "execution.paper", "execution.loop",
+                "forwardtest.session_log", "forwardtest.runner", "forwardtest.ablation"):
         importlib.import_module(mod)
 
 

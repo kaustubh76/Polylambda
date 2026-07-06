@@ -16,7 +16,10 @@ shrinkage_strength: 0.5   # pull per-market sigma toward the category x price-le
 min_trades_for_sigma: 20  # volume/trade-count floor (below this, use the prior)
 
 # --- lambda engine (estimators/lambda_engine.py) ---
-lambda_star: 0.15      # exit threshold for lambda_jump (reward-aware gate still applies)
+# SCALE BUG FIXED (2026-07-05): was 0.15, but the lambda signal is the CATEGORY DISPUTE BASE RATE
+# (~0.0004-0.021 — see DATASET.md 5b), so 0.15 could never fire. 0.002 sits mid-grid of the replay's
+# sensitivity curve (0.0005-0.01). Publish the curves, not this point (config/loader.py guards >0.05).
+lambda_star: 0.002     # exit threshold for lambda_jump (reward-aware gate still applies)
 lambda_v1: base_rate   # v1 scope: category base-rate + a few point-in-time-safe features
 
 # --- positioning (build the engine to support BOTH; ablation decides) ---
