@@ -326,6 +326,37 @@ Next first action: (optional) fit the hazard on proposed-but-not-disputed indexe
 
 ---
 
+## Day 13 — 2026-07-06
+Phase: 3 → edge proof — put the hazard λ on trial in the replay-ablation (does it BEAT the base rate?)
+Learn: AUC 0.68 says the hazard *discriminates*; the honest question is whether it *trades* better.
+       Injected it as a 4th replay arm (`lambda_jump_hazard`: identical reward-aware surgical exit as
+       arm B, but the exit λ is the per-market structural hazard, not the flat category base rate) and
+       ran it head-to-head over **362 disputed + 711 controls** across the λ*-grid. Result is **real but
+       threshold-sensitive**: at the **frozen λ*=0.002 the structural λ WINS** — Sharpe 0.320 vs 0.274
+       (+0.047), +1,093 pnl, avoiding +1,198 more jump-loss for +106 more forgone reward (it exits the
+       big, jump-prone markets its `market_size` feature up-weights, holds the small ones). The edge
+       holds for λ* ≤ 0.002 but **reverses at λ* ≥ 0.005** (the prevalence-recalibrated hazard pushes
+       fewer markets over the higher threshold). So: directional evidence the structural λ sharpens exit
+       TIMING at the operating point — NOT a uniform edge; underpowered (n=362, read via power_calc).
+       Base rate stays the safe default; publish the whole curve, not the point (DECISIONS #11).
+Build: `forwardtest/replay_ablation.py` — `_replay_market(lambda_hazard=…)` adds the B_hazard arm
+       (arm B byte-for-byte unchanged, purely additive); `run_replay(hazard_model=…)` computes per-market
+       structural λ from `[category_base_rate, market_size, 0, 0]` (market_size via the SAME true
+       `_fill_count_map` training used — not the capped fills) and emits `lambda_jump_hazard`; CLI
+       auto-loads the model. `tests/test_replay_hazard.py` (4). METHODOLOGY §3b extended with the table.
+Done-Checks:
+- [x] hazard arm injected + additive: arm B (base-rate) unchanged; `lambda_jump_hazard` runs the identical exit off the structural λ
+- [x] head-to-head (362 disp + 711 ctrl): **at frozen λ*=0.002, hazard Sharpe 0.320 > base 0.274** (+0.047, +1,093 pnl); edge REVERSES at λ* ≥ 0.005
+- [x] reported HONESTLY — threshold-sensitive + underpowered (power_calc); base rate remains the default, hazard a timing overlay
+- [x] **105 pytest green** (+4 replay-hazard); train/serve market_size consistency (true fill count) enforced
+- [ ] a POWERED rerun (all 1,527 disputed + 3× controls) + the v2 fair-controls refit would tighten the verdict — deferred
+Gate status: DONE — the hazard is now proven/disproven in TRADING terms, not just AUC: a real but
+       threshold-sensitive exit-timing improvement at the operating point, honestly bounded. No over-claim.
+Next first action: (optional) powered full-universe rerun of the 4-arm replay to confirm the λ*=0.002
+       win survives at n=1,527; else the base-rate engine + wired execution stand.
+
+---
+
 ## Day NN — YYYY-MM-DD
 Phase:
 Learn:

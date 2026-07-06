@@ -107,7 +107,8 @@ EXIT_REWARD_FRACTION = 0.4  # reward (uptime) forgone by pulling liquidity early
 
 
 def _replay_market(cid: str, fills: list[dict], disputeTs: int | None,
-                   lambda_star: float, lambda_select: float, *, inventory: float = 10.0) -> dict:
+                   lambda_star: float, lambda_select: float, *, lambda_hazard: float | None = None,
+                   inventory: float = 10.0) -> dict:
     """Per-market arm contributions, driven by the CATEGORY dispute base rate (`lambda_select`).
 
     The SAME lambda signal (category dispute-proneness) feeds both jump arms; they differ in ACTION
@@ -153,9 +154,22 @@ def _replay_market(cid: str, fills: list[dict], disputeTs: int | None,
     else:
         pnl_C, avoided_C, forgone_C = reward - jump_loss, 0.0, 0.0
 
-    return {"pnl_A": pnl_A, "pnl_B": pnl_B, "pnl_C": pnl_C,
-            "avoided_B": avoided_B, "forgone_B": forgone_B,
-            "avoided_C": avoided_C, "forgone_C": forgone_C}
+    out = {"pnl_A": pnl_A, "pnl_B": pnl_B, "pnl_C": pnl_C,
+           "avoided_B": avoided_B, "forgone_B": forgone_B,
+           "avoided_C": avoided_C, "forgone_C": forgone_C}
+
+    # Arm B_hazard — IDENTICAL reward-aware surgical exit as B, but the exit λ is the per-market
+    # STRUCTURAL hazard (category rate + market size) instead of the flat category base rate. Same
+    # reward/jump_loss/gate → directly comparable to arm B at each lambda_star. On a control
+    # (jump_loss == 0) the reward-aware gate blocks the exit, exactly like B.
+    if lambda_hazard is not None:
+        exit_h = should_exit(lambda_hazard, lambda_star, e_jump_loss=jump_loss,
+                             forgone_rewards=exit_forgone, spread=0.0, proposal_detected=False)
+        if exit_h:
+            out.update(pnl_Bh=reward - exit_forgone, avoided_Bh=jump_loss, forgone_Bh=exit_forgone)
+        else:
+            out.update(pnl_Bh=reward - jump_loss, avoided_Bh=0.0, forgone_Bh=0.0)
+    return out
 
 
 def _sharpe(xs: list[float]) -> float:
@@ -168,7 +182,8 @@ def _sharpe(xs: list[float]) -> float:
 
 def run_replay(graphql_url: str, lambda_star_grid: list[float],
                *, control_ratio: int = 3, fill_limit: int = 5000,
-               disputed: list[str] | None = None, controls: list[str] | None = None) -> list[AblationResult]:
+               disputed: list[str] | None = None, controls: list[str] | None = None,
+               hazard_model=None) -> list[AblationResult]:
     """Historical counterfactual over disputed markets (local) + matched controls (HF).
 
     For each lambda_star, replays arms A/B/C and returns an AblationResult per (arm, lambda_star),
@@ -231,19 +246,42 @@ def run_replay(graphql_url: str, lambda_star_grid: list[float],
     lo, hi = min(lam_sel.values()), max(lam_sel.values())
     print(f"[replay] lambda_select (category base rate) range: {lo:.4f}..{hi:.4f}")
 
+    # Per-market STRUCTURAL lambda from the hazard model (optional 4th arm). Uses the SAME features the
+    # model was trained on: [category_base_rate, market_size, 0, 0], with market_size from the TRUE
+    # fill count (not the capped `fills`, which would mismatch training). Output is prior-corrected to
+    # natural prevalence, so it's on the same scale as lam_select / lambda_star.
+    haz = hazard_model
+    if haz is None:
+        from estimators.hazard import load_hazard_model
+        haz = load_hazard_model()
+    lam_haz: dict[str, float] | None = None
+    if haz is not None:
+        from estimators.hazard import _fill_count_map, market_size_feature
+
+        counts_by_cid = _fill_count_map(cids)
+        lam_haz = {c: float(haz.predict_proba(
+            [[lam_sel[c], market_size_feature(counts_by_cid.get(c, 0)), 0.0, 0.0]])[0, 1]) for c in cids}
+        hlo, hhi = min(lam_haz.values()), max(lam_haz.values())
+        print(f"[replay] lambda_hazard (structural) range: {hlo:.4f}..{hhi:.4f}")
+
     results: list[AblationResult] = []
     for ls in lambda_star_grid:
-        pnl_A, pnl_B, pnl_C = [], [], []
-        av_B = fo_B = av_C = fo_C = 0.0
+        pnl_A, pnl_B, pnl_C, pnl_Bh = [], [], [], []
+        av_B = fo_B = av_C = fo_C = av_Bh = fo_Bh = 0.0
         for cid, fills in contribs.items():
-            m = _replay_market(cid, fills, dispute_ts.get(cid), ls, lam_sel[cid])
+            m = _replay_market(cid, fills, dispute_ts.get(cid), ls, lam_sel[cid],
+                               lambda_hazard=(lam_haz[cid] if lam_haz else None))
             pnl_A.append(m["pnl_A"]); pnl_B.append(m["pnl_B"]); pnl_C.append(m["pnl_C"])
             av_B += m["avoided_B"]; fo_B += m["forgone_B"]; av_C += m["avoided_C"]; fo_C += m["forgone_C"]
+            if lam_haz:
+                pnl_Bh.append(m["pnl_Bh"]); av_Bh += m["avoided_Bh"]; fo_Bh += m["forgone_Bh"]
         # Sharpe is over the SAME fixed market universe for every arm (a skipped market contributes a
-        # real 0 return), so the three arms are directly comparable at each lambda_star.
-        for arm, pnl, av, fo in (("diffusion_only", pnl_A, 0.0, 0.0),
-                                 ("lambda_jump", pnl_B, av_B, fo_B),
-                                 ("lambda_select", pnl_C, av_C, fo_C)):
+        # real 0 return), so the arms are directly comparable at each lambda_star.
+        arms = [("diffusion_only", pnl_A, 0.0, 0.0), ("lambda_jump", pnl_B, av_B, fo_B),
+                ("lambda_select", pnl_C, av_C, fo_C)]
+        if lam_haz:
+            arms.append(("lambda_jump_hazard", pnl_Bh, av_Bh, fo_Bh))
+        for arm, pnl, av, fo in arms:
             results.append(AblationResult(
                 arm=arm, lambda_star=ls, n_disputes=n_disp_proc, n_controls=n_ctrl_proc,
                 pnl_net_of_rewards=sum(pnl), sharpe=_sharpe(pnl), avoided_loss=av, forgone_rewards=fo))

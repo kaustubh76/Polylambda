@@ -89,6 +89,27 @@ v1**: they cannot be computed for arbitrary controls without label leakage (the 
 calibration-limited; **the category base rate remains the honest default**, with the hazard a
 directional overlay — not a validated edge.
 
+**Does the structural λ improve the exit? (replay head-to-head — 362 disputed + 711 controls).** We
+injected the hazard λ as a 4th replay-ablation arm (`lambda_jump_hazard`, the *identical* reward-aware
+surgical exit as arm B but driven by the per-market structural λ instead of the flat base rate) and
+compared it to base-rate arm B on the same universe across the λ*-grid:
+
+| λ* | arm B (base) pnl / Sharpe | arm B_hazard pnl / Sharpe | Δ Sharpe |
+|---|---|---|---|
+| 0.001 | 9320 / 0.321 | 9481 / 0.329 | +0.008 |
+| **0.002** (frozen) | **8220 / 0.274** | **9313 / 0.320** | **+0.047** |
+| 0.005 | 8220 / 0.274 | 7804 / 0.258 | −0.016 |
+| 0.01 | 8128 / 0.270 | 7626 / 0.251 | −0.019 |
+
+**At the frozen operating point λ*=0.002 the structural λ wins** (+1,093 pnl, +0.047 Sharpe): it avoids
+**+1,198 more jump-loss for only +106 more forgone reward** by exiting the big, jump-prone markets its
+`market_size` feature up-weights, while holding the small ones the flat base rate would also exit. But
+the edge **holds only for λ* ≤ 0.002 and reverses at λ* ≥ 0.005** (the prevalence-recalibrated hazard
+pushes fewer markets past the higher threshold → fewer exits → less avoided loss). So the hazard is a
+**real but threshold-sensitive and underpowered** overlay (n=362; read through the power calc) — it
+improves exit *timing* at the operating point, not a uniform edge. **Publish the whole curve; keep the
+base rate as the safe default.** The arm is purely additive (base-rate arm B is byte-for-byte unchanged).
+
 ## 4. The primary edge proof (historical replay-ablation)
 
 The live λ-ablation is statistically powerless in weeks (~1% dispute rate), so the primary proof is a
