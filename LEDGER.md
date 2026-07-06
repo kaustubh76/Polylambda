@@ -202,6 +202,34 @@ Next first action: finish price-context + broader replay off the materialized sl
 
 ---
 
+## Day 09 — 2026-07-06
+Phase: 3 → Track A — price-context export FINAL + broader multi-year powered replay
+Learn: the powered replay at full scale settles it. Widening from the Day-08 surgical slice (26+132) to
+       the whole release universe — **1,409 disputed + 2,856 controls, all adapters, 2022–2026**, off the
+       15.2M-fill local slice with TRUE block-time dispute ts — the ordering **λ_jump > diffusion >
+       λ_select holds at EVERY λ\*** on the grid, net of forgone rewards. λ_jump's edge over always-hold is
+       largest where exits fire most (λ*=0.0005: **+6,910 pnl / +0.060 Sharpe**) and NARROWS monotonically
+       as λ* rises (frozen 0.002: +1,911 / +0.015; 0.01: +1,480 / +0.012) — so the honest deliverable is
+       the whole **sensitivity curve, not the tuned point** (DECISIONS.md #11). λ_select forfeits so much
+       reward (48,554 at λ*=0.0005) it never beats diffusion anywhere. Separately, `--with-price-context`
+       populated the pre/post price + realized-logit-jump columns (1,620 / 1,200 / 1,149 of 1,794).
+Build: ran `python -m data.export_disputes --with-price-context` → final `dataset_release/` (1,794 rows,
+       15 cols incl. price context); broader replay over the release parquet's joinable cids + sampled
+       controls across λ*∈[0.0005, 0.01]; DATASET.md **§5b″** (the powered multi-year table) + §5c/columns
+       updated. (Runs off the already-materialized 15.2M-fill slice — no remote hf:// scan.)
+Done-Checks:
+- [x] price-context export: parquet 1,794 rows; preDisputePrice 1,620 / postDisputePrice 1,200 / realizedJumpLogit 1,149 populated
+- [x] release final: stats.json 1,794 disputes, **100% HF-joinable** (V2 723 + NegRisk 963 + legacy 108); recon pass_rate 1.0
+- [x] **broader powered replay** (1,409 disp + 2,856 ctrl, 2022–2026, all adapters): **λ_jump > diffusion > λ_select at every λ\***; edge monotone in λ* (+6,910/+0.060 @0.0005 → +1,480/+0.012 @0.01)
+- [x] DATASET.md §5b″ records the powered table + the "publish the curve, not the point" caveat
+- [ ] HuggingFace upload: DEFERRED — needs `hf auth login` + network; command handed off, not run
+Gate status: DONE — the dispute-label release is final with price context, and the powered multi-year
+       replay confirms the reward-aware surgical-exit edge at scale (n=1,409). Committed; upload deferred.
+Next first action: `hf auth login`, then `hf upload <ns>/polymarket-oov2-disputes-v1
+       dataset_release/polymarket-oov2-disputes-v1 . --repo-type dataset` to publish.
+
+---
+
 ## Day 10 — 2026-07-06
 Phase: 3 → Track B/execution — the paper forward-test engine (runner + live ablation) is complete
 Learn: with the FROZEN A-S config (`config/model.yaml`), a paper quote sits ~5c off mid — wider than

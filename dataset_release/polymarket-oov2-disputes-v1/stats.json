@@ -35,20 +35,20 @@
   },
   "by_year": {
     "2022": 1,
-    "2023": 83,
-    "2024": 452,
-    "2025": 1069,
-    "2026": 189
+    "2023": 75,
+    "2024": 394,
+    "2025": 1049,
+    "2026": 275
   },
-  "dispute_ts_min": 1672249334,
-  "dispute_ts_max": 1775754145,
-  "date_min": "2022-12-28",
-  "date_max": "2026-04-09",
+  "dispute_ts_min": 1672439560,
+  "dispute_ts_max": 1776532732,
+  "date_min": "2022-12-30",
+  "date_max": "2026-04-18",
   "parquet_rows": 1794,
   "recon": {
     "pass_rate": 1.0,
-    "eligible": 29349,
-    "matched": 29349,
-    "no_ground_truth": 121507
+    "eligible": 28482,
+    "matched": 28482,
+    "no_ground_truth": 125270
   }
 }

@@ -21,7 +21,7 @@ backbone — but it does **not** index the UMA **OptimisticOracleV2** proposal/d
 companion dataset fills exactly that gap: every on-chain `DisputePrice` on a Polymarket UMA CTF adapter,
 linked to its Gnosis CTF `conditionId` so it joins the `moose-code` tables directly.
 
-- **1794 disputes** across adapters (v2=723 · negrisk=963 · 0x157ce2d672854c848c9b79c49a8cc6cc89176a49=108), 2022-12-28 → 2026-04-09.
+- **1794 disputes** across adapters (v2=723 · negrisk=963 · 0x157ce2d672854c848c9b79c49a8cc6cc89176a49=108), 2022-12-30 → 2026-04-18.
 - **1794 (100.0%) are HF-joinable** — across **all** adapters. The
   released `conditionId` is the effective `moose-code` join key: for NegRisk (multi-outcome) markets that
   is the **tradeable** conditionId recovered from the NegRiskOperator (see the NegRisk map below), not the
@@ -37,7 +37,7 @@ Produced by the PolyLambda scoped Envio indexer (`indexer/`, chain 137 / Polygon
   `conditionId` is resolved via the lookup above (no keccak derivation — which fails for NegRisk).
 
 Reconciliation: the indexer's resolved `finalOutcome` matches `moose-code` `condition.payoutNumerators`
-at **pass_rate = 1.0000 on 29,349 eligible V2/Legacy markets**.
+at **pass_rate = 1.0000 on 28,482 eligible V2/Legacy markets**.
 
 ## Schema (`disputes.parquet`)
 | column | type | notes |
@@ -47,8 +47,9 @@ at **pass_rate = 1.0000 on 29,349 eligible V2/Legacy markets**.
 | `adapter` | string | `v2` · `negrisk` · `legacy` (the UMA CTF adapter that owns the request) |
 | `hf_joinable` | bool | `true` iff `conditionId` ∈ `moose-code` `condition` (all adapters; false only when the NegRisk map could not resolve a market, or the market post-dates the HF cutoff) |
 | `category` | string | coarse keyword-derived category (crypto/politics/sports/…); null when not joinable |
-| `disputeTs` | int64 | dispute timestamp (epoch seconds) |
-| `disputeDate` | string | `YYYY-MM-DD` |
+| `disputeTs` | int64 | TRUE dispute block timestamp (epoch seconds) — resolved from the dispute tx's block |
+| `disputeDate` | string | `YYYY-MM-DD` (from `disputeTs`) |
+| `requestTimestamp` | int64 | the UMA OO *price-request* timestamp the dispute references (can precede the dispute tx by hours; this is what the raw `DisputePrice` event carries) |
 | `round` | int | reset round (0 = first request; bumps on each two-strikes reset) |
 | `disputer` / `proposer` | string | on-chain addresses |
 | `proposedOutcome` | string | the disputed proposal: `YES` / `NO` / `UNRESOLVABLE` / `OTHER` |
