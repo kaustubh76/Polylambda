@@ -58,32 +58,16 @@ contracts:
 
 chains:
   - id: 137
-    # Data source: keyless public RPC as the SYNC source (no ENVIO_API_TOKEN needed). SLOW for the
-    # full 28M→head backfill — V2 disputes (2022-2023) land first, so the V2≈723 cross-check is
-    # reachable well before the 2024+ NegRisk era. Swap to HyperSync (for: fallback + a token) to go
-    # ~1000x faster. Tuned batch sizing below to reduce the tenderly "failed block range" retries.
-    # Multiple keyless endpoints + SMALL, steady block intervals. The dense 2025 range returns huge
-    # eth_getLogs responses; a 10k-block request there makes tenderly hang and the indexer retries
-    # forever (observed stall at block 82.4M). Capping interval_ceiling low keeps each getLogs small
-    # and reliable (slower but never stalls), and publicnode is a fallback if tenderly wedges.
-    rpc:
-      - url: https://polygon.gateway.tenderly.co
-        for: sync
-        initial_block_interval: 800
-        backoff_multiplicative: 0.8
-        acceleration_additive: 150
-        interval_ceiling: 1500
-      - url: https://polygon-bor-rpc.publicnode.com
-        for: fallback
-        initial_block_interval: 800
-        backoff_multiplicative: 0.8
-        acceleration_additive: 150
-        interval_ceiling: 1500
-      - url: https://polygon-rpc.com
-        for: fallback
-        initial_block_interval: 800
-        acceleration_additive: 150
-        interval_ceiling: 1500
+    # Data source: HyperSync (Envio's hosted Polygon index) — the DEFAULT source whenever no `rpc:`
+    # block is present. ~1000x faster than keyless eth_getLogs and immune to the dense-2025 stalls
+    # that made the RPC path take 22 self-healing restarts (observed wedge at 82.4M, and the old
+    # polygon-rpc.com fallback is now 403/dead). Higher rate limits via ENVIO_API_TOKEN — local runs
+    # read it from indexer/.env; the Envio hosted service injects it automatically.
+    # To revert to keyless RPC: restore an `rpc:` block with `for: sync`. For lower-latency real-time
+    # at the head AFTER the historical HyperSync backfill, add an `rpc:` entry with `for: live`, e.g.:
+    #   rpc:
+    #     - url: https://polygon-bor-rpc.publicnode.com
+    #       for: live
     # Scoped to the OOv2 dispute lifecycle only → the event volume is orders of magnitude below
     # OrderFilled, so a FULL historical backfill is now feasible (that's what unlocks the ~184
     # historical disputes the replay-ablation needs). Set start_block to the earliest UMA CTF
