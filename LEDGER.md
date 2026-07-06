@@ -261,6 +261,35 @@ Next first action: once network/jurisdiction allow, run `MODE=paper-live python 
 
 ---
 
+## Day 11 — 2026-07-06
+Phase: 3 → infra — HyperSync migration + Envio hosted deploy; backfill the indexer to chain head
+Learn: HyperSync re-indexed the scoped dispute lifecycle **28M → chain head (61.7M blocks) in under a
+       minute**, vs the keyless-RPC path that needed 22 self-healing restarts and stalled at 82.4M.
+       The dispute-label layer now runs to the present, but everything past the HF cutoff (block
+       85,948,287 = 2026-04-24) is **labels only — NOT HF-joinable** (no fill tape / price context /
+       replay use; HF is upstream and ends there). The Envio hosted **dev** endpoint exposes a
+       restricted public role (1000-row cap, aggregates off, rejects `x-hasura-admin-secret`), so the
+       full 1.25M-market recon isn't runnable there — recon'd the **disputed subset** (the actual
+       subject) instead.
+Build: `indexer/config.yaml` → HyperSync (drop the `rpc:` block so Envio uses its default Polygon
+       HyperSync endpoint). ⚠ This change lives on the **`envio` deploy branch only** (commit 68a2b95);
+       **main stays keyless-RPC / separate** by request. Deployed via the Envio hosted service from the
+       `envio` branch (Indexer Directory `./indexer`, Config File `config.yaml`); verified against the
+       hosted GraphQL endpoint `indexer.dev.hyperindex.xyz/0638687`.
+Done-Checks:
+- [x] HyperSync migration: `rpc:` → default HyperSync; `pnpm codegen` clean; generated config `is_hyper_sync=true` (on `envio`, NOT main)
+- [x] hosted deploy synced to head: `latest_processed_block = 89,756,131` = chain head (28M→head in <1 min)
+- [x] disputes **1,794 → 1,847** (+53 past the old block-85.96M sync point); most recent **2026-07-01**; 1,570 unique disputed markets
+- [x] focused recon (disputed V2/Legacy in the HF window): **538/538 match HF payout, pass_rate 1.0000, 0 mismatches**
+- [~] full 1.25M-market recon: NOT run against the row-capped public endpoint — needs the hosted admin secret or a local re-sync
+- [ ] post-cutoff disputes are NOT HF-joinable (labels only) — re-export to the release only if wanted (would add `hf_joinable=false` rows)
+Gate status: DONE — the hosted indexer is live, synced to chain head, and the disputed-set recon is 1.0.
+       Deploy config is isolated on `envio`; `main` untouched (still keyless-RPC).
+Next first action: (optional) `python -m data.export_disputes --graphql-url <hosted-endpoint>` to fold the
+       +53 post-cutoff disputes into the release, OR provide the hosted admin secret for a full recon.
+
+---
+
 ## Day NN — YYYY-MM-DD
 Phase:
 Learn:
