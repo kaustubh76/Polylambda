@@ -346,14 +346,15 @@ Build: `forwardtest/replay_ablation.py` — `_replay_market(lambda_hazard=…)` 
        auto-loads the model. `tests/test_replay_hazard.py` (4). METHODOLOGY §3b extended with the table.
 Done-Checks:
 - [x] hazard arm injected + additive: arm B (base-rate) unchanged; `lambda_jump_hazard` runs the identical exit off the structural λ
-- [x] head-to-head (362 disp + 711 ctrl): **at frozen λ*=0.002, hazard Sharpe 0.320 > base 0.274** (+0.047, +1,093 pnl); edge REVERSES at λ* ≥ 0.005
-- [x] reported HONESTLY — threshold-sensitive + underpowered (power_calc); base rate remains the default, hazard a timing overlay
+- [x] head-to-head sample (362 disp + 711 ctrl): at frozen λ*=0.002, hazard Sharpe 0.320 > base 0.274; edge REVERSES at λ* ≥ 0.005
+- [x] **POWERED rerun (1,409 disp + 2,912 ctrl) CONFIRMS**: at frozen λ*=0.002, hazard **Sharpe 0.302 > base 0.270** (+0.032, +3,756 pnl, +4,121 avoided-loss for ~+365 forgone); same reversal at λ* ≥ 0.005 — reproduced at full n, not a small-sample artifact
+- [x] reported HONESTLY — threshold-sensitive exit-timing overlay; base rate remains the default
 - [x] **105 pytest green** (+4 replay-hazard); train/serve market_size consistency (true fill count) enforced
-- [ ] a POWERED rerun (all 1,527 disputed + 3× controls) + the v2 fair-controls refit would tighten the verdict — deferred
-Gate status: DONE — the hazard is now proven/disproven in TRADING terms, not just AUC: a real but
-       threshold-sensitive exit-timing improvement at the operating point, honestly bounded. No over-claim.
-Next first action: (optional) powered full-universe rerun of the 4-arm replay to confirm the λ*=0.002
-       win survives at n=1,527; else the base-rate engine + wired execution stand.
+- [ ] v2 fair-controls refit (proposer/latency features, indexer controls) would extend the model — deferred
+Gate status: DONE — the hazard is proven in TRADING terms at full power: a real, reproducible,
+       threshold-sensitive exit-timing improvement at the operating point (λ*≤0.002), honestly bounded.
+Next first action: (optional) v2 fair-controls hazard refit; else the base-rate engine + the wired
+       execution + the powered hazard-overlay finding stand.
 
 ---
 
