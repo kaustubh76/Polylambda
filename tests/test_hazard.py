@@ -77,3 +77,18 @@ def test_integrates_into_estimate_lambda(tmp_path):
 
 def test_load_missing_model_returns_none(tmp_path):
     assert load_hazard_model(str(tmp_path / "nope.json")) is None
+
+
+def test_cem_match_balances_and_isolates_size():
+    """Coarsened exact matching equalizes disputed vs control per market_size bin, so market_size can
+    no longer separate the classes (the confound the v2 study controls to isolate proposer)."""
+    from estimators.hazard import _cem_match
+    # disputed skew large, controls only small → high-size disputed have no control match, get dropped
+    disp = [{"category": "x", "market_size": s, "disputed": 1} for s in ([1, 2, 3, 8, 9, 10] * 6)]
+    ctrl = [{"category": "x", "market_size": s, "disputed": 0} for s in ([1, 1, 2, 2, 3, 3] * 6)]
+    matched = _cem_match(disp, ctrl, n_bins=3, by_category=False)
+    d = [r for r in matched if r["disputed"] == 1]
+    c = [r for r in matched if r["disputed"] == 0]
+    assert len(d) == len(c) and len(d) > 0          # balanced pairs
+    # matched market_size distributions coincide (mean within a bin width) → size can't discriminate
+    assert abs(sum(r["market_size"] for r in d) - sum(r["market_size"] for r in c)) < len(d)

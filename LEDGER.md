@@ -358,6 +358,41 @@ Next first action: (optional) v2 fair-controls hazard refit; else the base-rate 
 
 ---
 
+## Day 14 — 2026-07-07
+Phase: 3 → edge proof — v2 FAIR-CONTROLS hazard: does the leakage-free proposer feature add signal?
+Learn: a clean NULL, reached through two artifacts caught in a row (the project's whole ethos). (1)
+       v1 zeroed proposer_reliability because arbitrary HF controls had no proposer → nonzero only for
+       disputed → AUC-0.95 leakage. Fixed it by sourcing controls from PROPOSED-BUT-NOT-DISPUTED indexer
+       markets (real proposer, both classes). (2) That exposed a LIQUIDITY CONFOUND: disputed markets
+       are far more liquid than controls, so market_size alone separates them — a naïve fair-controls
+       fit scored an inflated AUC 0.96 on market_size, and controls read market_size 0 anyway (their
+       fills weren't in the materialized slice). Controlling it with a market_size-MATCHED case-control
+       fit (coarsened exact matching, 176 in-slice-liquid pairs) collapses discrimination to **held-out
+       AUC ~0.50–0.64 (at/near chance; swings by split at n=176) vs size-only 0.70 — proposer coef ≈ 0
+       (wrong-signed)**. VERDICT: **proposer reputation adds NO signal once liquidity is matched.** The structural "edge" was liquidity all
+       along; deployed model stays size-only. (Ops: local indexer down (Docker off post-restart) →
+       routed control-sourcing to the hosted HyperIndex endpoint w/ no-secret fallback; the full 2-h
+       fill materialization proved impractical here (killed twice) → did the tractable in-slice matched
+       study; original fill slice restored from backup.)
+Build: `estimators/hazard.py` — `load_controls_from_indexer` (proposed-not-disputed, hosted-fallback +
+       per-page retry, NegRisk tradeable-cid mapped), `_cem_match` (market_size CEM),
+       `build_matched_training_rows` (the v2 evaluation harness), `_resolve_indexer`. Deployed path
+       reverted to clean v1 (size-only; proposer/latency 0, documented as a proven null / v3).
+       `tests/test_hazard.py` +1 (CEM balance). METHODOLOGY §3b: the v2 null.
+Done-Checks:
+- [x] leakage fixed: controls now carry a real proposer (proposed-not-disputed indexer markets), not disputed-only
+- [x] liquidity confound identified: naïve fair-controls AUC 0.96 is market_size, not proposer
+- [x] **market_size-matched case-control (176 pairs): held-out AUC ~0.50–0.64 (at/near chance, split-variant) < size-only 0.70; proposer coef ≈ 0 → NULL**
+- [x] deployed model restored to clean v1 (size-only, AUC ~0.70); the confounded AUC-0.96 model NOT shipped
+- [x] **106 pytest green** (+1 CEM match); harness kept for a future powered/matched (v3) study
+- [ ] v3: a proposal-timestamp (`proposedAt`) indexer field for latency_anomaly + a fully-materialized powered matched study
+Gate status: DONE — proposer_reliability is a clean, honestly-bounded NULL; the size-only hazard + the
+       powered replay finding (Day 13) stand as the deliverable. No over-claim; two artifacts caught.
+Next first action: (optional, v3) add `proposedAt` to the indexer + a powered matched study; else the
+       base-rate/size hazard + wired execution + the λ*=0.002 replay edge are the standing result.
+
+---
+
 ## Day NN — YYYY-MM-DD
 Phase:
 Learn:

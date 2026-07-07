@@ -176,35 +176,24 @@ def disputed_feature_index() -> dict[str, dict]:
     released dispute layer. Shared by training (adds disputed=1) AND the live builder (so a market's
     hazard input matches exactly what it was trained on). Point-in-time-safe."""
     import duckdb
-    from statistics import median
 
     pq = _RELEASE_PQ
     disp = duckdb.sql(
-        f"SELECT conditionId, category, lower(proposer) proposer, requestTimestamp, disputeTs, "
-        f"preDisputePrice FROM '{pq}' WHERE hf_joinable").fetchall()
-
-    dbp = _disputes_by_proposer()
-    lat_by_cat: dict[str, list[float]] = {}
-    for _, cat, _, rq, dt, _ in disp:
-        if rq is not None and dt is not None:
-            lat_by_cat.setdefault(cat or "other", []).append(float(dt) - float(rq))
-    cat_lat = {c: (median(v), median([abs(x - median(v)) for x in v]) or 1.0)
-               for c, v in lat_by_cat.items() if v}
+        f"SELECT conditionId, category, preDisputePrice FROM '{pq}' WHERE hf_joinable").fetchall()
 
     br = _base_rate_fn()
     sizes = _fill_count_map([d[0] for d in disp])
     index: dict[str, dict] = {}
-    for cid, cat, prop, rq, dt, price in disp:
+    for cid, cat, price in disp:
         cat = cat or "other"
         index[cid] = {
             "category": cat, "price": float(price) if price is not None else 0.5,
             "category_base_rate": br(cat), "market_size": market_size_feature(sizes.get(cid, 0)),
-            # v1 uses only features FAIRLY computable for both classes. proposer_reliability and
-            # latency_anomaly are dispute-side quantities we cannot compute for arbitrary controls
-            # (the indexer's ResolutionRequest doesn't cover most HF-resolved controls — NegRisk
-            # phantom cids + non-OOv2 markets), so including them would LEAK the label. Zeroed in v1
-            # (the fit then rests on category_base_rate + market_size); the transforms remain in the
-            # schema + are unit-tested for the v2 fair-controls build. See DECISIONS.md #9.
+            # DEPLOYED model is size-only (category_base_rate + market_size). proposer_reliability is
+            # a proven NULL: evaluated leakage-free AND market_size-matched (build_matched_training_rows
+            # / v2), it does not beat the base rate (matched AUC 0.64 ≤ v1 0.68) — the earlier
+            # "discrimination" was liquidity, not proposer reputation. latency_anomaly needs a
+            # proposedAt indexer field (none exists — v3). Both stay 0 in the deployed model.
             "proposer_reliability": 0.0, "latency_anomaly": 0.0}
     return index
 
@@ -243,13 +232,96 @@ def _control_proposers(cids: list[str], graphql_url: str | None = None) -> dict[
     return out
 
 
-def build_training_rows(*, control_per_category: int = 150) -> list[dict]:
-    """Assemble labeled SAFE_FEATURES rows: disputed markets (label 1) from the released dispute
-    layer + sampled resolved controls (label 0). Point-in-time-safe. Control PROPOSERS are pulled
-    from the indexer so `proposer_reliability` (a proposer's cross-market dispute history) is a fair
-    feature for BOTH classes — not a disputed-only artifact. latency_anomaly is a dispute-onset
-    quantity (undefined for a market that never disputed), so controls carry 0 — the honestly weak
-    feature."""
+def _resolve_indexer(graphql_url: str | None = None):
+    """Pick a live indexer endpoint: an explicit/local one (with the admin secret) or the hosted
+    HyperIndex deploy (which rejects the admin-secret header, so send none). Returns (url, secret) or
+    (None, None) if neither answers. Probes with a trivial query."""
+    from data.disputes import _gql
+
+    candidates = []
+    if graphql_url:
+        candidates.append((graphql_url, None))
+    candidates.append((os.environ.get("GRAPHQL_URL", "http://localhost:8080/v1/graphql"), None))
+    candidates.append((os.environ.get(
+        "HOSTED_GRAPHQL_URL", "https://indexer.dev.hyperindex.xyz/0638687/v1/graphql"), ""))
+    for url, secret in candidates:
+        try:
+            _gql("{ ResolutionRequest(limit: 1) { id } }", url=url, secret=secret, timeout=15)
+            return url, secret
+        except Exception:
+            continue
+    return None, None
+
+
+def load_controls_from_indexer(n: int, *, graphql_url: str | None = None) -> list[dict]:
+    """PROPOSED-BUT-NOT-DISPUTED control markets from the indexer — the correct control population for
+    a dispute-onset model. A round-0 ResolutionRequest with status RESOLVED + a non-null proposer was
+    proposed and settled WITHOUT ever being disputed (a dispute bumps the round). These carry a REAL
+    proposer, so proposer_reliability is a fair feature for both classes (unlike v1's arbitrary HF
+    controls, which had none → the AUC-0.95 leakage). Returns up to n HF-joinable [{cid, proposer,
+    oracle}] (NegRisk mapped to its tradeable cid). Empty on any failure (caller falls back)."""
+    from data.disputes import ADAPTER_OF, _gql
+    from data.hf import query, table_path
+
+    url, secret = _resolve_indexer(graphql_url)   # local (admin secret) → hosted (no secret) fallback
+    if url is None:
+        return []
+    raw, offset, scan_cap = [], 0, max(3 * n, 2000)
+    while len(raw) < scan_cap:
+        q = ('query { ResolutionRequest(limit: 1000, offset: %d, order_by:{requestTimestamp: desc}, '
+             'where:{round:{_eq:0}, proposer:{_is_null:false}, status:{_eq:"RESOLVED"}, '
+             'market:{status:{_eq:"RESOLVED"}}}) { proposer market{ id questionId oracle } } }' % offset)
+        batch = None
+        for _ in range(3):                        # per-page retry: a transient blip must not drop the run
+            try:
+                batch = _gql(q, url=url, secret=secret, timeout=30).get("ResolutionRequest", [])
+                break
+            except Exception:
+                batch = None
+        if batch is None:                         # give up after retries — keep what we have, not []
+            break
+        raw.extend(batch)
+        offset += len(batch)
+        if len(batch) < 1000:
+            break
+    if not raw:
+        return []
+
+    # effective (HF-joinable) conditionId: native for V2/Legacy, tradeable-via-map for NegRisk
+    nmap = {}
+    try:
+        from data.negrisk_map import load_negrisk_map
+        nmap = load_negrisk_map()
+    except Exception:
+        pass
+    cand: dict[str, dict] = {}
+    for r in raw:
+        m = r.get("market") or {}
+        adapter = ADAPTER_OF.get((m.get("oracle") or "").lower(), "unknown")
+        if adapter == "negrisk":
+            hit = nmap.get(m.get("questionId") or "")
+            eff = hit["tradeableConditionId"] if hit else None
+        else:
+            eff = m.get("id")
+        if eff and r.get("proposer") and eff not in cand:
+            cand[eff] = {"cid": eff, "proposer": r["proposer"].lower(), "oracle": m.get("oracle")}
+
+    # keep only HF-joinable (has a row in the condition table), preserving request-time order
+    cids = list(cand)
+    joined: set[str] = set()
+    cpath = table_path("condition")
+    for i in range(0, len(cids), 5000):
+        inl = ",".join(f"'{c}'" for c in cids[i:i + 5000])
+        joined |= {x[0] for x in query(f"SELECT id FROM '{cpath}' WHERE id IN ({inl})")}
+    return [cand[c] for c in cids if c in joined][:n]
+
+
+def build_training_rows(*, control_per_category: int = 200) -> list[dict]:
+    """Assemble labeled SAFE_FEATURES rows for the DEPLOYED (size-only) hazard: disputed markets
+    (label 1) + sampled resolved controls (label 0), both IN-SLICE so market_size is counted the same
+    way. proposer_reliability + latency_anomaly are 0 (the deployed model is category_base_rate +
+    market_size; proposer is a proven null — see build_matched_training_rows). This is the honest v1
+    the powered replay used."""
     from data.metadata import market_meta
     from data.prior_corpus import sampled_condition_ids
 
@@ -257,26 +329,114 @@ def build_training_rows(*, control_per_category: int = 150) -> list[dict]:
     disputed_ids = set(index)
     rows: list[dict] = [feature_row(
         category_base_rate=f["category_base_rate"], market_size=f["market_size"],
-        proposer_reliability=f["proposer_reliability"], latency_anomaly=f["latency_anomaly"],
-        disputed=1) for f in index.values()]
+        proposer_reliability=0.0, latency_anomaly=0.0, disputed=1) for f in index.values()]
 
     controls = [c for c in sampled_condition_ids(per_category=control_per_category)
                 if c not in disputed_ids]
     br = _base_rate_fn()
     sizes = _fill_count_map(controls)
     for cid in controls:
-        meta = market_meta(cid) or {}
-        rows.append(feature_row(                        # proposer/latency zeroed — see index note
-            category_base_rate=br(meta.get("category", "other")),
-            market_size=market_size_feature(sizes.get(cid, 0)),
+        cat = (market_meta(cid) or {}).get("category", "other")
+        rows.append(feature_row(
+            category_base_rate=br(cat), market_size=market_size_feature(sizes.get(cid, 0)),
             proposer_reliability=0.0, latency_anomaly=0.0, disputed=0))
     return rows
 
 
-def train_and_cache(*, control_per_category: int = 150, path: str = HAZARD_MODEL_CACHE) -> dict:
-    """Build the real training set, fit the hazard logistic, persist it, and return honest metrics
-    (Brier vs base-rate Brier + positives). The one-call entry point for the offline model build."""
-    return fit_and_save(build_training_rows(control_per_category=control_per_category), path=path)
+def _cem_match(disp: list[dict], ctrl: list[dict], *, n_bins: int = 5, by_category: bool = False,
+               seed: int = 7) -> list[dict]:
+    """Coarsened exact matching on market_size deciles (optionally × category): within each cell keep
+    an equal number of disputed and control rows, so the classes share the SAME market_size (and
+    category) distribution — those can then no longer separate them, and the fit's residual signal is
+    attributable to proposer_reliability. `by_category=False` matches on size only (keeps more pairs
+    when controls are scarce; category stays a covariate). Returns the balanced row list."""
+    import random
+    from collections import defaultdict
+
+    # deciles from the CONTROL market_size range (the scarce side), so cells actually contain controls
+    csz = sorted(r["market_size"] for r in ctrl)
+    edges = [csz[int(i * len(csz) / n_bins)] for i in range(1, n_bins)] if csz else []
+
+    def size_bin(x: float) -> int:
+        return sum(1 for e in edges if x > e)
+
+    def key(r):
+        return (r["category"], size_bin(r["market_size"])) if by_category else size_bin(r["market_size"])
+
+    cd, cc = defaultdict(list), defaultdict(list)
+    for r in disp:
+        cd[key(r)].append(r)
+    for r in ctrl:
+        cc[key(r)].append(r)
+    rng = random.Random(seed)
+    out: list[dict] = []
+    for cell in set(cd) | set(cc):
+        d, c = cd.get(cell, []), cc.get(cell, [])
+        k = min(len(d), len(c))
+        if k == 0:
+            continue
+        rng.shuffle(d); rng.shuffle(c)
+        out += d[:k] + c[:k]
+    return out
+
+
+def build_matched_training_rows(*, control_pool: int = 12000, graphql_url: str | None = None,
+                                n_bins: int = 5, by_category: bool = False) -> list[dict]:
+    """v2 MATCHED fair-controls set: disputed markets + proposed-but-not-disputed indexer controls
+    that ARE liquid in the fill slice (market_size > 0, so counted the SAME way as disputed), then
+    CEM-balanced on market_size deciles (optionally × category) so the fit ISOLATES
+    proposer_reliability — the category+size confound can no longer separate the classes. Controls
+    with no in-slice fills are dropped (their market_size=0 is a materialization artifact, not
+    liquidity). Small-N by design (in-slice liquid controls are scarce) — read via the power calc.
+    latency_anomaly stays 0 (no proposal timestamp — v3)."""
+    import duckdb
+    from data.metadata import market_meta
+
+    dbp = _disputes_by_proposer()
+    br = _base_rate_fn()
+    # disputed rows with REAL proposer (self-contained: independent of the deployed size-only index,
+    # which zeros proposer). LOO removes each market's own dispute.
+    disp = duckdb.sql(f"SELECT conditionId, category, lower(proposer) FROM '{_RELEASE_PQ}' "
+                      f"WHERE hf_joinable").fetchall()
+    disputed_ids = {d[0] for d in disp}
+    dsizes = _fill_count_map([d[0] for d in disp])
+    disp_rows = []
+    for cid, cat, prop in disp:
+        cat = cat or "other"
+        disp_rows.append({"category": cat, "category_base_rate": br(cat),
+                          "market_size": market_size_feature(dsizes.get(cid, 0)),
+                          "proposer_reliability": proposer_reliability_feature(prop, dbp, exclude=True),
+                          "latency_anomaly": 0.0, "disputed": 1})
+
+    ctrl = [c for c in load_controls_from_indexer(control_pool, graphql_url=graphql_url)
+            if c["cid"] not in disputed_ids]
+    sizes = _fill_count_map([c["cid"] for c in ctrl])
+    ctrl_rows = []
+    for c in ctrl:
+        fills = sizes.get(c["cid"], 0)
+        if fills <= 0:                                  # not-in-slice → unfair 0 market_size; drop
+            continue
+        cat = (market_meta(c["cid"]) or {}).get("category", "other")
+        ctrl_rows.append({"category": cat, "category_base_rate": br(cat),
+                          "market_size": market_size_feature(fills),
+                          "proposer_reliability": proposer_reliability_feature(c["proposer"], dbp, exclude=False),
+                          "latency_anomaly": 0.0, "disputed": 0})
+
+    matched = _cem_match(disp_rows, ctrl_rows, n_bins=n_bins, by_category=by_category)
+    return [feature_row(category_base_rate=r["category_base_rate"], market_size=r["market_size"],
+                        proposer_reliability=r["proposer_reliability"],
+                        latency_anomaly=r["latency_anomaly"], disputed=r["disputed"]) for r in matched]
+
+
+def train_and_cache(*, matched: bool = False, graphql_url: str | None = None,
+                    path: str = HAZARD_MODEL_CACHE) -> dict:
+    """Fit the hazard logistic, persist it, and return honest held-out metrics. Default = the DEPLOYED
+    size-only model (category_base_rate + market_size). `matched=True` runs the v2 fair-controls
+    EVALUATION (proposer_reliability isolated by market_size-matching) — its result is the null
+    verdict, not a model to deploy."""
+    rows = (build_matched_training_rows(graphql_url=graphql_url) if matched
+            else build_training_rows())
+    return fit_and_save(rows, path=path)
 
 
 def _holdout_eval(rows, offset: float, *, seed: int = 0) -> dict:

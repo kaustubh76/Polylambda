@@ -82,12 +82,25 @@ Earlier the estimators existed but the runnable loop bypassed them (a hardcoded 
 point-in-time-safe features, prior-corrected back to the ~1% natural prevalence so its output is a
 usable `λ_jump` (not the ~0.5 a balanced fit emits). The honest finding matches DECISIONS.md #9 —
 **v1 rests on the features fairly computable for both disputed and control markets
-(`category_base_rate` + `market_size`); held-out AUC ≈ 0.68** (modest discrimination, market size adds
-real signal). `proposer_reliability` and `latency_anomaly` are retained in the schema but **zeroed in
-v1**: they cannot be computed for arbitrary controls without label leakage (the indexer's
-`ResolutionRequest` doesn't cover most HF-resolved controls). At ~1% prevalence this is
-calibration-limited; **the category base rate remains the honest default**, with the hazard a
-directional overlay — not a validated edge.
+(`category_base_rate` + `market_size`); held-out AUC ≈ 0.70** (modest discrimination, market size adds
+real signal). At ~1% prevalence this is calibration-limited; **the category base rate remains the
+honest default**, with the hazard a directional overlay — not a validated edge.
+
+**Does `proposer_reliability` add signal? (v2 fair-controls study — a NULL).** `proposer_reliability`
+and `latency_anomaly` were zeroed in v1 because arbitrary HF controls had no proposer, so a nonzero
+value was disputed-only → it trivially separated the classes (an AUC-0.95 leakage artifact). v2 fixes
+the leakage by drawing controls from **proposed-but-not-disputed indexer markets** (which carry a real
+proposer), so `proposer_reliability` is fair for both classes. But this exposed a **liquidity
+confound**: disputed markets are systematically more liquid than controls, so `market_size` alone
+separates them (a naïve fair-controls fit scores an inflated AUC 0.96 on `market_size`, not proposer).
+Controlling it with a **market_size-matched case-control fit** (coarsened exact matching, 176 matched
+pairs) collapses the discrimination to **held-out AUC ≈ 0.50–0.64 — at/near chance (it swings across
+splits because n=176 pairs is small), below the size-only 0.70 — with `proposer_reliability`'s
+coefficient ≈ 0 (even wrong-signed)**. **Verdict: proposer reputation adds no signal once liquidity is
+matched — a clean null.** The apparent structural "edge" was liquidity all
+along; the deployed model stays size-only. (`latency_anomaly` remains unbuildable — there is no
+proposal timestamp in the parquet or the indexer schema; it needs a `proposedAt` field — v3. The
+fair-controls loader + matcher live in `estimators/hazard.py` as the reusable evaluation harness.)
 
 **Does the structural λ improve the exit? (replay head-to-head — POWERED: 1,409 disputed + 2,912
 controls).** We injected the hazard λ as a 4th replay-ablation arm (`lambda_jump_hazard`, the *identical*
