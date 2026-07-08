@@ -17,7 +17,8 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     HF_HUB_DISABLE_PROGRESS_BARS=1 \
-    MODE=paper
+    MODE=paper \
+    INDEXER_GRAPHQL_URL=https://indexer.dev.hyperindex.xyz/0638687/v1/graphql
 WORKDIR /app
 
 # slim runtime deps (all manylinux wheels — no build toolchain needed)

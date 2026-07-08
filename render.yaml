@@ -12,3 +12,5 @@ services:
     envVars:
       - key: MODE
         value: paper
+      - key: INDEXER_GRAPHQL_URL
+        value: https://indexer.dev.hyperindex.xyz/0638687/v1/graphql
