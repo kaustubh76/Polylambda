@@ -21,3 +21,13 @@ export const fixed = (x: number | null | undefined, dp = 4): string =>
 // compact addresses / condition ids
 export const short = (s: string | null | undefined, head = 6, tail = 4): string =>
   !s ? '—' : s.length <= head + tail + 2 ? s : `${s.slice(0, head)}…${s.slice(-tail)}`
+
+// relative time from a unix-seconds timestamp ("12s ago", "4m ago", "3h ago", "2d ago")
+export const ago = (tsSec: number | null | undefined, nowMs = Date.now()): string => {
+  if (tsSec == null) return '—'
+  const s = Math.max(0, Math.floor(nowMs / 1000 - tsSec))
+  if (s < 60) return `${s}s ago`
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
+}

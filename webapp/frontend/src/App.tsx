@@ -5,6 +5,7 @@ import { BaseRates } from './sections/BaseRates'
 import { Disputes } from './sections/Disputes'
 import { HazardCard } from './sections/HazardCard'
 import { Hero } from './sections/Hero'
+import { LiveIndexer } from './sections/LiveIndexer'
 import { PaperSession } from './sections/PaperSession'
 import { Recon } from './sections/Recon'
 import { ScoreMarket } from './sections/ScoreMarket'
@@ -18,6 +19,7 @@ const NAV = [
   { id: 'ablation', label: 'Edge proof' },
   { id: 'hazard', label: 'Model card' },
   { id: 'disputes', label: 'Disputes' },
+  { id: 'live', label: 'Live' },
   { id: 'recon', label: 'Integrity' },
   { id: 'sigma', label: 'σ surface' },
 ]
@@ -38,6 +40,26 @@ function useScrollSpy(ids: string[]) {
   return active
 }
 
+function LivePill() {
+  const [s, setS] = useState<{ up: boolean; ms?: number } | null>(null)
+  useEffect(() => {
+    let alive = true
+    const tick = () => api.liveStatus()
+      .then((r) => alive && setS({ up: r.reachable, ms: r.latency_ms }))
+      .catch(() => alive && setS({ up: false }))
+    tick()
+    const t = setInterval(tick, 10000)
+    return () => { alive = false; clearInterval(t) }
+  }, [])
+  if (!s) return null
+  return (
+    <a href="#live" className={`chip ${s.up ? 'border-sig/40 text-sig' : 'border-warn/50 text-warn'}`} title="hosted Envio HyperIndex">
+      <span className={`h-1.5 w-1.5 rounded-full ${s.up ? 'animate-pulse2' : ''}`} style={{ background: s.up ? '#24c98a' : '#fab219' }} />
+      {s.up ? <>LIVE{s.ms != null && s.ms < 1000 ? ` · ${s.ms.toFixed(0)}ms` : ''}</> : 'indexer down'}
+    </a>
+  )
+}
+
 export default function App() {
   const overview = useApi(api.overview, [])
   const active = useScrollSpy(NAV.map((n) => n.id))
@@ -54,6 +76,7 @@ export default function App() {
           </a>
           <span className="hidden text-2xs text-muted md:inline">dispute-aware market making for Polymarket</span>
           <div className="ml-auto flex items-center gap-2">
+            <LivePill />
             <span className="chip">
               <span className="h-1.5 w-1.5 animate-pulse2 rounded-full bg-sig" />
               MODE · {mode}
@@ -85,6 +108,7 @@ export default function App() {
         <Ablation />
         <HazardCard />
         <Disputes />
+        <LiveIndexer />
         <Recon />
         <SigmaSurface />
       </main>

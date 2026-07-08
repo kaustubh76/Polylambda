@@ -46,5 +46,9 @@ gcloud run deploy polylambda --source . --port 8000 --allow-unauthenticated --me
 - **Memory:** ~256–512MB idle; 512MB–1GB is comfortable (numpy/pandas load lazily on first use).
 - **Mode:** defaults to `MODE=paper`. Live trading stays jurisdiction-gated and out of scope; the
   container never installs `web3`/`polymarket-client`, so the write path can't even be constructed.
+- **Live indexer:** the "Live dispute stream" panel queries a hosted Envio HyperIndex over GraphQL
+  (stdlib `urllib`, no dep) — needs only outbound HTTPS, which every host allows. It defaults to the
+  public dev deploy; point `INDEXER_GRAPHQL_URL` at your own production indexer to swap it. If the
+  endpoint is unreachable the panel shows "offline" and the rest of the dashboard is unaffected.
 - **Refreshing artifacts:** if you retrain the hazard model or rebuild the σ prior, re-snapshot with
   `cp .data_cache/hazard_model*.json .data_cache/sigma_prior.json webapp/deploy/cache/ && cp .data_cache/webapp/*.json webapp/deploy/cache/webapp/` and rebuild.

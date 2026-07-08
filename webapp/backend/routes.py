@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from . import services
+from . import live, services
 from .schemas import ScoreRequest, SessionRequest
 
 api = APIRouter(prefix="/api")
@@ -66,6 +66,18 @@ def get_recon():
 @api.get("/sigma")
 def get_sigma():
     return services.sigma_surface()
+
+
+@api.get("/live/status")
+def get_live_status():
+    """Live Envio HyperIndex reachability + head + round-trip latency."""
+    return live.indexer_status()
+
+
+@api.get("/live/disputes")
+def get_live_disputes(limit: int = Query(25, ge=1, le=100), since_ts: int | None = None):
+    """The latest OOv2 disputes straight from the indexer (real-time)."""
+    return live.live_disputes(limit=limit, since_ts=since_ts)
 
 
 @api.get("/health")

@@ -24,6 +24,8 @@ export const api = {
   disputes: (qs: string) => req<Disputes>(`/disputes${qs}`),
   recon: () => req<Recon>('/recon'),
   sigma: () => req<Sigma>('/sigma'),
+  liveStatus: () => req<LiveStatus>('/live/status'),
+  liveDisputes: (limit = 25) => req<LiveDisputes>(`/live/disputes?limit=${limit}`),
 }
 
 // --- a tiny fetch hook (no react-query dep) ---------------------------------------------------
@@ -102,3 +104,7 @@ export interface Disputes { total: number; rows: Record<string, any>[]; columns:
 export interface Recon { recon: Record<string, any>; by_adapter: Record<string, number>; by_category: Record<string, number>; total_disputes: number; hf_joinable_pct: number; note: string }
 export interface SigmaPoint { category: string; price: number; sigma: number }
 export interface Sigma { points: SigmaPoint[]; categories: string[]; n: number; note: string }
+
+export interface LiveStatus { reachable: boolean; endpoint: string; latency_ms?: number; head_ts?: number | null; head_id?: string | null; error?: string }
+export interface LiveDispute { id: string; round: number | null; disputeTs: number; disputer: string | null; proposedOutcome: string | null; proposer: string | null; conditionId: string | null; marketStatus: string | null; finalOutcome: string | null; outcomeSlotCount: number | null }
+export interface LiveDisputes { reachable: boolean; disputes: LiveDispute[]; latency_ms?: number; endpoint: string; error?: string }
