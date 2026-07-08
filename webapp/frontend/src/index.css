@@ -1,0 +1,52 @@
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/jetbrains-mono/700.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root { color-scheme: dark; }
+  html, body, #root { height: 100%; }
+  body {
+    @apply bg-bg text-ink font-sans antialiased;
+    background-image:
+      radial-gradient(1200px 600px at 80% -10%, rgba(36, 201, 138, 0.06), transparent 60%),
+      radial-gradient(900px 500px at 0% 0%, rgba(57, 135, 229, 0.05), transparent 55%);
+    background-attachment: fixed;
+  }
+  ::selection { background: rgba(36, 201, 138, 0.25); }
+  /* thin scrollbars that match the terminal */
+  * { scrollbar-width: thin; scrollbar-color: #2f3340 transparent; }
+  *::-webkit-scrollbar { height: 8px; width: 8px; }
+  *::-webkit-scrollbar-thumb { background: #2f3340; border-radius: 8px; }
+}
+
+@layer components {
+  .num { @apply font-mono tabular-nums; }
+  .panel { @apply rounded-xl border border-line bg-surface shadow-panel; }
+  .hairline { @apply border-line; }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-elevated
+           px-2.5 py-1 text-2xs font-medium text-ink-2;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line
+           bg-elevated px-3.5 py-2 text-sm font-medium text-ink transition
+           hover:border-sig/50 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply border-sig/40 bg-sig/10 text-sig hover:bg-sig/20 hover:text-sig;
+  }
+  .field {
+    @apply w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm text-ink
+           outline-none transition focus:border-sig/60 focus:ring-1 focus:ring-sig/30;
+  }
+  .label { @apply text-2xs font-medium uppercase tracking-wider text-muted; }
+  .link-underline { @apply underline decoration-line underline-offset-2 hover:decoration-sig; }
+}

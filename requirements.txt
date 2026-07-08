@@ -7,6 +7,13 @@ requests>=2.31
 websockets>=12.0
 pytest>=8.0
 
+# --- MVP dashboard backend (webapp/*): a thin FastAPI layer that imports the real engine. ---
+# Read-only over the estimators/execution/forwardtest modules; PAPER-mode only (never the CLOB
+# write path). Serves the React dashboard in webapp/frontend. No heavy new deps — the one-time
+# precompute reuses duckdb/pyarrow already listed below.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+
 # --- historical data layer (data/*, over the HF dataset via DuckDB) ---
 # Queries moose-code/polymarket-onchain-v1 in place (hf://) — no 127GB download.
 duckdb>=1.1          # httpfs + hf:// parquet scans; also runs the deriveFill SQL
