@@ -1,0 +1,14 @@
+# Render blueprint — one-click deploy of the PolyLambda dashboard (Docker).
+# In the Render dashboard: New → Blueprint → connect this repo. Render builds the Dockerfile,
+# injects $PORT (the CMD honors it), and health-checks /api/health.
+services:
+  - type: web
+    name: polylambda
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter            # 512MB/0.5CPU; bump to standard if you enable heavier workloads
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: MODE
+        value: paper

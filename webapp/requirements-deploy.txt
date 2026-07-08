@@ -1,0 +1,13 @@
+# Slim RUNTIME deps for the containerized dashboard (paper-mode, read-only over the engine).
+# Intentionally a subset of the repo's requirements.txt:
+#   - omits scikit-learn/scipy  → LoadedHazard is pure-python; sklearn is lazy-imported for TRAINING
+#     only, never at request time (the model is loaded from JSON).
+#   - omits web3/polymarket-client/eth-*  → the gated live-trade write path, never touched in paper.
+# Result: an all-wheels install (no compiler), a small image, fast cold start.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+numpy>=1.26
+pandas>=2.1          # disputes explorer reads dataset_release/*.parquet
+pyarrow>=16          # parquet engine for pandas
+duckdb>=1.1          # dispute-count numerators over the released parquet (falls back to constants if absent)
+python-dotenv>=1.0

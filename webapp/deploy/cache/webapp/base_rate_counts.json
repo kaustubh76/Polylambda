@@ -1,0 +1,34 @@
+{
+ "other": {
+  "n_markets": 625720,
+  "n_resolved": 563325
+ },
+ "crypto": {
+  "n_markets": 170677,
+  "n_resolved": 170446
+ },
+ "sports": {
+  "n_markets": 88914,
+  "n_resolved": 87854
+ },
+ "politics": {
+  "n_markets": 19061,
+  "n_resolved": 15953
+ },
+ "tech-ai": {
+  "n_markets": 10624,
+  "n_resolved": 10298
+ },
+ "geopolitics": {
+  "n_markets": 8313,
+  "n_resolved": 8026
+ },
+ "entertainment": {
+  "n_markets": 2840,
+  "n_resolved": 2793
+ },
+ "economics": {
+  "n_markets": 1228,
+  "n_resolved": 1014
+ }
+}

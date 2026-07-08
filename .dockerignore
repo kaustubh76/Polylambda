@@ -1,0 +1,37 @@
+# Keep the build context small & the image lean. NOTE: dataset_release/ and webapp/deploy/cache/
+# are intentionally NOT ignored — the app needs them at runtime.
+
+# vcs / virtualenvs / secrets
+.git
+.gitignore
+.venv
+.env
+.env.*
+
+# python cruft
+**/__pycache__
+**/*.pyc
+.pytest_cache
+
+# node (frontend is rebuilt inside the image; never ship host node_modules/dist)
+**/node_modules
+webapp/frontend/dist
+webapp/frontend/.npm-install.log
+
+# heavy local HF cache (470MB+ parquets) — the small artifacts ship via webapp/deploy/cache instead
+.data_cache
+
+# the TypeScript indexer is a separate tool, not used by the dashboard runtime
+indexer
+
+# large design files, backups, notes, tests — not needed at runtime
+*.excalidraw
+*.excalidraw.bak*
+notes
+tests
+*.log
+
+# CI / editor
+.github
+.vscode
+.idea
