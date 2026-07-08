@@ -85,8 +85,8 @@ chains:
         acceleration_additive: 150
         interval_ceiling: 1500
     # Scoped to the OOv2 dispute lifecycle only → the event volume is orders of magnitude below
-    # OrderFilled, so a FULL historical backfill is now feasible (that's what unlocks the ~184
-    # historical disputes the replay-ablation needs). Set start_block to the earliest UMA CTF
+    # OrderFilled, so a FULL historical backfill is now feasible (that's what produced the 1,794
+    # released disputes the replay-ablation uses). Set start_block to the earliest UMA CTF
     # Adapter / OOv2 deployment on Polygon (Polymarket resolution began ~2022).
     # ⚠ Confirm the adapter deployment block on polygonscan.com before running; ~28M ≈ early 2022.
     # Full backfill: captures ConditionPreparation (at market creation) + the later dispute — both are

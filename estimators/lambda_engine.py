@@ -13,10 +13,12 @@ Corrected design (DECISIONS.md #9, #11):
   * The costly event is a DIRECTIONAL jump + degraded exit liquidity (~5c haircut), NOT a lock.
 
 TWO-SOURCE JOIN (DECISIONS.md #13): the DENOMINATOR (resolved markets per category) comes from the
-HF dataset (data.base_rates, which derives category from market_data). The dispute NUMERATOR comes
-ONLY from the scoped local OOv2 indexer (HF has no OOv2 dispute events) and is passed in as
-`dispute_counts` keyed by category. Until that indexer has run, disputes default to 0 and lambda is
-reported as a base-rate prior with a WIDE Wilson interval — honest about the missing labels.
+HF dataset (data.base_rates, which derives category from market_data). The dispute NUMERATOR is not
+in HF (no OOv2 dispute events there); it ships as the released dispute layer
+(dataset_release/polymarket-oov2-disputes-v1: 1,794 disputes, all adapters incl. NegRisk) loaded by
+data.disputes and passed in as `dispute_counts` keyed by category — DATA_SOURCE=graphql sources it
+live from the scoped indexer instead. Only if both are unavailable does the count degrade (RPC
+V2/Legacy cache → 0 with a WIDE Wilson interval — honest about the missing labels).
 """
 from __future__ import annotations
 
@@ -66,7 +68,8 @@ def fit_hazard(labeled_rows):
     """Class-weighted logistic on SAFE_FEATURES; report calibration (Brier), NOT accuracy/AUC.
 
     labeled_rows: iterable of dicts with SAFE_FEATURES keys + integer `disputed` (0/1). The labels
-    come from the local OOv2 indexer joined to HF features; disputes are ~1% so class_weight is
+    come from the released dispute layer (dataset_release parquet, built once by the scoped indexer)
+    joined to HF features — see estimators.hazard; disputes are ~1% so class_weight is
     balanced and the honest metric is calibration on held-out folds. Returns (model, {"brier":...}).
     """
     import numpy as np

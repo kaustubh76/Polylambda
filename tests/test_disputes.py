@@ -115,6 +115,7 @@ def test_dispute_block_ts_override_keeps_request_timestamp(monkeypatch):
 
 def test_recon_no_ground_truth_bucket(monkeypatch):
     import data.conditions as dc
+    import data.disputes as dz
     import recon.check as rc
 
     V2 = "0x6a9d222616c90fca5754cd1333cfd9b7fb6a4f74"
@@ -126,13 +127,147 @@ def test_recon_no_ground_truth_bucket(monkeypatch):
         {"id": "D", "status": "RESOLVED", "finalOutcome": "1,0", "oracle": "0xdead", "resolvedAt": "1"},  # unsupported adapter
         {"id": "E", "status": "RESOLVED", "finalOutcome": "1,0", "oracle": V2, "resolvedAt": "100"},  # mismatch
     ]
+    # hermetic: run_recon resolves its endpoint via the shared resolver — never probe the network here
+    monkeypatch.setattr(dz, "resolve_indexer", lambda u=None: (u, None))
     monkeypatch.setattr(rc, "_fetch_indexed_markets", lambda url, **kw: markets)
     monkeypatch.setattr(dc, "hf_payout_map", lambda: {"A": "1,0", "E": "0,1"})  # B (phantom) deliberately absent
 
-    rep = rc.run_recon("http://x")
+    rep = rc.run_recon("http://x", log=lambda *a: None)
     assert rep.eligible == 2 and rep.matched == 1          # A,E eligible; only A matches
     assert rep.pass_rate == 0.5
     assert rep.excluded_no_ground_truth == 1               # Bphantom: NegRisk phantom key -> data-gap bucket
     assert rep.excluded_pending == 1                       # C
     assert rep.excluded_unsupported_adapter == 1           # D
     assert any(m[0] == "E" for m in (rep.mismatches or []))
+
+
+# --- resolve_indexer: the shared endpoint resolver (probe order + hosted no-secret semantics) ---
+
+def test_resolve_indexer_probe_order_and_hosted_secret(monkeypatch):
+    import data.disputes as dz
+
+    seen = []
+
+    def gql_only_hosted_up(q, *, url=None, secret=None, timeout=60):
+        seen.append((url, secret))
+        if url == dz.HOSTED_GRAPHQL_URL:
+            return {"ResolutionRequest": [{"id": "x"}]}
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(dz, "_gql", gql_only_hosted_up)
+    url, secret = dz.resolve_indexer("http://explicit:9/v1/graphql")
+    assert (url, secret) == (dz.HOSTED_GRAPHQL_URL, "")    # hosted rejects the admin-secret header
+    assert [u for u, _ in seen] == ["http://explicit:9/v1/graphql", dz.GRAPHQL_URL,
+                                    dz.HOSTED_GRAPHQL_URL]  # explicit → local → hosted
+
+    # an answering explicit endpoint wins immediately (no further probes)
+    seen.clear()
+    monkeypatch.setattr(dz, "_gql", lambda q, **kw: {"ResolutionRequest": []})
+    assert dz.resolve_indexer("http://explicit:9")[0] == "http://explicit:9"
+    assert len(seen) == 0                                   # our stub doesn't record; just no error
+
+    # everything down → (None, None), never an exception
+    monkeypatch.setattr(dz, "_gql", lambda q, **kw: (_ for _ in ()).throw(RuntimeError("down")))
+    assert dz.resolve_indexer() == (None, None)
+
+
+def test_recon_falls_back_to_hosted_with_coverage_cap_log(monkeypatch):
+    import data.conditions as dc
+    import data.disputes as dz
+    import recon.check as rc
+
+    logs, seen = [], {}
+    monkeypatch.setattr(dz, "resolve_indexer", lambda u=None: (dz.HOSTED_GRAPHQL_URL, ""))
+    monkeypatch.setattr(dc, "hf_payout_map", lambda: {})
+
+    def fake_fetch(url, *, page=5000, secret=None):
+        seen.update(url=url, page=page, secret=secret)
+        return []
+
+    monkeypatch.setattr(rc, "_fetch_indexed_markets", fake_fetch)
+    rep = rc.run_recon("http://local-down:8080/v1/graphql", log=logs.append)
+    assert rep.eligible == 0 and rep.pass_rate == 1.0
+    assert seen == {"url": dz.HOSTED_GRAPHQL_URL, "page": 1000, "secret": ""}  # hosted clamps limit
+    assert any("COVERAGE-CAPPED" in line for line in logs)  # never silently over-claim completeness
+
+    # nothing reachable → a hard error, not a silent empty recon
+    monkeypatch.setattr(dz, "resolve_indexer", lambda u=None: (None, None))
+    with pytest.raises(RuntimeError):
+        rc.run_recon("http://local-down:8080/v1/graphql", log=None)
+
+
+def test_export_build_rows_resolves_endpoint_and_flags_hosted(monkeypatch):
+    pytest.importorskip("duckdb")
+    import data.export_disputes as ex
+    from data.disputes import HOSTED_GRAPHQL_URL
+
+    logs, seen = [], {}
+    monkeypatch.setattr(ex, "resolve_indexer", lambda u=None: (HOSTED_GRAPHQL_URL, ""))
+
+    def fake_loader(url, *, secret=None, log=None, **kw):
+        seen.update(url=url, secret=secret)
+        return [{"conditionId": "0xc", "tradeableConditionId": "0xc", "questionId": "0xq",
+                 "adapter": "v2", "hf_joinable": True, "disputeTs": 1700000000,
+                 "requestTimestamp": 1700000000, "round": 0, "disputer": "0xd",
+                 "proposer": "0xp", "proposedOutcome": "YES", "disputeId": "0xh-1"}]
+
+    monkeypatch.setattr(ex, "load_disputes_from_indexer", fake_loader)
+    monkeypatch.setattr(ex, "_categories_for", lambda cids: {"0xc": "politics"})
+    rows = ex.build_rows(None, log=logs.append)
+    assert seen == {"url": HOSTED_GRAPHQL_URL, "secret": ""}  # resolved url + no-secret threaded through
+    assert any("COVERAGE-CAPPED" in line for line in logs)    # a hosted export is flagged un-authoritative
+    assert rows[0]["category"] == "politics"
+
+    monkeypatch.setattr(ex, "resolve_indexer", lambda u=None: (None, None))
+    with pytest.raises(RuntimeError):                         # nothing reachable → refuse to export
+        ex.build_rows(None, log=None)
+
+
+# --- load_disputes: the released parquet is the default numerator source ---
+
+def test_load_disputes_default_loads_the_full_released_layer(monkeypatch):
+    """The headline data-layer contract: 1,794 HF-joinable disputes across ALL adapters, offline."""
+    pytest.importorskip("duckdb")
+    import os
+    from collections import Counter
+
+    import data.disputes as dz
+
+    if not os.path.exists(dz.RELEASE_PARQUET):
+        pytest.skip("release parquet absent (partial checkout?)")
+    monkeypatch.delenv("DATA_SOURCE", raising=False)
+    rows = dz.load_disputes()
+    assert len(rows) == 1794
+    by_adapter = Counter(r["adapter"] for r in rows)
+    assert by_adapter["v2"] == 723 and by_adapter["negrisk"] == 963
+    assert sum(by_adapter.values()) - by_adapter["v2"] - by_adapter["negrisk"] == 108  # "other"
+    assert all(isinstance(r["disputeTs"], int) for r in rows[:10])
+
+
+def test_load_disputes_source_precedence(monkeypatch, tmp_path):
+    """Hermetic contract: DATA_SOURCE=graphql (effective cid) → released parquet → RPC cache."""
+    import data.disputes as dz
+
+    # (1) DATA_SOURCE=graphql wins and returns the EFFECTIVE join key (tradeable for NegRisk)
+    monkeypatch.setenv("DATA_SOURCE", "graphql")
+    monkeypatch.setattr(dz, "load_disputes_from_indexer", lambda **kw: [
+        {"conditionId": "0xphantom", "tradeableConditionId": "0xtrade", "disputeTs": 5,
+         "adapter": "negrisk", "disputer": "0xd"}])
+    rows = dz.load_disputes()
+    assert rows == [{"conditionId": "0xtrade", "disputeTs": 5, "adapter": "negrisk", "disputer": "0xd"}]
+
+    # (2) default: the released parquet via the query seam
+    monkeypatch.delenv("DATA_SOURCE", raising=False)
+    fake_pq = tmp_path / "disputes.parquet"
+    fake_pq.write_bytes(b"")                                   # existence only; the query is stubbed
+    monkeypatch.setattr(dz, "RELEASE_PARQUET", str(fake_pq))
+    monkeypatch.setattr(dz, "query", lambda sql: [("0xa", 7, "v2", "0xd")])
+    assert dz.load_disputes() == [{"conditionId": "0xa", "disputeTs": 7, "adapter": "v2",
+                                   "disputer": "0xd"}]
+
+    # (3) parquet unreadable → the RPC-scanned V2/Legacy cache (the numerator is never empty)
+    monkeypatch.setattr(dz, "query", lambda sql: (_ for _ in ()).throw(RuntimeError("bad parquet")))
+    monkeypatch.setattr(dz, "build_dispute_cache", lambda **kw: {"disputes": [
+        {"conditionId": "0xb", "disputeTs": 9, "adapter": "legacy", "disputer": "0xe"}]})
+    assert dz.load_disputes() == [{"conditionId": "0xb", "disputeTs": 9, "adapter": "legacy",
+                                   "disputer": "0xe"}]

@@ -13,7 +13,8 @@ Corrected design (see ../DECISIONS.md #9):
     heteroskedastic in price space).
 
 The pure core here is fully unit-tested (tests/test_sigma.py). `fetch_fills` / `estimate_sigma`
-are thin I/O wrappers over the indexer's GraphQL endpoint.
+are thin I/O wrappers over the HF fill tape (data.fills.fetch_fills_hf) — the indexer no longer
+carries a fill tape (its GraphQL Fill entity was pruned as dead), so `graphql_url` is ignored.
 """
 from __future__ import annotations
 
@@ -131,33 +132,18 @@ def estimate_sigma_from_fills(
     return shrink(sig, prior, len(rets), strength)
 
 
-# --- I/O wrapper (thin; confirm GraphQL field names against your indexer) ---
+# --- I/O wrapper (thin) ---
 def fetch_fills(graphql_url: str, condition_id: str, limit: int = 1000) -> list[dict]:
-    """Pull a market's fill tape.
+    """Pull a market's fill tape from the HF dataset via DuckDB (data.fills.fetch_fills_hf) —
+    YES-normalized, year-pruned, back to 2022; needs no running indexer.
 
-    DATA_SOURCE=hf (default): the HF dataset via DuckDB (data.fills.fetch_fills_hf) — YES-normalized,
-    year-pruned, back to 2022; needs no running indexer. `graphql_url` is ignored in this mode.
-    DATA_SOURCE=graphql: the local Envio/Hasura endpoint (the original path, below).
-    Both return the same {price,size,side,maker,taker,timestamp} dicts the pure core consumes."""
-    from data.hf import DATA_SOURCE
+    `graphql_url` is accepted for call-site compatibility but IGNORED: the scoped indexer no longer
+    indexes CLOB fills (the CTFExchange handlers and the dead Fill/TokenMap entities were removed —
+    the HF tape is strictly more complete). Returns the {price,size,side,maker,taker,timestamp}
+    dicts the pure core consumes."""
+    from data.fills import fetch_fills_hf
 
-    if DATA_SOURCE == "hf":
-        from data.fills import fetch_fills_hf
-
-        return fetch_fills_hf(condition_id, limit=limit)
-
-    import requests
-
-    query = """
-    query Fills($cid: String!, $limit: Int!) {
-      Fill(where: {market_id: {_eq: $cid}}, order_by: {timestamp: asc}, limit: $limit) {
-        price size side maker taker timestamp
-      }
-    }
-    """
-    resp = requests.post(graphql_url, json={"query": query, "variables": {"cid": condition_id, "limit": limit}}, timeout=30)
-    resp.raise_for_status()
-    return resp.json()["data"]["Fill"]
+    return fetch_fills_hf(condition_id, limit=limit)
 
 
 def estimate_sigma(graphql_url: str, condition_id: str, category: str, prior: float, **cfg) -> float:

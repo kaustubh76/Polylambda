@@ -92,3 +92,36 @@ def test_cem_match_balances_and_isolates_size():
     assert len(d) == len(c) and len(d) > 0          # balanced pairs
     # matched market_size distributions coincide (mean within a bin width) → size can't discriminate
     assert abs(sum(r["market_size"] for r in d) - sum(r["market_size"] for r in c)) < len(d)
+
+
+def test_cli_main_parses_args_and_prints_metrics(monkeypatch, capsys):
+    """python -m estimators.hazard — the reproducible training entry point, train stubbed out."""
+    import estimators.hazard as hz
+
+    seen = {}
+
+    def fake_train(**kw):
+        seen.update(kw)
+        return {"path": "/tmp/hm.json", "n": 400, "positives": 200, "holdout_auc": 0.7,
+                "discriminates": True, "offset": -4.2, "natural_rate": 0.011, "caveat": "CAVEAT"}
+
+    monkeypatch.setattr(hz, "train_and_cache", fake_train)
+    hz.main(["--matched", "--graphql-url", "http://x", "--path", "/tmp/hm.json"])
+    out = capsys.readouterr().out
+    assert seen == {"matched": True, "graphql_url": "http://x", "path": "/tmp/hm.json"}
+    assert "wrote /tmp/hm.json" in out and "offset=-4.2000" in out and "AUC=0.7" in out
+
+    monkeypatch.setattr(hz, "train_and_cache", lambda **kw: {"natural_rate": 0.01})
+    hz.main([])                                     # a metrics dict without offset must still print
+    assert "natural_rate=0.01" in capsys.readouterr().out
+
+    # --matched without --path must NOT clobber the deployed model cache: it defaults to a
+    # separate *_matched_eval.json (the matched fit is an EVALUATION, not a deployable model)
+    monkeypatch.setattr(hz, "train_and_cache",
+                        lambda **kw: seen.update(kw) or {"natural_rate": 0.01})
+    seen.clear()
+    hz.main(["--matched"])
+    assert seen["path"].endswith("_matched_eval.json") and seen["path"] != hz.HAZARD_MODEL_CACHE
+    seen.clear()
+    hz.main([])                                     # default (deployable) fit → the deployed cache
+    assert seen["path"] == hz.HAZARD_MODEL_CACHE

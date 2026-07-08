@@ -163,6 +163,9 @@ def run(mode: str = "paper", markets: list | None = None, *, n_ticks: int = 20,
             from estimators.hazard import load_hazard_model
 
             hm = load_hazard_model() if hazard else None
+            if hazard and hm is None:
+                print("[runner] hazard model missing (.data_cache/hazard_model.json); run "
+                      "`python -m estimators.hazard` to regenerate — falling back to base-rate λ")
             markets = build_markets(select_real_markets(n_markets), hazard_model=hm,
                                     sigma_corpus=load_sigma_prior(), cfg=cfg, seed=seed)
         else:

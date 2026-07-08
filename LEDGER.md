@@ -318,7 +318,7 @@ Done-Checks:
 - [x] σ prior via category×price corpus wired (falls back to sigma_ref); `shrinkage_strength` now applied
 - [x] SIZE ∝ 1/risk + hard time-to-resolution inventory cap (position can only shrink near T→0); config knobs honored
 - [x] **101 pytest green** (+12: 6 sizing, 5 hazard, 1 real-builder)
-- [ ] live path stays DEFERRED by design (py-sdk client, pUSD wrap, Builder Codes send — jurisdiction-gated); low-latency proposal watcher still v2
+- [ ] live path stays DEFERRED by design (py-sdk client, pUSD wrap, Builder Codes send — jurisdiction-gated); low-latency proposal watcher still v2 *(→ superseded Day 15: write path implemented behind the intact gate, never executed; watcher still v2)*
 Gate status: DONE — every non-jurisdiction gap between Panels D/E/F/L and the code is closed; the paper
        forward-test now exercises the real brain end-to-end. Live leg intentionally gated, not missing.
 Next first action: (optional) fit the hazard on proposed-but-not-disputed indexer controls (fair proposer
@@ -390,6 +390,55 @@ Gate status: DONE — proposer_reliability is a clean, honestly-bounded NULL; th
        powered replay finding (Day 13) stand as the deliverable. No over-claim; two artifacts caught.
 Next first action: (optional, v3) add `proposedAt` to the indexer + a powered matched study; else the
        base-rate/size hazard + wired execution + the λ*=0.002 replay edge are the standing result.
+
+---
+
+## Day 15 — 2026-07-07
+Phase: consolidation — make the released dispute layer THE default everywhere, make training reproducible,
+       implement (not execute) the gated live write path, and delete every stale story the corrections left behind.
+Learn: three things worth recording. (1) NUMERATOR MIXING IS REAL: `python -m estimators.hazard` reproduces
+       the deployed model end-to-end (n=3110, positives=1527, held-out AUC 0.697≈0.70; market_size coef
+       0.247 matches), but the category_base_rate coef/offset shift vs the deployed cache — the deployed
+       model was fit on the OLD 723-only base rates, and the numerator flip rescales that feature (the
+       DATASET §4 "don't mix numerators" warning, observed in our own artifact). Deployed model left
+       untouched (gitignored); regenerating is a deliberate operator step, and `--matched` now defaults to
+       a separate `*_matched_eval.json` so the null-study can never clobber the deployed cache. (2) The
+       adversarial review caught two real live-leg holes before any live use: `MAX_CAPITAL_USDC=nan`
+       satisfied the gate while NaN-poisoning every `> cap` comparison (cap silently OFF → gate now
+       requires a finite positive number), and the notional counter only incremented on confirmed acks
+       (an ambiguous timeout-after-accept could leave a resting order uncounted → the cap now RESERVES
+       before the send, fail-closed; only a definite INVALID_TICK rejection releases). (3) py-sdk CONFIRMED
+       from the live repo/PyPI: pip `polymarket-client==0.1.0b13`, import `polymarket`, `SecureClient.create`
+       does the L1 EIP-712 → L2 creds derivation; pinned exactly. Ops: recon's hosted fallback worked
+       (resolver + COVERAGE-CAPPED warning printed) but a 34-min paginated pull died on one transient
+       IncompleteRead → per-page retry added (same pattern as hazard's control pull). Envio alpha.21
+       surfaced two pre-existing indexer-test breaks (createTestIndexer moved into `generated`;
+       block-range validation vs start_block) — fixed, 8/8 vitest green against the PRUNED schema.
+Build: `data/disputes.py` (load_disputes → released parquet default, RPC cache last resort; shared
+       `resolve_indexer` + secret threading); `estimators/hazard.py` (`main(argv)` CLI, matched-eval path
+       guard); `recon/check.py` + `data/export_disputes.py` (resolver reuse, hosted coverage-cap warnings,
+       page retry); `execution/clob.py` (LIVE WRITE PATH behind the unchanged gate: `_SdkOrderAdapter` →
+       `place_limit_order`, RateLimitError→"429" mapping for the backoff, INVALID_TICK single retry,
+       reserve-before-send cap, `wrap_usdce_to_pusd` via lazy web3 approve+wrap, finite-cap gate);
+       requirements pinned (`polymarket-client==0.1.0b13`, web3, eth-utils/eth-abi now listed);
+       schema.graphql pruned (Fill/TokenMap/ReconStatus dead); sigma's dead GraphQL fill branch removed;
+       docs refreshed (DATASET §4 base-rate note + §6/§8, METHODOLOGY §2, Readme, indexer README rewrite,
+       15+ stale docstrings). Tests: 120→123 (+17 vs Day 14: resolver probe order, hosted recon/export
+       fallbacks, load_disputes precedence + the 1,794 contract, live-client/adapter/wrap mocks, NaN-cap,
+       exactly-once retry + reservation semantics, hazard CLI).
+Done-Checks:
+- [x] `load_disputes()` default = released parquet: **1,794** (v2 723 · negrisk 963 · other 108), verified via `python -m data.disputes` (sub-second, offline)
+- [x] `python -m estimators.hazard` regenerates a hazard model end-to-end (2m50s local): n=3110/1527, AUC 0.697; numerator-shift vs deployed cache observed + documented (NOT silently redeployed)
+- [x] live write path implemented BEHIND the intact gate — `_require_live_gate()` first line everywhere, paper modes import-clean (subprocess-verified: no requests/web3/polymarket on import), **never executed** (JURISDICTION.md still UNRESOLVED/paper-only)
+- [x] adversarial review (4 lenses + refutation): 2 majors found + fixed (NaN cap, reserve-before-send); sigma docstring; recon page retry
+- [x] **123 pytest green** (+17) and **8/8 indexer vitest green** against the pruned schema (`pnpm codegen` + lifecycle test pass)
+- [ ] deployed hazard_model.json regeneration on the 1,794 numerator — deliberate operator step (rerun the replay after, since λ_hazard inputs shift)
+- [ ] live-loop adapter (LiveClob for run_loop) + own-fill polling — still v2; runner keeps refusing MODE=live
+Gate status: DONE — the data layer has ONE default story (the released parquet), training is one command,
+       and the live leg is code-complete but jurisdiction-gated exactly as designed; every stale claim the
+       NegRisk correction obsoleted is gone from the living docs.
+Next first action: (operator) decide whether to regenerate the deployed hazard model on the 1,794 numerator
+       and rerun the powered replay; (v2) LiveClob loop adapter + own-fill stream before any live session.
 
 ---
 

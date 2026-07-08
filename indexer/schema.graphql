@@ -3,7 +3,10 @@
 ##  - conditionId = keccak256(adapter, questionId, 2); there is NO opaque requestId.
 ##  - ResolutionRequest is keyed by (conditionId + requestTimestamp) so each RESET round is a
 ##    distinct row (two-strikes: 1st dispute auto-resets, 2nd escalates to the DVM).
-##  - Reconciliation is measured on the ELIGIBLE set with counted exclusion buckets (ReconStatus).
+##  - Reconciliation lives Python-side (recon/check.py, vs the HF payout vectors) — not here.
+##  - CLOB fills are NOT indexed here: the fill tape + tokenId→conditionId map come from the HF
+##    dataset (data/fills.py). The dead Fill/TokenMap/ReconStatus entities were pruned with their
+##    (already-removed) CTFExchange handlers.
 
 type Market {
   id: ID!                 # = conditionId
@@ -18,7 +21,7 @@ type Market {
   resolvedAt: BigInt
 }
 
-## Resolution lifecycle (populated in STEP 2, once OOv2/adapter handlers are wired).
+## Resolution lifecycle (OOv2/adapter handlers).
 type ResolutionRequest {
   id: ID!                 # = conditionId + "-" + round  (distinct per reset round)
   market: Market!
@@ -39,29 +42,6 @@ type Dispute {
   round: Int!
 }
 
-## CLOB fill tape (from CTFExchange OrderFilled) — feeds sigma and fair value.
-type Fill {
-  id: ID!                 # = txHash + "-" + logIndex
-  market: Market          # resolved via TokenRegistered (tokenId -> conditionId); may be null pre-map
-  tokenId: String!        # ERC-1155 positionId (the outcome token that traded)
-  maker: String!
-  taker: String!
-  price: Float!           # derived: collateral per outcome token, in (0,1)
-  size: Float!            # outcome-token amount filled
-  side: String!           # BUY | SELL (from maker/taker asset ids)
-  fee: BigInt!
-  timestamp: BigInt!
-  txHash: String!
-}
-
-## Maps an ERC-1155 outcome tokenId to its conditionId (from CTFExchange TokenRegistered),
-## so Fills can be joined to Markets without dynamic-contract indexing.
-type TokenMap {
-  id: ID!                 # = tokenId
-  conditionId: String!
-  complementTokenId: String!
-}
-
 ## ADAPTER-AGNOSTIC JOIN INDICES (so disputes link to conditionId WITHOUT keccak-deriving — which
 ## fails for NegRisk, whose questionIds come from NegRiskIdLib, not keccak(ancillary)):
 ##  - QuestionIndex: the authoritative questionId -> conditionId map, straight from the CTF
@@ -77,16 +57,4 @@ type QuestionIndex {
 type RequestIndex {
   id: ID!                 # = lower(adapterAddress) + "-" + requestTimestamp
   conditionId: String!
-}
-
-## Reconciliation: 100% on the ELIGIBLE set, with every exclusion bucket counted (not dropped).
-type ReconStatus {
-  id: ID!                 # singleton "global"
-  marketsSettled: Int!
-  matched: Int!           # indexed finalOutcome == on-chain payout
-  excludedPending: Int!
-  excludedInDispute: Int!
-  excludedReorgWindow: Int!
-  excludedUnsupportedAdapter: Int!
-  updatedAt: BigInt!
 }

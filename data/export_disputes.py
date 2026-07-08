@@ -33,7 +33,7 @@ import datetime
 import json
 import os
 
-from .disputes import load_disputes_from_indexer
+from .disputes import HOSTED_GRAPHQL_URL, load_disputes_from_indexer, resolve_indexer
 from .hf import connect, query, table_path
 from .metadata import category_case_sql
 
@@ -96,8 +96,19 @@ def build_rows(graphql_url: str | None = None, *, with_price_context: bool = Fal
     The released `conditionId` is the EFFECTIVE HF join key: the recovered tradeable conditionId for
     NegRisk (via data/negrisk_map.py), the native conditionId for V2/Legacy. So category + price context
     now populate for NegRisk too, wherever the map resolved the market.
+
+    Endpoint via the shared `resolve_indexer` (explicit → local → hosted). A hosted hit keeps the
+    export RUNNING but is coverage-capped — loudly flagged, because a truncated release artifact
+    must never be published as authoritative.
     """
-    disputes = load_disputes_from_indexer(graphql_url, log=log)
+    url, secret = resolve_indexer(graphql_url)
+    if url is None:
+        raise RuntimeError("no indexer endpoint reachable (local Hasura and hosted HyperIndex both "
+                           "down) — start the local indexer before exporting")
+    if log and url == HOSTED_GRAPHQL_URL:
+        log("  ⚠ local indexer down -> hosted HyperIndex fallback (COVERAGE-CAPPED: 1000 rows/page, "
+            "aggregates off). Do NOT publish artifacts from this run as authoritative.")
+    disputes = load_disputes_from_indexer(url, secret=secret, log=log)
     # effective HF join key per row (tradeable for NegRisk, native for V2/Legacy)
     for d in disputes:
         d["_joinCid"] = d.get("tradeableConditionId") or d["conditionId"]

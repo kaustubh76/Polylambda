@@ -205,54 +205,6 @@ def market_feature_dicts(condition_ids: list[str]) -> dict[str, dict]:
     return {c: idx[c] for c in condition_ids if c in idx}
 
 
-def _control_proposers(cids: list[str], graphql_url: str | None = None) -> dict[str, str]:
-    """{conditionId: proposer_lower} for control markets, from the indexer's round-0
-    ResolutionRequest. Without this, controls have no proposer and `proposer_reliability` would
-    trivially separate the classes (leakage). Returns {} on any failure (feature then degrades)."""
-    import json
-    import urllib.request
-
-    url = graphql_url or os.environ.get("GRAPHQL_URL", "http://localhost:8080/v1/graphql")
-    secret = os.environ.get("HASURA_ADMIN_SECRET", "testing")
-    out: dict[str, str] = {}
-    try:
-        for i in range(0, len(cids), 400):
-            inlist = ",".join('"' + c + '"' for c in cids[i:i + 400])
-            q = ('{ ResolutionRequest(where:{market:{id:{_in:[' + inlist +
-                 ']}}, round:{_eq:0}}){ proposer market{ id } } }')
-            req = urllib.request.Request(url, data=json.dumps({"query": q}).encode(),
-                                         headers={"Content-Type": "application/json",
-                                                  "x-hasura-admin-secret": secret})
-            for r in json.load(urllib.request.urlopen(req, timeout=30))["data"]["ResolutionRequest"]:
-                m, p = r.get("market") or {}, r.get("proposer")
-                if p and m.get("id"):
-                    out[m["id"]] = p.lower()
-    except Exception:
-        return out
-    return out
-
-
-def _resolve_indexer(graphql_url: str | None = None):
-    """Pick a live indexer endpoint: an explicit/local one (with the admin secret) or the hosted
-    HyperIndex deploy (which rejects the admin-secret header, so send none). Returns (url, secret) or
-    (None, None) if neither answers. Probes with a trivial query."""
-    from data.disputes import _gql
-
-    candidates = []
-    if graphql_url:
-        candidates.append((graphql_url, None))
-    candidates.append((os.environ.get("GRAPHQL_URL", "http://localhost:8080/v1/graphql"), None))
-    candidates.append((os.environ.get(
-        "HOSTED_GRAPHQL_URL", "https://indexer.dev.hyperindex.xyz/0638687/v1/graphql"), ""))
-    for url, secret in candidates:
-        try:
-            _gql("{ ResolutionRequest(limit: 1) { id } }", url=url, secret=secret, timeout=15)
-            return url, secret
-        except Exception:
-            continue
-    return None, None
-
-
 def load_controls_from_indexer(n: int, *, graphql_url: str | None = None) -> list[dict]:
     """PROPOSED-BUT-NOT-DISPUTED control markets from the indexer — the correct control population for
     a dispute-onset model. A round-0 ResolutionRequest with status RESOLVED + a non-null proposer was
@@ -260,10 +212,10 @@ def load_controls_from_indexer(n: int, *, graphql_url: str | None = None) -> lis
     proposer, so proposer_reliability is a fair feature for both classes (unlike v1's arbitrary HF
     controls, which had none → the AUC-0.95 leakage). Returns up to n HF-joinable [{cid, proposer,
     oracle}] (NegRisk mapped to its tradeable cid). Empty on any failure (caller falls back)."""
-    from data.disputes import ADAPTER_OF, _gql
+    from data.disputes import ADAPTER_OF, _gql, resolve_indexer
     from data.hf import query, table_path
 
-    url, secret = _resolve_indexer(graphql_url)   # local (admin secret) → hosted (no secret) fallback
+    url, secret = resolve_indexer(graphql_url)   # local (admin secret) → hosted (no secret) fallback
     if url is None:
         return []
     raw, offset, scan_cap = [], 0, max(3 * n, 2000)
@@ -496,3 +448,38 @@ def fit_and_save(labeled_rows, *, natural_rate: float | None = None,
     save_hazard_model(model, metrics, offset, path=path)
     metrics["path"] = path
     return metrics
+
+
+def main(argv: list[str] | None = None) -> None:
+    """The reproducible training entry point (was manual/REPL-only before): fit + cache the model
+    so the deployed .data_cache/hazard_model.json is regenerable with one command. Extracted from
+    __main__ so tests can drive the argument parsing/printout with train_and_cache stubbed."""
+    import argparse
+
+    ap = argparse.ArgumentParser(
+        description="Fit + cache the dispute-hazard model so the deployed .data_cache/hazard_model.json "
+                    "is reproducible. Default = the DEPLOYED size-only model; --matched runs the v2 "
+                    "fair-controls proposer-null EVALUATION (needs the indexer; NOT a deployable model).")
+    ap.add_argument("--matched", action="store_true",
+                    help="v2 fair-controls study (CEM-matched on market_size to isolate proposer_reliability)")
+    ap.add_argument("--graphql-url", default=None,
+                    help="indexer endpoint for --matched controls (default: auto-resolve local→hosted)")
+    ap.add_argument("--path", default=None,
+                    help="output JSON path (default: the deployed cache; --matched defaults to a "
+                         "separate *_matched_eval.json so the EVALUATION never clobbers the deployed model)")
+    args = ap.parse_args(argv)
+
+    path = args.path or (HAZARD_MODEL_CACHE.replace(".json", "_matched_eval.json") if args.matched
+                         else HAZARD_MODEL_CACHE)
+    m = train_and_cache(matched=args.matched, graphql_url=args.graphql_url, path=path)
+    print(f"wrote {m.get('path')}")
+    print(f"  n={m.get('n')} positives={m.get('positives')} "
+          f"held-out AUC={m.get('holdout_auc')} discriminates={m.get('discriminates')}")
+    off = m.get("offset")
+    print(f"  offset={off:.4f} natural_rate={m.get('natural_rate')}" if off is not None
+          else f"  natural_rate={m.get('natural_rate')}")
+    print(f"  caveat: {m.get('caveat')}")
+
+
+if __name__ == "__main__":
+    main()

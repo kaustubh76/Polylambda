@@ -85,8 +85,9 @@ def wash_prevalence(sample_rows: int = 2_000_000) -> dict:
 def dispute_base_rates() -> list[dict]:
     """The λ signal: per-category dispute base rate (disputes / resolved), sorted high→low.
 
-    NUMERATOR from data.disputes (no-Docker OOv2 source, V2/Legacy — see its NegRisk caveat);
-    DENOMINATOR from HF category_counts_hf. Lower bounds; the cross-category ordering is the signal.
+    NUMERATOR from data.disputes (released dispute layer, ALL adapters incl. NegRisk via the
+    tradeable-cid map; RPC V2/Legacy cache only as last resort); DENOMINATOR from HF
+    category_counts_hf. The cross-category ordering is the signal.
     """
     from . import disputes as _disp
 
@@ -112,7 +113,8 @@ def gap_probe() -> dict:
         "dispute_events_in_hf": 0,
         "note": ("HF indexes UmaSportsOracle (game/market) + ConditionalTokens resolution, but NOT "
                  "generic OptimisticOracleV2 ProposePrice/DisputePrice/Settle. The ~dispute labels "
-                 "must come from PolyLambda's scoped local indexer, joined on conditionId."),
+                 "must come from PolyLambda's scoped local indexer (shipped as the released parquet, "
+                 "dataset_release/polymarket-oov2-disputes-v1), joined on conditionId."),
     }
 
 

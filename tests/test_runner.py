@@ -84,8 +84,14 @@ def test_real_market_builder_uses_real_base_rate_lambda():
     """source='data' routes markets through estimate_lambda with REAL category base rates (the
     engine, no longer bypassed): politics is far more dispute-prone than crypto (diagram ~22×)."""
     pytest.importorskip("duckdb")
+    import os
+
     from config.loader import load_config
+    from data.disputes import RELEASE_PARQUET
     from forwardtest.runner import build_markets
+
+    if not os.path.exists(RELEASE_PARQUET):                 # numerator source for the base rates;
+        pytest.skip("release parquet absent — fallback would live-scan Polygon RPC")
 
     markets = build_markets([{"cid": "0xa", "category": "politics", "price": 0.8},
                              {"cid": "0xb", "category": "crypto", "price": 0.5}])

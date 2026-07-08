@@ -37,8 +37,9 @@ PolyLambda indexes the Polymarket → UMA resolution lifecycle and CLOB fills wi
 > **⚠ CORRECTION (edge + validation):** "frozen for 4–6 days when a market disputes" — only
 > *redemption* freezes; trading continues (degraded). And the **live** λ-ablation is
 > statistically powerless in 18 days (~0–3 disputes expected, ≈0 DVM hard-locks). The
-> **primary** edge proof is a **historical counterfactual replay over the ~184 indexed
-> historical disputes + matched controls**; the live ablation is a pre-registered,
+> **primary** edge proof is a **historical counterfactual replay over the 1,794 released
+> disputes (1,409 replayed with usable fill tapes — [DATASET.md](DATASET.md) §5b'') + matched
+> controls**; the live ablation is a pre-registered,
 > explicitly-underpowered sanity check. See [DECISIONS.md](DECISIONS.md) #1, #11.
 
 ---
@@ -206,15 +207,17 @@ poly_lambda/
 > resolutions now come from the public HF dataset `moose-code/polymarket-onchain-v1` (1.17B fills,
 > queried in place via DuckDB in `data/`), so the local indexer is **scoped down to the OOv2 dispute
 > lifecycle only** — the one thing HF lacks. This unblocks σ / recon / λ base-rates / the
-> replay-ablation without a multi-day local backfill. Dispute **labels** still require running the
-> scoped indexer (`indexer/`).
+> replay-ablation without a multi-day local backfill. Dispute **labels** now ship in-repo as the
+> released `dataset_release/polymarket-oov2-disputes-v1` parquet (**1,794 disputes, all adapters,
+> 100% HF-joinable**) — the scoped indexer (`indexer/`) is only needed to refresh the release or
+> for `DATA_SOURCE=graphql`.
 
 ---
 
 ## Tech stack
 
 - **Indexing:** Envio HyperIndex (TypeScript) → Postgres + GraphQL
-- **Quant / bot:** Python 3.11+ — `numpy`, `pandas`, `scikit-learn` (σ, λ), `py-clob-client` (CLOB API)
+- **Quant / bot:** Python 3.11+ — `numpy`, `pandas`, `scikit-learn` (σ, λ), `Polymarket/py-sdk` (CLOB V2 API; pinned — see correction below)
 - **Tooling:** `pnpm` (Envio), `uv`/`pip` (Python), `pytest`
 
 > **⚠ CORRECTION (dead SDK):** `py-clob-client` is **archived and non-functional against
@@ -323,8 +326,9 @@ python -m forwardtest.ablation          # λ-term ON vs OFF → risk-adjusted P&
 > will be permanently red or silently gamed by async/bimodal resolution, reorgs, and
 > multi-adapter joins. Redefine it as **100% on the ELIGIBLE set** (settled + past confirmation
 > depth + supported adapter) with **counted exclusion buckets**. And the **primary** edge proof
-> is `forwardtest/replay_ablation.py` (historical counterfactual over ~184 disputes, **net of
-> forgone rewards**); `forwardtest/ablation.py` (live) is a labeled-underpowered sanity check.
+> is `forwardtest/replay_ablation.py` (historical counterfactual over the 1,794 released
+> disputes — 1,409 with fills, all adapters — **net of forgone rewards**);
+> `forwardtest/ablation.py` (live) is a labeled-underpowered sanity check.
 
 ---
 

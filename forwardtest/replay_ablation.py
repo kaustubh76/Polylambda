@@ -15,11 +15,13 @@ counterfactual replay:
   "no edge".
 
 TWO-SOURCE JOIN (this is where the whole data layer converges):
-  * DISPUTED markets + dispute timestamps  <- the scoped local OOv2 indexer (GraphQL). HF has none.
+  * DISPUTED markets + dispute timestamps  <- the released dispute layer (dataset_release parquet,
+    via data.disputes; DATA_SOURCE=graphql sources them live from the scoped OOv2 indexer). HF has none.
   * matched CONTROLS + fill tapes + outcomes <- the HF dataset (data.metadata / data.fills /
     data.conditions), ideally via data.cache.materialize_slice for speed.
-The join key is conditionId. Until the local indexer has produced disputes, `load_disputes` returns
-[] and run_replay reports 0 disputes with the power calc — honestly "no labels yet", not "no edge".
+The join key is conditionId. Labels ship in-repo (1,794 released disputes); only if the release
+parquet, RPC cache and indexer are ALL unavailable does `load_disputes` return [] and run_replay
+report 0 disputes with the power calc — honestly "no labels", not "no edge".
 
 Honest simplifications (documented, per README scope — no historical order-book reconstruction):
   * "mid" is the fill-tape mid (proxy); no queue position / true fill probability is modeled.
@@ -60,10 +62,11 @@ def _logit(p: float) -> float:
 def load_disputes(graphql_url: str) -> list[dict]:
     """Disputed markets: [{conditionId, disputeTs}].
 
-    DATA_SOURCE=hf (default): the no-Docker `data.disputes` source (OOv2 DisputePrice via public RPC,
-    V2/Legacy adapters, HF-joined; see its docstring for the NegRisk limitation).
-    DATA_SOURCE=graphql: the scoped local OOv2 indexer. Returns [] (not an error) when neither has
-    produced labels yet — run_replay then reports 0 disputes.
+    DATA_SOURCE=hf (default): the offline `data.disputes` source — the released dispute parquet
+    (all adapters incl. NegRisk, 100% HF-joinable); falls back to the RPC-scanned V2/Legacy cache
+    only if the parquet is absent.
+    DATA_SOURCE=graphql: the scoped local OOv2 indexer. Returns [] (not an error) when no source
+    has labels — run_replay then reports 0 disputes.
     """
     from data.hf import DATA_SOURCE
 
@@ -211,7 +214,9 @@ def run_replay(graphql_url: str, lambda_star_grid: list[float],
     print(f"[replay] disputes={len(disputed_ids)} controls={len(controls)} "
           f"expected_disputes(power_calc)={exp:.2f}")
     if not disputed_ids:
-        print("[replay] no dispute labels yet — run the scoped local OOv2 indexer (see indexer/). "
+        print("[replay] no dispute labels — expected the released parquet "
+              "(dataset_release/polymarket-oov2-disputes-v1/disputes.parquet, the default) or the "
+              "indexer (DATA_SOURCE=graphql); check the release parquet. "
               "Reporting empty result (this is 'no labels', NOT 'no edge').")
 
     # per-market contributions (cache the slice first for speed on real runs)
@@ -263,6 +268,9 @@ def run_replay(graphql_url: str, lambda_star_grid: list[float],
             [[lam_sel[c], market_size_feature(counts_by_cid.get(c, 0)), 0.0, 0.0]])[0, 1]) for c in cids}
         hlo, hhi = min(lam_haz.values()), max(lam_haz.values())
         print(f"[replay] lambda_hazard (structural) range: {hlo:.4f}..{hhi:.4f}")
+    else:
+        print("[replay] hazard model missing (.data_cache/hazard_model.json); run "
+              "`python -m estimators.hazard` to regenerate — B_hazard arm omitted")
 
     results: list[AblationResult] = []
     for ls in lambda_star_grid:

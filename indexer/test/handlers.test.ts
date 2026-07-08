@@ -14,7 +14,9 @@
  * block/transaction fields, add them to `meta()` below. `lib.test.ts` is the always-runnable pure test.
  */
 import { describe, it, expect } from "vitest";
-import { createTestIndexer } from "envio";
+// createTestIndexer is emitted by `pnpm codegen` into "generated" (the `envio` package itself does
+// not export it at the pinned 3.0.0-alpha.21 — importing it from "envio" yields undefined).
+import { createTestIndexer } from "generated";
 import "../src/EventHandlers"; // register handlers
 import { ONE, deriveConditionId, questionIdFromAncillary } from "../src/lib";
 
@@ -29,11 +31,16 @@ const TXH = "0x" + "ab".repeat(32);
 const QID = questionIdFromAncillary(ANCILLARY);
 const CID = deriveConditionId(ADAPTER, QID);
 
+// alpha.21 validates simulated blocks against config.yaml's start_block (28M) and advances the
+// chain cursor between process() calls — so each event gets the next block past the start.
+let blockNo = 28_000_000;
+
 function meta(over: Record<string, unknown> = {}) {
+  blockNo += 1;
   return {
     srcAddress: ADAPTER,
     logIndex: 0,
-    block: { number: 1000, timestamp: 1_700_000_000 },
+    block: { number: blockNo, timestamp: 1_700_000_000 },
     transaction: { hash: TXH, from: PROPOSER, to: ADAPTER },
     ...over,
   };

@@ -1,11 +1,11 @@
 /*
  * PolyLambda event handlers (Envio HyperIndex).
  *
- * STEP 1 — market lifecycle + fill tape:
+ * STEP 1 — market lifecycle:
  *   ConditionPreparation -> Market (OPEN)
  *   ConditionResolution  -> Market.finalOutcome (RESOLVED)   [feeds reconciliation]
- *   TokenRegistered      -> TokenMap (tokenId -> conditionId)
- *   OrderFilled          -> Fill                              [feeds sigma / fair value]
+ *   (CLOB fill tape NOT indexed — it comes from the HF dataset via data/fills.py; the dead
+ *    Fill/TokenMap entities were pruned from schema.graphql with the CTFExchange handlers.)
  *
  * STEP 2 — resolution lifecycle (proposal / dispute / settle):
  *   UmaCtfAdapter.QuestionInitialized -> Market.ancillaryData + ResolutionRequest(round 0)
@@ -71,9 +71,10 @@ ConditionalTokens.ConditionResolution.handler(async ({ event, context }) => {
 });
 
 // --- CLOB fill tape (TokenRegistered + OrderFilled) — REMOVED, sourced from the HF dataset. ---
-// The Fill and TokenMap entities are now populated by data/* (DuckDB over order_filled + market_data),
-// not by local indexing. See ../config.yaml for the rationale. To re-enable the live head tape,
-// restore the CTFExchange contract in config.yaml and uncomment the handlers below + the import.
+// The fill tape + token map come from data/* (DuckDB over HF order_filled + market_data), not from
+// local indexing. See ../config.yaml for the rationale. To re-enable the live head tape, restore
+// the Fill/TokenMap entity types in ../schema.graphql (pruned as dead), the CTFExchange contract in
+// config.yaml, and the handlers below + the import; then re-run `pnpm codegen`.
 //
 // CTFExchange.TokenRegistered.handler(async ({ event, context }) => { ... });
 // CTFExchange.OrderFilled.handler(async ({ event, context }) => { ... deriveFill(...) ... });

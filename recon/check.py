@@ -67,8 +67,15 @@ def _fetch_indexed_markets(graphql_url: str, *, page: int = 5000, secret: str | 
         q = ("query { Market(limit: %d, offset: %d) "
              "{ id status finalOutcome oracle resolvedAt } }" % (page, offset))
         req = urllib.request.Request(graphql_url, data=json.dumps({"query": q}).encode(), headers=headers)
-        with urllib.request.urlopen(req, timeout=120) as r:
-            payload = json.loads(r.read())
+        payload = None
+        for attempt in range(3):   # per-page retry — a transient blip (IncompleteRead/reset) on one
+            try:                   # page of a 70k-market paginated pull must not drop the whole run
+                with urllib.request.urlopen(req, timeout=120) as r:
+                    payload = json.loads(r.read())
+                break
+            except Exception:
+                if attempt == 2:
+                    raise
         if payload.get("errors"):
             raise RuntimeError(payload["errors"])
         rows = payload["data"]["Market"]
@@ -82,16 +89,32 @@ def _fetch_indexed_markets(graphql_url: str, *, page: int = 5000, secret: str | 
 
 
 def run_recon(graphql_url: str, rpc_url: str = "", confirmation_depth: int = 128,
-              *, chain_head_ts: int | None = None) -> ReconReport:
+              *, chain_head_ts: int | None = None, log=print) -> ReconReport:
     """Compare each eligible indexed Market.finalOutcome to the HF on-chain payout vector.
 
     Eligibility: status RESOLVED, oracle in SUPPORTED_ADAPTERS, and (if chain_head_ts given)
     resolved older than the reorg window. Everything else is counted in an exclusion bucket.
+
+    Endpoint: resolved via the shared `data.disputes.resolve_indexer` (explicit → local → hosted).
+    A hosted hit is COVERAGE-CAPPED (1000 rows/page, aggregates off), so its pass_rate covers only
+    the returned Market subset, not the full universe — logged, never silently over-claimed.
     """
     from data.conditions import hf_payout_map
+    from data.disputes import HOSTED_GRAPHQL_URL, resolve_indexer
+
+    url, secret = resolve_indexer(graphql_url)
+    if url is None:
+        raise RuntimeError("no indexer endpoint reachable (local Hasura and hosted HyperIndex both down)")
+    hosted = url == HOSTED_GRAPHQL_URL
+    if log and url != graphql_url:
+        log(f"[recon] {graphql_url} unreachable -> {url}")
+    if log and hosted:
+        log("[recon] hosted HyperIndex is COVERAGE-CAPPED (1000 rows/page, aggregates off): "
+            "pass_rate below covers only the returned Market subset, NOT the full universe")
 
     truth = hf_payout_map()  # {conditionId: "1,0"/"0,1"/... } — loaded once
-    markets = _fetch_indexed_markets(graphql_url)
+    # hosted clamps limit to 1000 — a bigger page would end pagination after one short batch
+    markets = _fetch_indexed_markets(url, page=1000 if hosted else 5000, secret=secret)
 
     eligible = matched = 0
     b_pending = b_dispute = b_reorg = b_adapter = b_noground = 0

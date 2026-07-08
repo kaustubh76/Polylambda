@@ -2,9 +2,10 @@
 base_rates — per-category market/resolution counts (the lambda denominator + sigma-prior strata).
 
 HF supplies the DENOMINATOR (how many markets / how many resolved, per derived category). The
-lambda dispute NUMERATOR is NOT in HF (it needs OOv2 dispute events, which only the scoped local
-indexer produces) and is injected via `dispute_counts` — this is the concrete two-source join that
-DECISIONS.md #13 describes: HF category denominators × local dispute numerators on conditionId.
+lambda dispute NUMERATOR is NOT in HF (OOv2 dispute events); it ships as the released dispute layer
+(dataset_release/polymarket-oov2-disputes-v1, produced by the scoped indexer) and is injected via
+`dispute_counts` — this is the concrete two-source join that DECISIONS.md #13 describes: HF
+category denominators × released dispute numerators on conditionId.
 
 `category` is derived (see data.metadata.category_case_sql) — best-effort from slug/name keywords.
 """
@@ -54,7 +55,8 @@ def category_base_rate(category: str, dispute_counts: dict[str, int],
                        counts: dict[str, dict] | None = None) -> dict:
     """Dispute base rate for a category: disputes(local) / resolved(HF), with a Wilson CI.
 
-    `dispute_counts` comes from the local OOv2 indexer (Dispute ⋈ market_data.category on conditionId).
+    `dispute_counts` comes from data.disputes.dispute_counts_by_category() (released dispute parquet
+    by default; live indexer under DATA_SOURCE=graphql), joined to market_data.category on conditionId.
     Returns {category, disputes, resolved, rate, ci_low, ci_high}.
     """
     counts = counts or category_counts_hf()

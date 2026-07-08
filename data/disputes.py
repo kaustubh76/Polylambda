@@ -17,8 +17,9 @@ and **Legacy** adapters, but NOT for **NegRisk** (0/56 join across every keccak 
 assigns sequential questionIds via NegRiskIdLib at market-prep time, so conditionId is NOT a function
 of the OO ancillaryData — it can only be recovered from the NegRiskAdapter's own on-chain events
 (what the scoped local indexer reads). NegRisk disputes are therefore COUNTED but not label-joined
-here; run the local indexer to cover them. Polymarket moved most recent markets to NegRisk, so this
-source skews to the 2023–2024 V2 era (which is exactly where HF's market_data overlaps anyway).
+BY THIS RPC KECCAK FALLBACK; the default load_disputes() path (released parquet, or the indexer +
+data/negrisk_map.py) joins them 100% — see the CORRECTION below. The raw RPC source skews to the
+2023–2024 V2 era (which is exactly where HF's market_data overlaps anyway).
 
 CORRECTION (2026-07-05) to the earlier "NegRisk structurally absent from HF" claim: that finding was
 an artifact of PHANTOM conditionIds. Our indexer's QuestionInitialized handler keccak-falls-back to
@@ -54,7 +55,7 @@ DERIVABLE = {
     "0x6a9d222616c90fca5754cd1333cfd9b7fb6a4f74": "v2",
     "0x71392e133063cc0d16f40e1f9b60227404bc03f7": "legacy",
 }
-NEGRISK = "0x2f5e3684cb1f318ec51b00edba38d79ac2c0aa9d"  # counted, not label-joined (see module docstring)
+NEGRISK = "0x2f5e3684cb1f318ec51b00edba38d79ac2c0aa9d"  # counted-only in the RPC keccak fallback; label-joined via negrisk_map in the indexer/release paths
 
 RPC_URL = os.environ.get("POLYGON_RPC_URL") or "https://polygon.gateway.tenderly.co"
 START_BLOCK = int(os.environ.get("DISPUTE_START_BLOCK", "33000000"))   # ~early 2022
@@ -62,10 +63,22 @@ HF_CUTOFF_BLOCK = int(os.environ.get("HF_CUTOFF_BLOCK", "85948287"))   # dataset
 CHUNK = 500_000
 CACHE = os.path.join(os.environ.get("DATA_CACHE_DIR", ".data_cache"), "disputes.json")
 
+# The git-tracked released dispute layer: the COMPLETE, 100%-HF-joinable set across ALL adapters
+# (V2 723 + NegRisk 963 + other 108 = 1,794), keyed by the HF-EFFECTIVE conditionId (NegRisk already
+# mapped to its tradeable cid). This is the offline default numerator source for load_disputes().
+RELEASE_PARQUET = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    "dataset_release", "polymarket-oov2-disputes-v1", "disputes.parquet")
+
 # --- local Envio indexer (Hasura) source: covers V2 + NegRisk + Legacy via the ConditionPreparation
 # lookup (authoritative conditionId), NOT keccak derivation. See load_disputes_from_indexer. ---
 GRAPHQL_URL = os.environ.get("GRAPHQL_URL", "http://localhost:8080/v1/graphql")
 HASURA_SECRET = os.environ.get("HASURA_ADMIN_SECRET", "testing")
+# Envio's hosted HyperIndex deploy — the fallback when the local Docker indexer is down. It rejects
+# the admin-secret header (send none) and is row-capped at 1000 with aggregates off, so callers that
+# need the full universe must treat a hosted hit as coverage-capped, not authoritative.
+HOSTED_GRAPHQL_URL = os.environ.get(
+    "HOSTED_GRAPHQL_URL", "https://indexer.dev.hyperindex.xyz/0638687/v1/graphql")
 # Market.oracle (lowercased) -> adapter label. Reuses the RPC-path adapter set (V2/Legacy) + NegRisk.
 ADAPTER_OF = {**DERIVABLE, NEGRISK: "negrisk"}
 
@@ -173,6 +186,30 @@ def _gql(query_str: str, *, url: str | None = None, secret: str | None = None, t
     return out["data"]
 
 
+def resolve_indexer(graphql_url: str | None = None):
+    """Pick a reachable indexer endpoint and return (url, secret), or (None, None) if none answers.
+
+    Probe order: an explicit `graphql_url` (admin secret) → the local Hasura `GRAPHQL_URL` (admin
+    secret) → the hosted HyperIndex deploy (which rejects the admin-secret header, so send none).
+    The shared resolver so recon/export/hazard all degrade gracefully when local Docker is down —
+    previously only hazard had this fallback. Probes each with a trivial ResolutionRequest query.
+
+    NB: a hosted hit is COVERAGE-CAPPED (1000 rows, aggregates off) — callers needing the full
+    universe (e.g. full recon) should say so in their logs rather than over-claim completeness."""
+    candidates = []
+    if graphql_url:
+        candidates.append((graphql_url, None))
+    candidates.append((GRAPHQL_URL, None))
+    candidates.append((HOSTED_GRAPHQL_URL, ""))
+    for url, secret in candidates:
+        try:
+            _gql("{ ResolutionRequest(limit: 1) { id } }", url=url, secret=secret, timeout=15)
+            return url, secret
+        except Exception:
+            continue
+    return None, None
+
+
 BLOCK_TS_CACHE = os.path.join(os.environ.get("DATA_CACHE_DIR", ".data_cache"), "dispute_block_ts.json")
 
 
@@ -228,9 +265,13 @@ def dispute_block_timestamps(graphql_url: str | None = None, *, refetch: bool = 
     return cache
 
 
-def load_disputes_from_indexer(graphql_url: str | None = None, *, joinable_only: bool = False,
-                               page: int = 1000, log=None) -> list[dict]:
+def load_disputes_from_indexer(graphql_url: str | None = None, *, secret: str | None = None,
+                               joinable_only: bool = False, page: int = 1000, log=None) -> list[dict]:
     """Dispute labels from the scoped local Envio indexer (Hasura) — V2 + NegRisk + Legacy.
+
+    `secret` follows the _gql convention: None → the local HASURA_SECRET, "" → no auth header
+    (what the hosted deploy requires). Callers that resolved their endpoint via `resolve_indexer`
+    should pass both the returned url and secret.
 
     Unlike the RPC path (V2/Legacy only, via keccak derivation), the indexer captures NegRisk disputes
     too. For NegRisk the indexer's conditionId is a PHANTOM (see module docstring); the on-chain
@@ -253,7 +294,7 @@ def load_disputes_from_indexer(graphql_url: str | None = None, *, joinable_only:
         q = ("query { Dispute(limit: %d, offset: %d, order_by: {disputeTs: asc}) "
              "{ id disputer disputeTs round request { proposer proposedOutcome requestTimestamp "
              "market { id oracle questionId } } } }" % (page, offset))
-        batch = _gql(q, url=url).get("Dispute", [])
+        batch = _gql(q, url=url, secret=secret).get("Dispute", [])
         if not batch:
             break
         for d in batch:
@@ -330,9 +371,12 @@ def load_disputes_from_indexer(graphql_url: str | None = None, *, joinable_only:
 def load_disputes() -> list[dict]:
     """[{conditionId, disputeTs, adapter, disputer}] for HF-joinable disputes.
 
-    Default (DATA_SOURCE=hf): the offline RPC cache (V2/Legacy, 723, keccak-derived). When
-    DATA_SOURCE=graphql, source from the local Envio indexer instead (V2+NegRisk+Legacy, joinable
-    subset), falling back to the RPC cache if the indexer is unreachable.
+    Default (DATA_SOURCE=hf): the git-tracked released dispute layer (RELEASE_PARQUET) — the
+    COMPLETE, 100%-joinable set across all adapters (V2 723 + NegRisk 963 + other 108 = 1,794),
+    already keyed by the HF-effective conditionId, fully offline (no indexer, no NegRisk-map
+    indirection at runtime). When DATA_SOURCE=graphql, source live from the local Envio indexer
+    instead (V2+NegRisk+Legacy, joinable subset). Fallbacks on any failure: released parquet →
+    the RPC-scanned V2/Legacy cache (723) so the numerator is never empty.
     """
     if os.environ.get("DATA_SOURCE") == "graphql":
         try:
@@ -345,7 +389,18 @@ def load_disputes() -> list[dict]:
                          "disputeTs": r["disputeTs"],
                          "adapter": r["adapter"], "disputer": r["disputer"]} for r in rows]
         except Exception:
-            pass  # indexer down → offline RPC cache below
+            pass  # indexer down → offline release/RPC cache below
+    # offline default: the complete released dispute layer (effective cid, 100% HF-joinable, 1,794)
+    if os.path.exists(RELEASE_PARQUET):
+        try:
+            rows = query(f"SELECT conditionId, disputeTs, adapter, disputer "
+                         f"FROM '{RELEASE_PARQUET}' WHERE hf_joinable")
+            if rows:
+                return [{"conditionId": c, "disputeTs": int(ts or 0), "adapter": a, "disputer": d}
+                        for c, ts, a, d in rows]
+        except Exception:
+            pass  # parquet unreadable → RPC cache below
+    # last resort: the RPC-scanned V2/Legacy cache (723) if the release parquet is absent
     data = build_dispute_cache()
     return [{"conditionId": d["conditionId"], "disputeTs": d.get("disputeTs", 0),
              "adapter": d["adapter"], "disputer": d["disputer"]} for d in data["disputes"]]
@@ -379,9 +434,12 @@ def dispute_counts_by_category() -> dict[str, int]:
 
 
 if __name__ == "__main__":
-    data = build_dispute_cache()
-    print(f"\nHF-joinable V2/Legacy disputes: {data['n_joined']} "
-          f"(of {data['n_derivable_raw']} derivable scanned)")
-    print(f"NegRisk disputes (counted, NOT joinable without the local indexer): "
-          f"{data['negrisk_count_unjoinable']}")
+    disputes = load_disputes()
+    src = "released parquet (all adapters)" if os.path.exists(RELEASE_PARQUET) else "RPC cache (V2/Legacy)"
+    print(f"\ndefault dispute numerator source: {src}")
+    print(f"HF-joinable disputes loaded: {len(disputes)}")
+    by_adapter: dict[str, int] = {}
+    for d in disputes:
+        by_adapter[d["adapter"]] = by_adapter.get(d["adapter"], 0) + 1
+    print(f"by adapter: {by_adapter}")
     print("by category:", dispute_counts_by_category())

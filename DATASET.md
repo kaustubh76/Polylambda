@@ -119,9 +119,14 @@ Two honest caveats surfaced by the data:
 - **~132k resolved conditions have no `market_data` row** (992,485 vs 859,709) — FPMM-era / unlabeled
   markets. They count for recon but not for category strata.
 
-These are the **denominators**. The dispute **numerator** for λ is *not in HF* (§5), so
-`category_base_rate` reports a base rate with a wide **Wilson CI** until the local indexer supplies
-disputes.
+These are the **denominators**. The dispute **numerator** now ships in-repo: the released parquet
+(`dataset_release/polymarket-oov2-disputes-v1/disputes.parquet`, §5c — 1,794 disputes, all adapters,
+100% HF-joinable) is the **default** for `data.disputes.load_disputes` / `dispute_counts_by_category`
+— no indexer or Docker needed. §5b is the authoritative current base-rate table. **Do not mix
+numerators:** rates computed from the old 723-row V2/Legacy RPC-cache numerator (the last-resort
+fallback) understate per-category rates roughly **2–20×** (politics 0.92%→1.83%, entertainment
+0.11%→2.11%, crypto 0.042%→0.085%) — downstream λ consumers must use the release/indexer numerator,
+never the fallback's.
 
 ---
 
@@ -140,15 +145,18 @@ compute wash metrics on a **materialized slice**, not against `hf://`.
 
 HF indexes `UmaSportsOracle` + `ConditionalTokens` resolution, but **not generic
 OptimisticOracleV2 `ProposePrice` / `DisputePrice` / `Settle`**. So the dataset gives you resolution
-*outcomes* but **zero dispute events** — and the ~184 dispute **labels** that λ and the
-replay-ablation depend on are simply not here. `data.dossier.gap_probe()` returns
+*outcomes* but **zero dispute events** — and the **1,794 dispute labels (1,527 unique disputed
+markets, §5c)** that λ and the replay-ablation depend on are simply not here. `data.dossier.gap_probe()` returns
 `dispute_events_in_hf = 0` against 992,485 resolved markets you'd want labels for.
 
-**Consequence:** the dispute labels must come from OUTSIDE the HF dataset. Two ways: the scoped local
-Envio indexer (`indexer/`, needs Docker), or — implemented here — `data/disputes.py`, which pulls
-OOv2 `DisputePrice` logs straight from Polygon via a keyless public RPC (`eth_getLogs`, no Docker),
-derives `conditionId = keccak256(adapter ++ keccak256(ancillaryData) ++ 2)`, and joins to HF. The
-derivation was validated **723/723** against HF for the **UMA CTF Adapter V2 + Legacy**.
+**Consequence:** the dispute labels must come from OUTSIDE the HF dataset. Three ways now, and the
+**default is the released layer**: the git-tracked
+`dataset_release/polymarket-oov2-disputes-v1/disputes.parquet` (§5c) that `data.disputes.load_disputes`
+reads out of the box — no Docker, no RPC. Alternatives: the scoped local Envio indexer (`indexer/`,
+needs Docker; `DATA_SOURCE=graphql` sources labels live from it), or the keyless-RPC keccak scan in
+`data/disputes.py` — `eth_getLogs` for OOv2 `DisputePrice`, deriving
+`conditionId = keccak256(adapter ++ keccak256(ancillaryData) ++ 2)` — which covers **V2/Legacy only**
+(validated **723/723** against HF) and is the **last resort**.
 
 **The derivation from OO ancillary does NOT work for NegRisk** — that part still holds: `keccak(adapter,
 keccak(ancillary), 2)` joins NegRisk at 0%, because NegRisk assigns questionIds via NegRiskIdLib, not
@@ -288,7 +296,7 @@ lower bounds, missing the 2024+ NegRisk numerators.)
 | `recon.run_recon` ground truth | `condition.payoutNumerators` | `data.conditions.hf_payout_map` |
 | `lambda_engine.category_base_rate` denominator | `market_data ⋈ condition` | `data.base_rates.category_counts_hf` |
 | `replay_ablation.run_replay` controls + tapes | `market_data` + `order_filled` + `condition` | `data.cache.materialize_slice` |
-| dispute **labels** (numerator) | — *(not in HF)* | **local OOv2 indexer** |
+| dispute **labels** (numerator) | — *(not in HF; released companion dataset §5c)* | `data.disputes.load_disputes` (release parquet default; indexer via `DATA_SOURCE=graphql`) |
 
 ---
 
@@ -327,7 +335,7 @@ python -m data.dossier --full             # + §1 counts and wash prevalence (fu
 pytest tests/test_data_fills.py tests/test_disputes.py   # deriveFill + deriveConditionId parity (offline)
 
 # dispute labels (no Docker) → λ + the replay-ablation, end-to-end:
-python -m data.disputes                   # backfill OOv2 disputes via keyless RPC → .data_cache/disputes.json
+python -m data.disputes                   # load + summarize the released dispute layer (1,794, all adapters); RPC backfill only if the release parquet is absent
 python -c "from data.cache import prefetch_state_tables, materialize_slice; \
            from data.disputes import load_disputes; prefetch_state_tables(); \
            materialize_slice([d['conditionId'] for d in load_disputes()][:12], years=(2022,2023))"
@@ -367,6 +375,6 @@ correctly-computed signal.
 disputed labels from the **local Envio indexer** instead of the RPC path. Over the identical cached
 slice, all 56 disputed conditionIds are confirmed present in the indexer's joinable set (an independent
 cross-check of the RPC-derived labels), and the arm table reproduces. The 2024+ NegRisk-dominated liquid
-era **remains out of reach for this replay** — not for lack of dispute labels (the indexer has them) but
-because HF carries no NegRisk fill tape to join by conditionId (§5a); a powered liquid-era replay would
-require a local NegRisk fill backfill, which is out of scope.
+era is **no longer out of reach**: the tradeable-cid map (§5a, `data/negrisk_map.py`) joins NegRisk to
+the HF fill tape at 100%, and the powered liquid-era replays have since run — see §5b′ (2024 NegRisk
+slice) and §5b″ (1,409 disputed + 2,856 controls, all adapters, 2022–2026).

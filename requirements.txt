@@ -20,8 +20,12 @@ duckdb>=1.1          # httpfs + hf:// parquet scans; also runs the deriveFill SQ
 huggingface_hub>=0.24  # optional: HF_TOKEN auth for higher rate limits on big prior-corpus builds
 pyarrow>=16          # parquet read/write for the local .data_cache slice
 
-# --- Polymarket CLOB client (execution, step 4). CLOB V2 ONLY. ---
+# --- Polymarket CLOB client (execution: the gated live write path). CLOB V2 ONLY. ---
 # ⚠ Do NOT use `py-clob-client` — it is archived / CLOB V1 / non-functional vs production.
-# Use the official Polymarket py-sdk (github.com/Polymarket/py-sdk). Confirm the exact
-# pip/import name at install time before pinning, e.g.:
-#   pip install git+https://github.com/Polymarket/py-sdk.git
+# Official Polymarket/py-sdk (github.com/Polymarket/py-sdk), BETA -> pinned EXACTLY; bump
+# deliberately. Confirmed 2026-07-07: PyPI name `polymarket-client`, import name `polymarket`.
+# Lazily imported by execution/clob.py:_live_client only — paper / paper-live never touch it.
+polymarket-client==0.1.0b13
+web3>=6.15,<8        # wrap_usdce_to_pusd (approve + CollateralOnramp.wrap); lazy-imported
+eth-utils>=4,<6      # keccak/decode in data/disputes.py + data/negrisk_map.py (was unlisted); <6 per py-sdk
+eth-abi>=5,<6
