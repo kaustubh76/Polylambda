@@ -13,6 +13,15 @@ class ScoreRequest(BaseModel):
     horizon_days: float = Field(7.0, gt=0.0, description="time to resolution (T−t), days")
 
 
+class EngineQuoteRequest(BaseModel):
+    price: float | None = Field(None, gt=0.0, lt=1.0, description="reference mid to quote around; default = current on-chain mid")
+    category: str | None = Field(None, description="market category (drives the estimators); default = the market's category")
+
+
+class ResolveRequest(BaseModel):
+    yes_won: bool = Field(..., description="final outcome — YES holders redeem 1 USDC/share iff true")
+
+
 class SessionRequest(BaseModel):
     scenario: str = Field("dispute_defense", description="dispute_defense | live_quoting")
     # dispute_defense knobs

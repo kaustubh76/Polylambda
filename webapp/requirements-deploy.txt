@@ -11,3 +11,4 @@ pandas>=2.1          # disputes explorer reads dataset_release/*.parquet
 pyarrow>=16          # parquet engine for pandas
 duckdb>=1.1          # dispute-count numerators over the released parquet (falls back to constants if absent)
 python-dotenv>=1.0
+web3>=6.15,<8        # backend Amoy testnet signing + reads (webapp/backend/chain.py); pulls eth-account

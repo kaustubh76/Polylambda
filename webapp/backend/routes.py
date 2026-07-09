@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from . import live, services
-from .schemas import ScoreRequest, SessionRequest
+from . import chain, live, services
+from .schemas import EngineQuoteRequest, ResolveRequest, ScoreRequest, SessionRequest
 
 api = APIRouter(prefix="/api")
 
@@ -78,6 +78,51 @@ def get_live_status():
 def get_live_disputes(limit: int = Query(25, ge=1, le=100), since_ts: int | None = None):
     """The latest OOv2 disputes straight from the indexer (real-time)."""
     return live.live_disputes(limit=limit, since_ts=since_ts)
+
+
+# --- testnet: on-chain PolyLambda market on Polygon Amoy ------------------------------------------
+@api.get("/testnet/status")
+def get_testnet_status():
+    return chain.status()
+
+
+@api.get("/testnet/market")
+def get_testnet_market():
+    return chain.market()
+
+
+@api.get("/testnet/position")
+def get_testnet_position(address: str = Query(..., min_length=42, max_length=42)):
+    return chain.position(address)
+
+
+@api.get("/testnet/events")
+def get_testnet_events(limit: int = Query(30, ge=1, le=100)):
+    return chain.events(limit=limit)
+
+
+@api.post("/testnet/engine-quote")
+def post_testnet_quote(req: EngineQuoteRequest):
+    try:
+        return chain.post_quote(price=req.price, category=req.category)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"engine quote failed: {e}")
+
+
+@api.post("/testnet/dispute")
+def post_testnet_dispute():
+    try:
+        return chain.flag_dispute()
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"flag dispute failed: {e}")
+
+
+@api.post("/testnet/resolve")
+def post_testnet_resolve(req: ResolveRequest):
+    try:
+        return chain.resolve(req.yes_won)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"resolve failed: {e}")
 
 
 @api.get("/health")

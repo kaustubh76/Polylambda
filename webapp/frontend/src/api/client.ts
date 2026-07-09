@@ -26,6 +26,14 @@ export const api = {
   sigma: () => req<Sigma>('/sigma'),
   liveStatus: () => req<LiveStatus>('/live/status'),
   liveDisputes: (limit = 25) => req<LiveDisputes>(`/live/disputes?limit=${limit}`),
+  // testnet (on-chain PolyLambda market, Polygon Amoy)
+  tnStatus: () => req<TnStatus>('/testnet/status'),
+  tnMarket: () => req<TnMarket>('/testnet/market'),
+  tnPosition: (address: string) => req<TnPosition>(`/testnet/position?address=${address}`),
+  tnEvents: (limit = 30) => req<TnEvents>(`/testnet/events?limit=${limit}`),
+  tnEngineQuote: (body: { price?: number; category?: string }) => req<TnTx>('/testnet/engine-quote', { method: 'POST', body: JSON.stringify(body) }),
+  tnDispute: () => req<TnTx>('/testnet/dispute', { method: 'POST', body: '{}' }),
+  tnResolve: (yes_won: boolean) => req<TnTx>('/testnet/resolve', { method: 'POST', body: JSON.stringify({ yes_won }) }),
 }
 
 // --- a tiny fetch hook (no react-query dep) ---------------------------------------------------
@@ -108,3 +116,26 @@ export interface Sigma { points: SigmaPoint[]; categories: string[]; n: number; 
 export interface LiveStatus { reachable: boolean; endpoint: string; latency_ms?: number; head_ts?: number | null; head_id?: string | null; error?: string }
 export interface LiveDispute { id: string; round: number | null; disputeTs: number; disputer: string | null; proposedOutcome: string | null; proposer: string | null; conditionId: string | null; marketStatus: string | null; finalOutcome: string | null; outcomeSlotCount: number | null }
 export interface LiveDisputes { reachable: boolean; disputes: LiveDispute[]; latency_ms?: number; endpoint: string; error?: string }
+
+// ---- testnet (Polygon Amoy on-chain market) --------------------------------------------------
+export interface TnMarket {
+  deployed: boolean; bid: number; ask: number; max_trade?: number; quote_ts?: number
+  disputed?: boolean; resolved?: boolean; yes_won?: boolean; total_yes?: number
+  escrow_usdc?: number; category?: string | null; lambda_jump?: number; sigma?: number
+}
+export interface TnStatus {
+  reachable: boolean; chain_id?: number; block?: number; engine?: string | null; engine_pol?: number | null
+  engine_ready?: boolean; market_address?: string | null; usdc?: string; explorer?: string
+  market?: TnMarket; error?: string
+}
+export interface TnPosition {
+  reachable: boolean; address?: string; shares: number; mark?: number; mark_value?: number
+  usdc?: number; disputed?: boolean; resolved?: boolean; yes_won?: boolean
+}
+export interface TnEvent {
+  type: string; block: number; log_index: number; tx: string
+  user?: string; buy?: boolean; size?: number; usdc?: number; bid?: number; ask?: number
+  category?: string; lambda_jump?: number; yes_won?: boolean; payout?: number; amount?: number
+}
+export interface TnEvents { reachable: boolean; events: TnEvent[]; explorer?: string }
+export interface TnTx { tx: string; explorer: string; bid?: number; ask?: number; category?: string; lambda_jump?: number; sigma?: number; yesWon?: boolean }

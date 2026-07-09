@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createPublicClient, createWalletClient, custom, formatUnits, http, parseUnits, type Address } from 'viem'
 import { polygonAmoy } from 'viem/chains'
-import { AMOY, AMOY_ADD_PARAMS, TEST_USDC } from './testnet'
+import { AMOY, AMOY_ADD_PARAMS, MARKET_ABI, TEST_USDC } from './testnet'
 
 declare global {
   interface Window { ethereum?: any }
@@ -80,17 +80,35 @@ export function useWallet() {
     }
   }, [])
 
-  const approveUsdc = useCallback(async (spender: Address, amount: string): Promise<`0x${string}`> => {
+  const _wallet = useCallback(() => {
     if (!address) throw new Error('connect a wallet first')
-    const wallet = createWalletClient({ account: address, chain: polygonAmoy, transport: custom(window.ethereum) })
-    const value = parseUnits(amount, TEST_USDC.decimals)
-    const hash = await wallet.writeContract({ address: TEST_USDC.address, abi: ERC20, functionName: 'approve', args: [spender, value] })
+    return createWalletClient({ account: address, chain: polygonAmoy, transport: custom(window.ethereum) })
+  }, [address])
+
+  // approve `spender` to move `amount` test-USDC (used for the market pre-trade allowance)
+  const approveToken = useCallback(async (spender: Address, amount: string): Promise<`0x${string}`> => {
+    const hash = await _wallet().writeContract({ address: TEST_USDC.address, abi: ERC20,
+      functionName: 'approve', args: [spender, parseUnits(amount, TEST_USDC.decimals)] })
     await publicClient.waitForTransactionReceipt({ hash })
     return hash
-  }, [address])
+  }, [_wallet])
+
+  // user-signed calls against PolyLambdaMarket (sizes are YES shares, 6-dec)
+  const marketWrite = useCallback(async (
+    market: Address, fn: 'buyYes' | 'sellYes' | 'redeem', args: readonly bigint[] = [],
+  ): Promise<`0x${string}`> => {
+    const hash = await _wallet().writeContract({ address: market, abi: MARKET_ABI, functionName: fn, args } as any)
+    await publicClient.waitForTransactionReceipt({ hash })
+    return hash
+  }, [_wallet])
+
+  const buyYes = useCallback((market: Address, sizeYes: string) => marketWrite(market, 'buyYes', [parseUnits(sizeYes, 6)]), [marketWrite])
+  const sellYes = useCallback((market: Address, sizeYes: string) => marketWrite(market, 'sellYes', [parseUnits(sizeYes, 6)]), [marketWrite])
+  const redeem = useCallback((market: Address) => marketWrite(market, 'redeem', []), [marketWrite])
 
   return {
     installed: hasProvider(), address, chainId, onAmoy: chainId === AMOY.id,
-    connecting, error, connect, ensureAmoy, approveUsdc, clearError: () => setError(null),
+    connecting, error, connect, ensureAmoy, approveToken, buyYes, sellYes, redeem,
+    clearError: () => setError(null),
   }
 }

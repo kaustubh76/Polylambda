@@ -10,20 +10,20 @@ import { PaperSession } from './sections/PaperSession'
 import { Recon } from './sections/Recon'
 import { ScoreMarket } from './sections/ScoreMarket'
 import { SigmaSurface } from './sections/SigmaSurface'
-import { TestnetWallet } from './sections/TestnetWallet'
+import { LiveTestnet } from './sections/LiveTestnet'
 import { useWallet } from './lib/wallet'
 import { short } from './lib/format'
 
 const NAV = [
   { id: 'overview', label: 'Overview' },
+  { id: 'trade', label: 'Live testnet' },
   { id: 'baserates', label: 'λ signal' },
   { id: 'score', label: 'Score a market' },
   { id: 'session', label: 'Paper engine' },
   { id: 'ablation', label: 'Edge proof' },
   { id: 'hazard', label: 'Model card' },
   { id: 'disputes', label: 'Disputes' },
-  { id: 'live', label: 'Live' },
-  { id: 'wallet', label: 'Testnet' },
+  { id: 'live', label: 'Live indexer' },
   { id: 'recon', label: 'Integrity' },
   { id: 'sigma', label: 'σ surface' },
 ]
@@ -70,7 +70,7 @@ function WalletChip() {
   const w = useWallet()
   const color = w.onAmoy ? '#24c98a' : w.address ? '#fab219' : '#6b7280'
   return (
-    <a href="#wallet" className={`chip ${w.onAmoy ? 'border-sig/40 text-sig' : ''}`} title="Polygon Amoy testnet wallet">
+    <a href="#trade" className={`chip ${w.onAmoy ? 'border-sig/40 text-sig' : ''}`} title="Polygon Amoy testnet wallet">
       <span className={`h-1.5 w-1.5 rounded-full ${w.onAmoy ? 'animate-pulse2' : ''}`} style={{ background: color }} />
       {w.address ? short(w.address, 4, 4) : 'Connect'}
     </a>
@@ -119,6 +119,7 @@ export default function App() {
       {/* --- body --- */}
       <main className="mx-auto max-w-7xl space-y-16 px-5 py-10">
         <Hero q={overview} />
+        <LiveTestnet />
         <BaseRates />
         <ScoreMarket />
         <PaperSession />
@@ -126,7 +127,6 @@ export default function App() {
         <HazardCard />
         <Disputes />
         <LiveIndexer />
-        <TestnetWallet />
         <Recon />
         <SigmaSurface />
       </main>

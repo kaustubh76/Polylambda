@@ -1,0 +1,542 @@
+{
+ "address": null,
+ "usdc": "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
+ "engine": null,
+ "deployed_block": 0,
+ "abi": [
+  {
+   "inputs": [
+    {
+     "internalType": "address",
+     "name": "_usdc",
+     "type": "address"
+    }
+   ],
+   "stateMutability": "nonpayable",
+   "type": "constructor"
+  },
+  {
+   "anonymous": false,
+   "inputs": [
+    {
+     "indexed": false,
+     "internalType": "uint256",
+     "name": "amount",
+     "type": "uint256"
+    },
+    {
+     "indexed": false,
+     "internalType": "uint256",
+     "name": "balance",
+     "type": "uint256"
+    }
+   ],
+   "name": "Collateral",
+   "type": "event"
+  },
+  {
+   "anonymous": false,
+   "inputs": [
+    {
+     "indexed": false,
+     "internalType": "uint64",
+     "name": "ts",
+     "type": "uint64"
+    }
+   ],
+   "name": "Disputed",
+   "type": "event"
+  },
+  {
+   "anonymous": false,
+   "inputs": [
+    {
+     "indexed": false,
+     "internalType": "uint256",
+     "name": "bid",
+     "type": "uint256"
+    },
+    {
+     "indexed": false,
+     "internalType": "uint256",
+     "name": "ask",
+     "type": "uint256"
+    },
+    {
+     "indexed": false,
+     "internalType": "uint256",
+     "name": "maxTrade",
+     "type": "uint256"
+    },
+    {
+     "indexed": false,
+     "internalType": "string",
+     "name": "category",
+     "type": "string"
+    },
+    {
+     "indexed": false,
+     "internalType": "uint32",
+     "name": "lambdaBps",
+     "type": "uint32"
+    },
+    {
+     "indexed": false,
+     "internalType": "uint32",
+     "name": "sigmaBps",
+     "type": "uint32"
+    },
+    {
+     "indexed": false,
+     "internalType": "uint64",
+     "name": "ts",
+     "type": "uint64"
+    }
+   ],
+   "name": "QuotePosted",
+   "type": "event"
+  },
+  {
+   "anonymous": false,
+   "inputs": [
+    {
+     "indexed": true,
+     "internalType": "address",
+     "name": "user",
+     "type": "address"
+    },
+    {
+     "indexed": false,
+     "internalType": "uint256",
+     "name": "payout",
+     "type": "uint256"
+    }
+   ],
+   "name": "Redeemed",
+   "type": "event"
+  },
+  {
+   "anonymous": false,
+   "inputs": [
+    {
+     "indexed": false,
+     "internalType": "bool",
+     "name": "yesWon",
+     "type": "bool"
+    }
+   ],
+   "name": "Resolved",
+   "type": "event"
+  },
+  {
+   "anonymous": false,
+   "inputs": [
+    {
+     "indexed": true,
+     "internalType": "address",
+     "name": "user",
+     "type": "address"
+    },
+    {
+     "indexed": false,
+     "internalType": "bool",
+     "name": "buy",
+     "type": "bool"
+    },
+    {
+     "indexed": false,
+     "internalType": "uint256",
+     "name": "size",
+     "type": "uint256"
+    },
+    {
+     "indexed": false,
+     "internalType": "uint256",
+     "name": "usdc",
+     "type": "uint256"
+    },
+    {
+     "indexed": false,
+     "internalType": "uint256",
+     "name": "newShares",
+     "type": "uint256"
+    }
+   ],
+   "name": "Traded",
+   "type": "event"
+  },
+  {
+   "inputs": [
+    {
+     "internalType": "uint256",
+     "name": "size",
+     "type": "uint256"
+    }
+   ],
+   "name": "buyYes",
+   "outputs": [],
+   "stateMutability": "nonpayable",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "category",
+   "outputs": [
+    {
+     "internalType": "string",
+     "name": "",
+     "type": "string"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "disputed",
+   "outputs": [
+    {
+     "internalType": "bool",
+     "name": "",
+     "type": "bool"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "engine",
+   "outputs": [
+    {
+     "internalType": "address",
+     "name": "",
+     "type": "address"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "flagDispute",
+   "outputs": [],
+   "stateMutability": "nonpayable",
+   "type": "function"
+  },
+  {
+   "inputs": [
+    {
+     "internalType": "uint256",
+     "name": "amount",
+     "type": "uint256"
+    }
+   ],
+   "name": "fund",
+   "outputs": [],
+   "stateMutability": "nonpayable",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "lambdaBps",
+   "outputs": [
+    {
+     "internalType": "uint32",
+     "name": "",
+     "type": "uint32"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "maxTrade",
+   "outputs": [
+    {
+     "internalType": "uint256",
+     "name": "",
+     "type": "uint256"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [
+    {
+     "internalType": "uint256",
+     "name": "bid",
+     "type": "uint256"
+    },
+    {
+     "internalType": "uint256",
+     "name": "ask",
+     "type": "uint256"
+    },
+    {
+     "internalType": "uint256",
+     "name": "_maxTrade",
+     "type": "uint256"
+    },
+    {
+     "internalType": "string",
+     "name": "cat",
+     "type": "string"
+    },
+    {
+     "internalType": "uint32",
+     "name": "lam",
+     "type": "uint32"
+    },
+    {
+     "internalType": "uint32",
+     "name": "sig",
+     "type": "uint32"
+    }
+   ],
+   "name": "postQuote",
+   "outputs": [],
+   "stateMutability": "nonpayable",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "quoteTs",
+   "outputs": [
+    {
+     "internalType": "uint64",
+     "name": "",
+     "type": "uint64"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "redeem",
+   "outputs": [],
+   "stateMutability": "nonpayable",
+   "type": "function"
+  },
+  {
+   "inputs": [
+    {
+     "internalType": "bool",
+     "name": "_yesWon",
+     "type": "bool"
+    }
+   ],
+   "name": "resolve",
+   "outputs": [],
+   "stateMutability": "nonpayable",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "resolved",
+   "outputs": [
+    {
+     "internalType": "bool",
+     "name": "",
+     "type": "bool"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [
+    {
+     "internalType": "uint256",
+     "name": "size",
+     "type": "uint256"
+    }
+   ],
+   "name": "sellYes",
+   "outputs": [],
+   "stateMutability": "nonpayable",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "sigmaBps",
+   "outputs": [
+    {
+     "internalType": "uint32",
+     "name": "",
+     "type": "uint32"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "snapshot",
+   "outputs": [
+    {
+     "internalType": "uint256",
+     "name": "_bid",
+     "type": "uint256"
+    },
+    {
+     "internalType": "uint256",
+     "name": "_ask",
+     "type": "uint256"
+    },
+    {
+     "internalType": "uint256",
+     "name": "_maxTrade",
+     "type": "uint256"
+    },
+    {
+     "internalType": "uint64",
+     "name": "_quoteTs",
+     "type": "uint64"
+    },
+    {
+     "internalType": "bool",
+     "name": "_disputed",
+     "type": "bool"
+    },
+    {
+     "internalType": "bool",
+     "name": "_resolved",
+     "type": "bool"
+    },
+    {
+     "internalType": "bool",
+     "name": "_yesWon",
+     "type": "bool"
+    },
+    {
+     "internalType": "uint256",
+     "name": "_totalYes",
+     "type": "uint256"
+    },
+    {
+     "internalType": "uint256",
+     "name": "_escrow",
+     "type": "uint256"
+    },
+    {
+     "internalType": "string",
+     "name": "_category",
+     "type": "string"
+    },
+    {
+     "internalType": "uint32",
+     "name": "_lambdaBps",
+     "type": "uint32"
+    },
+    {
+     "internalType": "uint32",
+     "name": "_sigmaBps",
+     "type": "uint32"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "totalYes",
+   "outputs": [
+    {
+     "internalType": "uint256",
+     "name": "",
+     "type": "uint256"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "usdc",
+   "outputs": [
+    {
+     "internalType": "contract IERC20",
+     "name": "",
+     "type": "address"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [
+    {
+     "internalType": "uint256",
+     "name": "amount",
+     "type": "uint256"
+    }
+   ],
+   "name": "withdraw",
+   "outputs": [],
+   "stateMutability": "nonpayable",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "yesAsk",
+   "outputs": [
+    {
+     "internalType": "uint256",
+     "name": "",
+     "type": "uint256"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "yesBid",
+   "outputs": [
+    {
+     "internalType": "uint256",
+     "name": "",
+     "type": "uint256"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [
+    {
+     "internalType": "address",
+     "name": "",
+     "type": "address"
+    }
+   ],
+   "name": "yesShares",
+   "outputs": [
+    {
+     "internalType": "uint256",
+     "name": "",
+     "type": "uint256"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "yesWon",
+   "outputs": [
+    {
+     "internalType": "bool",
+     "name": "",
+     "type": "bool"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  }
+ ]
+}
