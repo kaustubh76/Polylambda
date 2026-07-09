@@ -1,6 +1,6 @@
 import type { Overview } from '../api/client'
 import { int, num, pct1 } from '../lib/format'
-import { Async, Caveat, Panel, Section } from '../components/ui'
+import { Async, Caveat, Panel, PanelSkeleton, Section, Skeleton } from '../components/ui'
 
 function fmtTile(v: number, fmt: string) {
   if (fmt === 'int') return int(v)
@@ -13,7 +13,7 @@ export function Hero({ q }: { q: { data: Overview | null; error: string | null; 
   return (
     <Section id="overview" kicker="Polymarket Builders Program · research MVP"
       title="Treat disputes as jumps — and exit before they lock your capital.">
-      <Async q={q}>{(d) => (
+      <Async q={q} skeleton={<HeroSkeleton />}>{(d) => (
         <div className="grid gap-5 lg:grid-cols-[1.15fr_1fr]">
           <Panel className="flex flex-col justify-between">
             <div>
@@ -26,7 +26,12 @@ export function Hero({ q }: { q: { data: Overview | null; error: string | null; 
               </div>
               <Caveat kind="note">{d.thesis_nuance}</Caveat>
             </div>
-            <div className="mt-5 flex flex-wrap gap-2 text-2xs">
+            <div className="mt-5 flex flex-wrap gap-2">
+              <a href="#score" className="btn btn-primary">Score a market →</a>
+              <a href="#session" className="btn">Watch the engine defend</a>
+              <a href="#wallet" className="btn">Connect testnet wallet</a>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-2xs">
               <span className="chip">positioning · {d.positioning}</span>
               <span className="chip">{int(d.dataset.total_disputes)} disputes · {d.dataset.date_min} → {d.dataset.date_max}</span>
               <span className="chip">{pct1(d.dataset.hf_joinable_pct / 100)} HF-joinable</span>
@@ -48,5 +53,20 @@ export function Hero({ q }: { q: { data: Overview | null; error: string | null; 
         </div>
       )}</Async>
     </Section>
+  )
+}
+
+function HeroSkeleton() {
+  return (
+    <div className="grid gap-5 lg:grid-cols-[1.15fr_1fr]">
+      <PanelSkeleton lines={7} />
+      <div className="grid grid-cols-2 gap-4 self-start">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="panel space-y-2 p-4">
+            <Skeleton className="h-3 w-1/2" /><Skeleton className="h-6 w-3/4" /><Skeleton className="h-2.5 w-2/3" />
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }

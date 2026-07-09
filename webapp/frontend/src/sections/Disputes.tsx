@@ -68,6 +68,11 @@ export function Disputes() {
                     </td>
                   </tr>
                 ))}
+                {d.rows.length === 0 && (
+                  <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-muted">
+                    no disputes match these filters — try clearing the search or picking a different category/year.
+                  </td></tr>
+                )}
               </tbody>
             </table>
           </div>

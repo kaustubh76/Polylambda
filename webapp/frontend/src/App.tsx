@@ -10,6 +10,9 @@ import { PaperSession } from './sections/PaperSession'
 import { Recon } from './sections/Recon'
 import { ScoreMarket } from './sections/ScoreMarket'
 import { SigmaSurface } from './sections/SigmaSurface'
+import { TestnetWallet } from './sections/TestnetWallet'
+import { useWallet } from './lib/wallet'
+import { short } from './lib/format'
 
 const NAV = [
   { id: 'overview', label: 'Overview' },
@@ -20,6 +23,7 @@ const NAV = [
   { id: 'hazard', label: 'Model card' },
   { id: 'disputes', label: 'Disputes' },
   { id: 'live', label: 'Live' },
+  { id: 'wallet', label: 'Testnet' },
   { id: 'recon', label: 'Integrity' },
   { id: 'sigma', label: 'σ surface' },
 ]
@@ -62,6 +66,17 @@ function LivePill() {
   )
 }
 
+function WalletChip() {
+  const w = useWallet()
+  const color = w.onAmoy ? '#24c98a' : w.address ? '#fab219' : '#6b7280'
+  return (
+    <a href="#wallet" className={`chip ${w.onAmoy ? 'border-sig/40 text-sig' : ''}`} title="Polygon Amoy testnet wallet">
+      <span className={`h-1.5 w-1.5 rounded-full ${w.onAmoy ? 'animate-pulse2' : ''}`} style={{ background: color }} />
+      {w.address ? short(w.address, 4, 4) : 'Connect'}
+    </a>
+  )
+}
+
 export default function App() {
   const overview = useApi(api.overview, [])
   const active = useScrollSpy(NAV.map((n) => n.id))
@@ -78,12 +93,12 @@ export default function App() {
           </a>
           <span className="hidden text-2xs text-muted md:inline">dispute-aware market making for Polymarket</span>
           <div className="ml-auto flex items-center gap-2">
+            <WalletChip />
             <LivePill />
-            <span className="chip">
+            <span className="chip hidden sm:inline-flex">
               <span className="h-1.5 w-1.5 animate-pulse2 rounded-full bg-sig" />
               MODE · {mode}
             </span>
-            <span className="chip hidden sm:inline-flex">paper-only · simulated</span>
           </div>
         </div>
         {/* --- section nav --- */}
@@ -111,6 +126,7 @@ export default function App() {
         <HazardCard />
         <Disputes />
         <LiveIndexer />
+        <TestnetWallet />
         <Recon />
         <SigmaSurface />
       </main>
@@ -122,7 +138,14 @@ export default function App() {
             real engine (estimators · execution · forward-test). Every figure is computed by the actual
             code or read from a shipped artifact; the paper engine is deterministic and network-free.
           </p>
-          <p>Live trading is jurisdiction-gated and out of scope for v1 — this MVP is paper-mode only, and every simulated figure is stamped <span className="font-mono">simulated: true</span>.</p>
+          <p>Live trading is jurisdiction-gated and out of scope for v1 — this MVP is paper-mode only, and every simulated figure is stamped <span className="font-mono">simulated: true</span>. The testnet wallet signs on Polygon Amoy — play money, no keys server-side.</p>
+          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-line pt-4 text-ink-2">
+            <a className="link-underline hover:text-sig" href="https://github.com/kaustubh76/Polylambda" target="_blank" rel="noreferrer">GitHub ↗</a>
+            <a className="link-underline hover:text-sig" href="https://indexer.dev.hyperindex.xyz/0638687/v1/graphql" target="_blank" rel="noreferrer">Envio indexer (GraphQL) ↗</a>
+            <a className="link-underline hover:text-sig" href="https://huggingface.co/datasets/moose-code/polymarket-onchain-v1" target="_blank" rel="noreferrer">HF dataset ↗</a>
+            <a className="link-underline hover:text-sig" href="https://amoy.polygonscan.com" target="_blank" rel="noreferrer">Amoy explorer ↗</a>
+            <span className="ml-auto text-muted">built for the Polymarket Builders Program</span>
+          </div>
         </div>
       </footer>
     </div>

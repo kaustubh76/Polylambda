@@ -21,6 +21,19 @@
     background-attachment: fixed;
   }
   ::selection { background: rgba(36, 201, 138, 0.25); }
+  /* keyboard focus rings on every interactive element (mouse clicks stay clean) */
+  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
+    @apply outline-none ring-2 ring-sig/50 ring-offset-2 ring-offset-bg rounded;
+  }
+  /* respect reduced-motion: kill the infinite pulses + entrance animations */
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
   /* thin scrollbars that match the terminal */
   * { scrollbar-width: thin; scrollbar-color: #2f3340 transparent; }
   *::-webkit-scrollbar { height: 8px; width: 8px; }

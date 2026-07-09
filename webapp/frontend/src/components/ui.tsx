@@ -5,7 +5,7 @@ export function Section({ id, kicker, title, subtitle, children, right }: {
   id: string; kicker?: string; title: string; subtitle?: ReactNode; children: ReactNode; right?: ReactNode
 }) {
   return (
-    <section id={id} className="scroll-mt-20 animate-fade-up">
+    <section id={id} className="scroll-mt-28 animate-fade-up">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           {kicker && <div className="label mb-1 text-sig">{kicker}</div>}
@@ -83,15 +83,33 @@ export function Loading({ label = 'loading' }: { label?: string }) {
   )
 }
 
+// shimmer placeholder sized to final layout — kills the collapse-then-snap layout shift
+export function Skeleton({ className = '' }: { className?: string }) {
+  return <div className={`animate-pulse2 rounded-md bg-elevated/70 ${className}`} />
+}
+
+// a panel-shaped skeleton that reserves a section's height while its data loads
+export function PanelSkeleton({ h = 'h-40', lines }: { h?: string; lines?: number }) {
+  return (
+    <div className={`panel p-5 ${lines ? '' : h}`}>
+      {lines
+        ? <div className="space-y-2.5">{Array.from({ length: lines }).map((_, i) => (
+            <Skeleton key={i} className={`h-3.5 ${i % 3 === 0 ? 'w-2/3' : i % 3 === 1 ? 'w-5/6' : 'w-1/2'}`} />))}</div>
+        : null}
+    </div>
+  )
+}
+
 export function ErrorBox({ error }: { error: string }) {
   return <div className="rounded-lg border border-crit/30 bg-crit/10 p-3 text-sm text-loss">⚠ {error}</div>
 }
 
-export function Async<T>({ q, children }: {
-  q: { data: T | null; error: string | null; loading: boolean }; children: (d: T) => ReactNode
+export function Async<T>({ q, skeleton, children }: {
+  q: { data: T | null; error: string | null; loading: boolean }
+  skeleton?: ReactNode; children: (d: T) => ReactNode
 }) {
   if (q.error) return <ErrorBox error={q.error} />
-  if (q.loading || !q.data) return <Loading />
+  if (q.loading || !q.data) return <>{skeleton ?? <Loading />}</>
   return <>{children(q.data)}</>
 }
 
