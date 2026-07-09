@@ -29,7 +29,7 @@ EXPLORER = "https://amoy.polygonscan.com"
 USDC_ADDR = os.environ.get("AMOY_USDC_ADDRESS", "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582")
 _MARKET_JSON = _ROOT / "webapp" / "backend" / "market.json"
 
-MAX_QUOTE_SIZE = int(float(os.environ.get("ENGINE_MAX_TRADE", "2")) * 1e6)  # YES-share cap per trade
+MAX_QUOTE_SIZE = int(float(os.environ.get("ENGINE_MAX_TRADE", "0.5")) * 1e6)  # YES-share cap per trade (low)
 
 _ERC20_ABI = [
     {"name": "balanceOf", "type": "function", "stateMutability": "view",
@@ -55,7 +55,10 @@ def market_address() -> str | None:
 def _w3():
     if "w3" not in _singletons:
         from web3 import Web3
-        _singletons["w3"] = Web3(Web3.HTTPProvider(AMOY_RPC, request_kwargs={"timeout": 12}))
+        from web3.middleware import ExtraDataToPOAMiddleware  # Amoy is POA
+        w3 = Web3(Web3.HTTPProvider(AMOY_RPC, request_kwargs={"timeout": 12}))
+        w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+        _singletons["w3"] = w3
     return _singletons["w3"]
 
 
@@ -102,10 +105,12 @@ def _send(fn, value: int = 0) -> str:
         raise RuntimeError("engine wallet not configured (ENGINE_PRIVATE_KEY missing)")
     if w3.eth.chain_id != AMOY_CHAIN_ID:
         raise RuntimeError("refusing to sign: connected chain is not Amoy (80002)")
+    fee = w3.to_wei(int(os.environ.get("AMOY_GAS_GWEI", "30")), "gwei")  # base ~0; explicit low tip
     with _lock:
         tx = fn.build_transaction({"from": acct.address,
                                    "nonce": w3.eth.get_transaction_count(acct.address),
-                                   "chainId": AMOY_CHAIN_ID, "value": value})
+                                   "chainId": AMOY_CHAIN_ID, "value": value,
+                                   "maxFeePerGas": fee, "maxPriorityFeePerGas": fee})
         signed = acct.sign_transaction(tx)
         raw = getattr(signed, "raw_transaction", None) or signed.rawTransaction  # web3 v7/v6
         h = w3.eth.send_raw_transaction(raw)

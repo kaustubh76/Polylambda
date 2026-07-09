@@ -47,8 +47,12 @@ def compile_market():
 
 
 def _send(w3, acct, fn, value=0):
+    # Amoy base fee is ~0; web3 auto-inflates the priority fee. Set an explicit low tip (~30 gwei,
+    # the validator floor) so the whole deploy fits a small faucet balance.
+    fee = w3.to_wei(int(os.environ.get("AMOY_GAS_GWEI", "30")), "gwei")
     tx = fn.build_transaction({"from": acct.address, "nonce": w3.eth.get_transaction_count(acct.address),
-                               "chainId": w3.eth.chain_id, "value": value})
+                               "chainId": w3.eth.chain_id, "value": value,
+                               "maxFeePerGas": fee, "maxPriorityFeePerGas": fee})
     signed = acct.sign_transaction(tx)
     raw = getattr(signed, "raw_transaction", None) or signed.rawTransaction
     h = w3.eth.send_raw_transaction(raw)
@@ -63,6 +67,8 @@ def main() -> None:
     key = env.get("ENGINE_PRIVATE_KEY")
     assert key, "ENGINE_PRIVATE_KEY missing — run scripts/gen_engine_wallet.py and fund the address first"
     w3 = Web3(Web3.HTTPProvider(AMOY_RPC))
+    from web3.middleware import ExtraDataToPOAMiddleware  # Amoy is POA (extraData > 32 bytes)
+    w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
     assert w3.is_connected() and w3.eth.chain_id == 80002, "not connected to Amoy (80002)"
     acct = Account.from_key(key)
     pol = w3.eth.get_balance(acct.address)
@@ -77,11 +83,12 @@ def main() -> None:
     print("DEPLOYED PolyLambdaMarket at", addr, "block", rcpt["blockNumber"])
     market = w3.eth.contract(address=addr, abi=abi)
 
-    # optional collateral (only if the engine holds test-USDC)
+    # optional collateral (LOW — conserve faucet funds; env-overridable)
     usdc = w3.eth.contract(address=USDC, abi=_ERC20_APPROVE)
     ubal = usdc.functions.balanceOf(acct.address).call()
+    cap = int(float(os.environ.get("ENGINE_COLLATERAL_USDC", "1")) * 1e6)  # default 1 USDC
     if ubal > 0:
-        fund_amt = min(ubal // 2, 5_000_000)  # up to 5 USDC collateral
+        fund_amt = min(ubal // 2, cap)
         if fund_amt > 0:
             _send(w3, acct, usdc.functions.approve(addr, fund_amt))
             _send(w3, acct, market.functions.fund(fund_amt))
@@ -89,9 +96,10 @@ def main() -> None:
     else:
         print("engine holds 0 test-USDC — skipping collateral (buys still work; fund later for payouts)")
 
-    # initial quote (the backend re-posts live from the estimators; this seeds the market)
-    _send(w3, acct, market.functions.postQuote(600_000, 640_000, 2_000_000, "politics", 183, 470))
-    print("posted initial quote: bid 0.60 / ask 0.64, maxTrade 2 YES, politics")
+    # initial quote (LOW cap; the backend re-posts live from the estimators)
+    max_trade = int(float(os.environ.get("ENGINE_MAX_TRADE", "0.5")) * 1e6)  # default 0.5 YES/trade
+    _send(w3, acct, market.functions.postQuote(600_000, 640_000, max_trade, "politics", 183, 470))
+    print(f"posted initial quote: bid 0.60 / ask 0.64, maxTrade {max_trade/1e6} YES, politics")
 
     with open(OUT, "w") as f:
         json.dump({"address": addr, "usdc": USDC, "engine": acct.address,
