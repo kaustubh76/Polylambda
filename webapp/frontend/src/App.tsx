@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, useApi } from './api/client'
 import { Ablation } from './sections/Ablation'
 import { BaseRates } from './sections/BaseRates'
@@ -42,14 +42,16 @@ function useScrollSpy(ids: string[]) {
 
 function LivePill() {
   const [s, setS] = useState<{ up: boolean; ms?: number } | null>(null)
+  const fails = useRef(0)
   useEffect(() => {
     let alive = true
+    // keep the last good state; only flip to "down" after 2 consecutive failures (free-tier blips)
     const tick = () => api.liveStatus()
-      .then((r) => alive && setS({ up: r.reachable, ms: r.latency_ms }))
-      .catch(() => alive && setS({ up: false }))
-    tick()
+      .then((r) => { if (alive) { fails.current = 0; setS({ up: r.reachable, ms: r.latency_ms }) } })
+      .catch(() => { if (alive && ++fails.current >= 2) setS((p) => ({ up: false, ms: p?.ms })) })
+    const start = setTimeout(tick, 1500)
     const t = setInterval(tick, 10000)
-    return () => { alive = false; clearInterval(t) }
+    return () => { alive = false; clearTimeout(start); clearInterval(t) }
   }, [])
   if (!s) return null
   return (

@@ -8,39 +8,42 @@ const OUTCOME_COLOR: Record<string, string> = { YES: C.profit, NO: C.loss, UNRES
 const POLL_MS = 5000
 
 export function LiveIndexer() {
-  const [status, setStatus] = useState<LiveStatus | null>(null)
-  const [feed, setFeed] = useState<LiveDisputes | null>(null)
+  const [status, setStatus] = useState<LiveStatus | null>(null) // last GOOD status (kept through blips)
+  const [feed, setFeed] = useState<LiveDisputes | null>(null)   // last GOOD feed
   const [now, setNow] = useState(Date.now())
   const [fresh, setFresh] = useState<Set<string>>(new Set())
+  const [fails, setFails] = useState(0)
   const seen = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     let alive = true
+    // status and feed are fetched INDEPENDENTLY so one hiccup never blanks the other, and the last
+    // good value is kept — resilient to the free-tier CPU starving the outbound GraphQL under load.
     const tick = async () => {
-      try {
-        const [s, f] = await Promise.all([api.liveStatus(), api.liveDisputes(30)])
-        if (!alive) return
-        setStatus(s)
-        setFeed(f)
-        // mark newly-arrived disputes for a highlight flash
-        const incoming = f.disputes.map((d) => d.id)
+      const [sRes, fRes] = await Promise.allSettled([api.liveStatus(), api.liveDisputes(30)])
+      if (!alive) return
+      let ok = false
+      if (sRes.status === 'fulfilled') { setStatus(sRes.value); ok = ok || !!sRes.value.reachable }
+      if (fRes.status === 'fulfilled' && fRes.value.reachable) {
+        ok = true
+        setFeed(fRes.value)
+        const incoming = fRes.value.disputes.map((d) => d.id)
         const newly = incoming.filter((id) => seen.current.size > 0 && !seen.current.has(id))
         incoming.forEach((id) => seen.current.add(id))
-        if (newly.length) {
-          setFresh(new Set(newly))
-          setTimeout(() => alive && setFresh(new Set()), 2500)
-        }
-      } catch (e: any) {
-        if (alive) setStatus({ reachable: false, endpoint: '', error: String(e?.message || e) })
+        if (newly.length) { setFresh(new Set(newly)); setTimeout(() => alive && setFresh(new Set()), 2500) }
       }
+      setFails((prev) => (ok ? 0 : prev + 1))
     }
-    tick()
+    // stagger the first poll so the other ~8 section fetches clear first on a weak instance
+    const start = setTimeout(tick, 1200)
     const poll = setInterval(tick, POLL_MS)
     const clock = setInterval(() => alive && setNow(Date.now()), 1000)
-    return () => { alive = false; clearInterval(poll); clearInterval(clock) }
+    return () => { alive = false; clearTimeout(start); clearInterval(poll); clearInterval(clock) }
   }, [])
 
-  const up = status?.reachable
+  const everConnected = status?.reachable || (feed?.reachable ?? false)
+  const connecting = !everConnected && fails < 2       // still trying — not yet "offline"
+  const up = everConnected && fails < 3                // sticky-live: tolerate transient blips
   const latency = status?.latency_ms ?? feed?.latency_ms
   const subSecond = latency != null && latency < 1000
 
@@ -49,13 +52,13 @@ export function LiveIndexer() {
       title="Live dispute stream"
       subtitle="Straight from the deployed indexer over GraphQL — the OOv2 dispute lifecycle as it lands on-chain, polled every 5s. The released snapshot above is the frozen, HF-enriched cut of exactly this feed."
       right={
-        <span className={`chip ${up ? 'border-sig/40 text-sig' : 'border-warn/50 text-warn'}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${up ? 'animate-pulse2' : ''}`} style={{ background: up ? C.sig : C.warn }} />
-          {up ? 'LIVE' : 'indexer offline'}
+        <span className={`chip ${up ? 'border-sig/40 text-sig' : connecting ? '' : 'border-warn/50 text-warn'}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${up || connecting ? 'animate-pulse2' : ''}`} style={{ background: up ? C.sig : connecting ? C.muted : C.warn }} />
+          {up ? 'LIVE' : connecting ? 'connecting…' : 'indexer offline'}
         </span>
       }>
-      {status && !up && (
-        <ErrorBox error={`Indexer unreachable — the live feed is optional; the rest of the dashboard runs off the shipped snapshot. ${status.error || ''}`} />
+      {!connecting && !up && (
+        <ErrorBox error={`Indexer unreachable — the live feed is optional; the rest of the dashboard runs off the shipped snapshot. ${status?.error || ''}`} />
       )}
 
       {up && (
@@ -65,10 +68,10 @@ export function LiveIndexer() {
             <Stat label="Query latency" value={latency != null ? `${latency.toFixed(0)} ms` : '—'}
               tone={subSecond ? 'profit' : 'warn'} accent={subSecond}
               sub={subSecond ? 'sub-second round-trip' : 'round-trip to the indexer'} />
-            <Stat label="Indexer head" value={ago(status.head_ts, now)} sub="latest dispute indexed" />
+            <Stat label="Indexer head" value={ago(status?.head_ts, now)} sub="latest dispute indexed" />
             <Panel className="!p-3">
               <div className="label mb-1">endpoint</div>
-              <div className="break-all font-mono text-2xs text-ink-2">{prettyEndpoint(status.endpoint)}</div>
+              <div className="break-all font-mono text-2xs text-ink-2">{prettyEndpoint(status?.endpoint || feed?.endpoint || '')}</div>
               <div className="mt-2 flex items-center gap-1.5 text-2xs text-muted">
                 <span className="h-1.5 w-1.5 animate-pulse2 rounded-full bg-sig" /> polling every 5s · GraphQL
               </div>
@@ -89,7 +92,7 @@ export function LiveIndexer() {
         </div>
       )}
 
-      {!status && <Panel><div className="flex items-center gap-2 p-4 text-sm text-muted"><span className="h-2 w-2 animate-pulse2 rounded-full bg-sig" />connecting to the indexer…</div></Panel>}
+      {connecting && <Panel><div className="flex items-center gap-2 p-4 text-sm text-muted"><span className="h-2 w-2 animate-pulse2 rounded-full bg-sig" />connecting to the indexer…</div></Panel>}
 
       <div className="mt-4">
         <Caveat kind="note">
