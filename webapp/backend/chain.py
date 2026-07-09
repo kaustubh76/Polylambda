@@ -23,7 +23,8 @@ try:  # local dev convenience; Render injects real env vars (load_dotenv won't o
 except Exception:
     pass
 
-AMOY_RPC = os.environ.get("AMOY_RPC_URL", "https://rpc-amoy.polygon.technology")
+# drpc supports eth_getLogs (the events feed); the official rpc-amoy rejects log ranges.
+AMOY_RPC = os.environ.get("AMOY_RPC_URL", "https://polygon-amoy.drpc.org")
 AMOY_CHAIN_ID = 80002
 EXPLORER = "https://amoy.polygonscan.com"
 USDC_ADDR = os.environ.get("AMOY_USDC_ADDRESS", "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582")
@@ -218,19 +219,28 @@ def events(limit: int = 30) -> dict:
 
     def fetch():
         w3 = _w3()
-        meta = _meta()
-        from_block = max(0, int(meta.get("deployed_block") or 0))
         latest = w3.eth.block_number
-        # Amoy public RPC caps getLogs ranges; scan the last ~50k blocks from deploy or head
-        start = max(from_block, latest - 45000)
-        out = []
-        for name in _EVENT_NAMES:
+        # ONE get_logs by contract address over a small recent window — tiny range every RPC accepts
+        # (per-topic queries over a wide range trip "block range exceeds limit" on public nodes).
+        win = int(os.environ.get("EVENTS_WINDOW_BLOCKS", "2000"))
+        dep = int(_meta().get("deployed_block") or 0)
+        logs = None
+        for w in (win, 400):  # retry with a tiny window if a node rejects the range
             try:
-                ev = getattr(m.events, name)
-                for log in ev.get_logs(from_block=start):
-                    out.append(_fmt_event(name, log))
-            except Exception:
+                logs = w3.eth.get_logs({"address": m.address, "fromBlock": max(dep, latest - w), "toBlock": latest})
+                break
+            except Exception:  # noqa: BLE001
                 continue
+        if logs is None:
+            return {"reachable": True, "events": [], "note": "logs unavailable on this RPC"}
+        out = []
+        for log in logs:
+            for name in _EVENT_NAMES:  # decode by trying each event ABI until one matches
+                try:
+                    out.append(_fmt_event(name, getattr(m.events, name)().process_log(log)))
+                    break
+                except Exception:
+                    continue
         out.sort(key=lambda e: (e["block"], e["log_index"]), reverse=True)
         return {"reachable": True, "events": out[:limit], "explorer": EXPLORER}
     return _cached("events", 4.0, fetch)

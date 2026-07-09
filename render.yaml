@@ -16,7 +16,7 @@ services:
         value: https://indexer.dev.hyperindex.xyz/0638687/v1/graphql
       # --- testnet on-chain market (Polygon Amoy) ---
       - key: AMOY_RPC_URL
-        value: https://rpc-amoy.polygon.technology
+        value: https://polygon-amoy.drpc.org
       - key: AMOY_USDC_ADDRESS
         value: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582"
       - key: MARKET_ADDRESS
