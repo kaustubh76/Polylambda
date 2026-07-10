@@ -1,13 +1,54 @@
 import type { Overview } from '../api/client'
 import { int, num, pct1 } from '../lib/format'
 import { AnimatedNumber, Reveal, Stagger } from '../lib/motion'
-import { Async, Caveat, Panel, PanelSkeleton, Section, Skeleton } from '../components/ui'
+import { Async, Caveat, Panel, PanelSkeleton, Section, SourceTag, Skeleton } from '../components/ui'
 
 function fmtTile(v: number, fmt: string) {
   if (fmt === 'int') return int(v)
   if (fmt === 'pct') return `${num(v, 1)}%`
   if (fmt === 'num4') return num(v, 4)
   return num(v, 3)
+}
+
+// the frozen strategy config the whole engine runs on (config/model.yaml)
+const PARAM_META: { key: string; label: string; hint: string }[] = [
+  { key: 'lambda_star', label: 'λ*', hint: 'exit threshold' },
+  { key: 'kappa_loss', label: 'κ_loss', hint: 'jump-loss scale' },
+  { key: 'kappa', label: 'κ', hint: 'jump-premium weight' },
+  { key: 'gamma', label: 'γ', hint: 'risk aversion' },
+  { key: 'k', label: 'k', hint: 'book depth' },
+  { key: 'ewma_b', label: 'ewma_b', hint: 'σ half-life' },
+  { key: 'sigma_ref', label: 'σ_ref', hint: 'σ fallback' },
+  { key: 'positioning', label: 'positioning', hint: 'sides quoted' },
+  { key: 'mode', label: 'mode', hint: 'run mode' },
+]
+
+function fmtParam(v: number | string) {
+  if (typeof v === 'string') return v
+  if (Math.abs(v) < 0.01 && v !== 0) return v.toFixed(4)
+  return num(v, 3)
+}
+
+function StrategyConfig({ frozen, source }: { frozen: Record<string, number | string>; source: string }) {
+  return (
+    <Panel className="panel-interactive">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="label text-sig">frozen strategy config</div>
+        <SourceTag source={source === 'live' ? 'live' : 'published'} />
+      </div>
+      <div className="grid grid-cols-3 gap-x-4 gap-y-2.5">
+        {PARAM_META.filter((p) => frozen[p.key] != null).map((p) => (
+          <div key={p.key} title={p.hint}>
+            <div className="num text-sm font-semibold text-ink">{fmtParam(frozen[p.key])}</div>
+            <div className="text-2xs text-muted">{p.label}</div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 border-t border-line pt-2 text-2xs text-muted">
+        The exact params every estimate on this page runs under — read live from <span className="font-mono text-ink-2">config/model.yaml</span> when available.
+      </p>
+    </Panel>
+  )
 }
 
 export function Hero({ q }: { q: { data: Overview | null; error: string | null; loading: boolean } }) {
@@ -47,19 +88,30 @@ export function Hero({ q }: { q: { data: Overview | null; error: string | null; 
                 <span key={k} className="chip">{k} · {int(v)}</span>
               ))}
             </div>
+            {d.dataset.by_year && Object.keys(d.dataset.by_year).length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2 text-2xs">
+                <span className="label self-center">by year</span>
+                {Object.entries(d.dataset.by_year).sort(([a], [b]) => a.localeCompare(b)).map(([y, v]) => (
+                  <span key={y} className="chip">{y} · {int(v)}</span>
+                ))}
+              </div>
+            )}
           </Panel>
 
-          <Stagger className="grid grid-cols-2 gap-4 self-start">
-            {d.tiles.map((t) => (
-              <Reveal key={t.label} className="panel panel-interactive p-4">
-                <div className="label">{t.label}</div>
-                <div className="num mt-1.5 text-2xl font-semibold text-sig">
-                  <AnimatedNumber value={t.value} format={(n) => fmtTile(n, t.fmt)} />
-                </div>
-                <div className="mt-1 text-2xs leading-snug text-muted">{t.sub}</div>
-              </Reveal>
-            ))}
-          </Stagger>
+          <div className="space-y-4 self-start">
+            <Stagger className="grid grid-cols-2 gap-4">
+              {d.tiles.map((t) => (
+                <Reveal key={t.label} className="panel panel-interactive p-4">
+                  <div className="label">{t.label}</div>
+                  <div className="num mt-1.5 text-2xl font-semibold text-sig">
+                    <AnimatedNumber value={t.value} format={(n) => fmtTile(n, t.fmt)} />
+                  </div>
+                  <div className="mt-1 text-2xs leading-snug text-muted">{t.sub}</div>
+                </Reveal>
+              ))}
+            </Stagger>
+            {d.frozen_params && <StrategyConfig frozen={d.frozen_params} source={d.frozen_params_source} />}
+          </div>
         </div>
       )}</Async>
     </Section>

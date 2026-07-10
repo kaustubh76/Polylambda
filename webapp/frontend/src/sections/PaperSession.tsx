@@ -6,10 +6,11 @@ import {
 import { api, useAction, type DDPoint, type SessionReq } from '../api/client'
 import { useInViewOnce } from '../lib/motion'
 import { C } from '../lib/theme'
-import { num, signed, usd } from '../lib/format'
+import { fixed, num, short, signed, usd } from '../lib/format'
 import { Caveat, ErrorBox, Loading, Panel, Section, Stat } from '../components/ui'
 
 type Tab = 'dispute_defense' | 'live_quoting'
+const CATS = ['politics', 'crypto', 'sports', 'geopolitics', 'tech-ai', 'economics', 'entertainment']
 
 export function PaperSession() {
   const [tab, setTab] = useState<Tab>('dispute_defense')
@@ -44,6 +45,7 @@ function DisputeDefense() {
   const { run, data, error, loading } = useAction(api.session)
   const [frame, setFrame] = useState(0)
   const [playing, setPlaying] = useState(false)
+  const [showAllExits, setShowAllExits] = useState(false)
   const timer = useRef<number | null>(null)
 
   useEffect(() => { run(cfg) }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -82,17 +84,27 @@ function DisputeDefense() {
   return (
     <div className="space-y-4">
       {/* controls */}
-      <Panel pad className="flex flex-wrap items-end gap-4">
-        <Ctl label="entry price" v={cfg.entry_price!} min={0.3} max={0.9} step={0.01} on={(v) => setCfg({ ...cfg, entry_price: v })} fmt={(v) => v.toFixed(2)} />
-        <Ctl label="position size" v={cfg.inventory!} min={20} max={300} step={10} on={(v) => setCfg({ ...cfg, inventory: v })} fmt={(v) => num(v, 0)} />
-        <Ctl label="dispute at tick" v={cfg.dispute_tick!} min={2} max={9} step={1} on={(v) => setCfg({ ...cfg, dispute_tick: v })} fmt={(v) => `${v}`} />
-        <Ctl label="jump size (logit)" v={cfg.gap_logit!} min={-2} max={-0.4} step={0.05} on={(v) => setCfg({ ...cfg, gap_logit: v })} fmt={(v) => v.toFixed(2)} />
-        <button className="btn btn-primary ml-auto" disabled={loading} onClick={() => run(cfg)}>
-          {loading ? 'running…' : '▶ Run session'}
-        </button>
-        {n > 0 && !loading && (
-          <button className="btn" onClick={() => { setFrame(0); setPlaying(true) }}>↻ Replay</button>
-        )}
+      <Panel pad className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="label mr-1">category</span>
+          {CATS.map((c) => (
+            <button key={c} onClick={() => setCfg({ ...cfg, category: c })} aria-pressed={cfg.category === c}
+              className={`chip capitalize ${cfg.category === c ? 'border-sig/50 bg-sig/10 text-sig' : ''}`}>{c}</button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-end gap-4">
+          <Ctl label="entry price" v={cfg.entry_price!} min={0.3} max={0.9} step={0.01} on={(v) => setCfg({ ...cfg, entry_price: v })} fmt={(v) => v.toFixed(2)} />
+          <Ctl label="position size" v={cfg.inventory!} min={20} max={300} step={10} on={(v) => setCfg({ ...cfg, inventory: v })} fmt={(v) => num(v, 0)} />
+          <Ctl label="dispute at tick" v={cfg.dispute_tick!} min={2} max={9} step={1} on={(v) => setCfg({ ...cfg, dispute_tick: v })} fmt={(v) => `${v}`} />
+          <Ctl label="jump size (logit)" v={cfg.gap_logit!} min={-2} max={-0.4} step={0.05} on={(v) => setCfg({ ...cfg, gap_logit: v })} fmt={(v) => v.toFixed(2)} />
+          <Ctl label="ticks" v={cfg.n_ticks!} min={8} max={40} step={1} on={(v) => setCfg({ ...cfg, n_ticks: v })} fmt={(v) => `${v}`} />
+          <button className="btn btn-primary ml-auto" disabled={loading} onClick={() => run(cfg)}>
+            {loading ? 'running…' : '▶ Run session'}
+          </button>
+          {n > 0 && !loading && (
+            <button className="btn" onClick={() => { setFrame(0); setPlaying(true) }}>↻ Replay</button>
+          )}
+        </div>
       </Panel>
 
       {error && <ErrorBox error={error} />}
@@ -150,18 +162,21 @@ function DisputeDefense() {
             <div className="mb-2 text-sm text-ink-2">{data.narrative}</div>
             {data.exits && data.exits.length > 0 && (
               <div className="mt-3 overflow-x-auto">
-                <table className="w-full min-w-[560px] text-left text-xs">
+                <table className="w-full min-w-[680px] text-left text-xs">
                   <thead className="text-2xs uppercase tracking-wide text-muted">
                     <tr className="border-b border-line">
-                      <th className="py-1.5 pr-3">trigger</th><th className="pr-3">inventory</th>
+                      <th className="py-1.5 pr-3">market</th><th className="pr-3">trigger</th>
+                      <th className="pr-3">λ_jump vs λ*</th><th className="pr-3">inventory</th>
                       <th className="pr-3">exit px</th><th className="pr-3">haircut</th>
                       <th className="pr-3">E[loss]</th><th>forgone</th>
                     </tr>
                   </thead>
                   <tbody className="num">
-                    {data.exits.slice(0, 6).map((e, i) => (
+                    {(showAllExits ? data.exits : data.exits.slice(0, 6)).map((e, i) => (
                       <tr key={i} className="border-b border-line/50 text-ink-2">
-                        <td className="py-1.5 pr-3"><span className="rounded bg-warn/15 px-1.5 py-0.5 text-warn">{e.trigger}</span></td>
+                        <td className="py-1.5 pr-3 text-muted">{e.cid ? short(e.cid, 6, 4) : '—'}</td>
+                        <td className="pr-3"><span className="rounded bg-warn/15 px-1.5 py-0.5 text-warn">{e.trigger}</span></td>
+                        <td className="pr-3"><span className="text-sig">{e.lambda_jump != null ? fixed(e.lambda_jump, 4) : '—'}</span> <span className="text-muted">/ {e.lambda_star != null ? fixed(e.lambda_star, 4) : '—'}</span></td>
                         <td className="pr-3">{num(e.inventory_before, 0)} → {num(e.inventory_after, 0)}</td>
                         <td className="pr-3">{e.exit_price.toFixed(3)}</td>
                         <td className="pr-3 text-loss">{usd(e.haircut_paid)}</td>
@@ -171,6 +186,11 @@ function DisputeDefense() {
                     ))}
                   </tbody>
                 </table>
+                {data.exits.length > 6 && (
+                  <button onClick={() => setShowAllExits((v) => !v)} className="mt-2 text-2xs text-sig underline decoration-sig/40 underline-offset-2 hover:decoration-sig">
+                    {showAllExits ? 'show fewer' : `show all ${data.exits.length} exits`}
+                  </button>
+                )}
               </div>
             )}
             <div className="mt-3">
@@ -192,23 +212,45 @@ function DisputeDefense() {
 // ============================================================================================
 function LiveQuoting() {
   const [n, setN] = useState(30)
+  const [seed, setSeed] = useState(7)
+  const [nMarkets, setNMarkets] = useState(4)
+  const [realMarkets, setRealMarkets] = useState(false)
+  const [hazard, setHazard] = useState(false)
   const [chartRef, chartIn] = useInViewOnce<HTMLDivElement>()
   const { run, data, error, loading } = useAction(api.session)
-  useEffect(() => { run({ scenario: 'live_quoting', n_ticks: n, n_markets: 4, seed: 7 }) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const go = () => run({ scenario: 'live_quoting', n_ticks: n, n_markets: nMarkets, seed, source: realMarkets ? 'data' : 'synthetic', hazard: realMarkets && hazard })
+  useEffect(() => { go() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const series = (data?.series ?? {}) as Record<string, any[]>
+  const quotes = (data?.quotes ?? {}) as Record<string, any[]>
   const cids = Object.keys(series)
   const [sel, setSel] = useState<string | null>(null)
   const cid = sel && series[sel] ? sel : cids[0]
-  const rows = cid ? series[cid] : []
+
+  // merge the engine's OWN posted quotes (bid/ask + risk_scale/pos_cap) onto the synthetic book by tick
+  const rows = useMemo(() => {
+    const s = cid ? series[cid] : []
+    const q = cid ? quotes[cid] : undefined
+    if (!q) return s
+    return s.map((r: any, i: number) => ({ ...r, e_bid: q[i]?.bid ?? null, e_ask: q[i]?.ask ?? null }))
+  }, [cid, series, quotes])
+  const lastQ = cid && quotes[cid]?.length ? quotes[cid][quotes[cid].length - 1] : null
 
   return (
     <div className="space-y-4">
       <Panel pad className="flex flex-wrap items-end gap-4">
         <Ctl label="ticks" v={n} min={10} max={60} step={5} on={setN} fmt={(v) => `${v}`} />
-        <button className="btn btn-primary" disabled={loading} onClick={() => run({ scenario: 'live_quoting', n_ticks: n, n_markets: 4, seed: 7 })}>
+        <Ctl label="markets" v={nMarkets} min={2} max={6} step={1} on={setNMarkets} fmt={(v) => `${v}`} />
+        <Ctl label="seed" v={seed} min={1} max={99} step={1} on={setSeed} fmt={(v) => `${v}`} />
+        <div className="flex flex-col gap-1.5">
+          <button onClick={() => setRealMarkets((v) => !v)} aria-pressed={realMarkets}
+            className={`chip ${realMarkets ? 'border-sig/50 bg-sig/10 text-sig' : ''}`}>real markets</button>
+          <button onClick={() => setHazard((v) => !v)} aria-pressed={hazard} disabled={!realMarkets}
+            className={`chip ${hazard && realMarkets ? 'border-sig/50 bg-sig/10 text-sig' : ''} ${!realMarkets ? 'opacity-40' : ''}`}>hazard λ</button>
+        </div>
+        <button className="btn btn-primary" disabled={loading} onClick={go}>
           {loading ? 'running…' : '▶ Run quoting loop'}
         </button>
-        <div className="ml-auto flex gap-1">
+        <div className="ml-auto flex flex-wrap gap-1">
           {cids.map((c, i) => (
             <button key={c} onClick={() => setSel(c)}
               className={`chip ${cid === c ? 'border-sig/50 text-sig' : ''}`} style={{ borderColor: cid === c ? undefined : C.line }}>
@@ -220,24 +262,32 @@ function LiveQuoting() {
       {error && <ErrorBox error={error} />}
       {data && (
         <Panel>
-          <div className="mb-2 flex items-center gap-4 text-xs text-ink-2">
+          <div className="mb-2 flex flex-wrap items-center gap-4 text-xs text-ink-2">
             <Legend color={C.series[1]} label="mid (belief)" />
+            <Legend color={C.sig} label="engine bid/ask" dashed />
+            <Legend color={C.muted} label={data.market_source === 'data' ? 'real book' : 'synthetic book'} />
+            {data.market_source === 'data' && <span className="chip !py-0.5 border-sig/40 text-sig">real markets{data.hazard ? ' · hazard λ' : ''}</span>}
+            {lastQ && (
+              <span className="num text-2xs text-muted">risk_scale {fixed(lastQ.risk_scale ?? 1, 2)} · pos_cap {num(lastQ.pos_cap ?? 0, 0)}</span>
+            )}
             <span className="ml-auto num text-2xs text-muted">{data.n_fills} fills · driftless synthetic book → quoting-behavior view, not a P&L race</span>
           </div>
-          <div className="h-[280px] w-full" ref={chartRef}>
+          <div className="h-[300px] w-full" ref={chartRef}>
             <ResponsiveContainer>
               <LineChart data={rows} margin={{ left: 4, right: 12, top: 8, bottom: 4 }}>
                 <CartesianGrid stroke={C.line} vertical={false} />
                 <XAxis dataKey="i" stroke={C.axis} tick={{ fill: C.muted, fontSize: 11 }} tickLine={false} />
                 <YAxis domain={[0, 1]} stroke={C.axis} tick={{ fill: C.muted, fontSize: 11 }} tickLine={false} width={40} />
                 <Tooltip content={<QuoteTip />} />
-                <Line type="monotone" dataKey="best_ask" stroke={C.profit} strokeWidth={1} dot={false} opacity={0.5} isAnimationActive={chartIn} animationDuration={700} animationEasing="ease-out" />
-                <Line type="monotone" dataKey="best_bid" stroke={C.loss} strokeWidth={1} dot={false} opacity={0.5} isAnimationActive={chartIn} animationDuration={700} animationEasing="ease-out" />
+                <Line type="monotone" dataKey="best_ask" stroke={C.muted} strokeWidth={1} dot={false} opacity={0.45} isAnimationActive={chartIn} animationDuration={700} animationEasing="ease-out" />
+                <Line type="monotone" dataKey="best_bid" stroke={C.muted} strokeWidth={1} dot={false} opacity={0.45} isAnimationActive={chartIn} animationDuration={700} animationEasing="ease-out" />
+                <Line type="monotone" dataKey="e_ask" stroke={C.sig} strokeWidth={1.5} dot={false} strokeDasharray="4 3" connectNulls isAnimationActive={chartIn} animationDuration={800} animationEasing="ease-out" />
+                <Line type="monotone" dataKey="e_bid" stroke={C.sig} strokeWidth={1.5} dot={false} strokeDasharray="4 3" connectNulls isAnimationActive={chartIn} animationDuration={800} animationEasing="ease-out" />
                 <Line type="monotone" dataKey="mid" stroke={C.series[1]} strokeWidth={2} dot={false} isAnimationActive={chartIn} animationDuration={800} animationEasing="ease-out" />
               </LineChart>
             </ResponsiveContainer>
           </div>
-          <p className="mt-2 text-2xs text-muted">The real <span className="font-mono text-ink-2">runner.run(mode="paper")</span> quoting a random-walking mid across 4 markets — proof the multi-market loop runs end-to-end.</p>
+          <p className="mt-2 text-2xs text-muted">The real <span className="font-mono text-ink-2">runner.run(mode="paper")</span> quoting a random-walking mid across {nMarkets} markets — the dashed <span className="text-sig">engine bid/ask</span> is the strategy's own two-sided quote (with inventory-scaled <span className="font-mono">risk_scale</span>/<span className="font-mono">pos_cap</span>), not the synthetic book.</p>
         </Panel>
       )}
     </div>
@@ -254,8 +304,12 @@ function Ctl({ label, v, min, max, step, on, fmt }: { label: string; v: number; 
     </label>
   )
 }
-function Legend({ color, label }: { color: string; label: string }) {
-  return <span className="flex items-center gap-1.5 text-ink-2"><span className="h-2 w-3 rounded-sm" style={{ background: color }} />{label}</span>
+function Legend({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
+  return (
+    <span className="flex items-center gap-1.5 text-ink-2">
+      <span className="h-2 w-3 rounded-sm" style={dashed ? { border: `1.5px dashed ${color}` } : { background: color }} />{label}
+    </span>
+  )
 }
 function EqTip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null

@@ -171,7 +171,9 @@ def run_session(*, scenario_name: str = "dispute_defense", **kw) -> dict:
     if scenario_name == "live_quoting":
         return scenario.run_live_quoting(n_ticks=int(kw.get("n_ticks", 40)),
                                          n_markets=int(kw.get("n_markets", 4)),
-                                         seed=int(kw.get("seed", 7)))
+                                         seed=int(kw.get("seed", 7)),
+                                         source=str(kw.get("source", "synthetic")),
+                                         hazard=bool(kw.get("hazard", False)))
     cache.install_offline_di()
     return scenario.run_dispute_defense(
         category=kw.get("category", "politics"), entry_price=float(kw.get("entry_price", 0.62)),
@@ -182,8 +184,35 @@ def run_session(*, scenario_name: str = "dispute_defense", **kw) -> dict:
 # ---------------------------------------------------------------------------------------------
 # edge proof — λ ablation (the money chart #2)
 # ---------------------------------------------------------------------------------------------
-def ablation() -> dict:
-    rows = [dict(r) for r in K.ABLATION_PUBLISHED]
+def ablation(live: bool = False) -> dict:
+    source = "published"
+    grid_rows = None
+    live_error = None
+    if live:
+        # attempt the real powered replay (heavy: HF fill tape); fall back to the published artifact,
+        # telling the truth about WHY it fell back so the UI's SourceTag/caveat is honest.
+        import os
+        url = os.environ.get("INDEXER_GRAPHQL_URL") or os.environ.get("ENVIO_GRAPHQL_URL")
+        if not url:
+            live_error = "no INDEXER_GRAPHQL_URL configured on this host"
+        else:
+            try:
+                from forwardtest.replay_ablation import run_replay
+            except Exception as e:  # noqa: BLE001 — slim deploy image omits sklearn/HF replay deps
+                run_replay = None
+                live_error = f"replay deps not installed in this image ({e.__class__.__name__})"
+            if run_replay is not None:
+                try:
+                    grid = [0.0005, 0.001, 0.002, 0.005, 0.01]
+                    grid_rows = _ablation_rows_from_replay(run_replay(url, grid))
+                    if grid_rows:
+                        source = "live"
+                    else:
+                        live_error = "live replay returned no rows"
+                except Exception as e:  # noqa: BLE001
+                    grid_rows = None
+                    live_error = f"live replay failed: {e}"
+    rows = grid_rows if grid_rows else _ablation_full_rows() or [dict(r) for r in K.ABLATION_PUBLISHED]
     for r in rows:
         r["arm_label"] = K.ARM_LABELS.get(r["arm"], r["arm"])
     grid = sorted({r["lambda_star"] for r in rows})
@@ -196,11 +225,79 @@ def ablation() -> dict:
                                           "sharpe": r["sharpe"]})
     for a in arms.values():
         a["points"].sort(key=lambda p: p["lambda_star"])
-    return {"source": "published", "meta": K.ABLATION_META, "lambda_star_grid": grid,
-            "arms": list(arms.values()),
-            "headline": "Reward-aware surgical exit is the edge; blanket avoidance destroys it.",
-            "caveat": ("The live forward test is statistically powerless (~1% dispute rate). This "
-                       "is the powered historical counterfactual over 1,409 disputes + matched controls.")}
+    out = {"source": source, "meta": K.ABLATION_META, "lambda_star_grid": grid,
+           "arms": list(arms.values()),
+           "headline": "Reward-aware surgical exit is the edge; blanket avoidance destroys it.",
+           "caveat": ("The live forward test is statistically powerless (~1% dispute rate). This "
+                      "is the powered historical counterfactual over 1,409 disputes + matched controls.")}
+    if live_error:
+        out["live_error"] = live_error
+    return out
+
+
+def _ablation_full_rows() -> list[dict] | None:
+    """The richer 4-arm ablation artifact (incl. the hazard arm), precomputed offline where the
+    heavy deps exist and shipped in .data_cache/webapp/ (see precompute.build_ablation_full).
+    Returns None if not present → callers fall back to the published 3-arm constants."""
+    try:
+        data = cache._load_json(cache.WEBAPP_CACHE / "ablation_full.json")
+        if isinstance(data, list) and data:
+            return [dict(r) for r in data]
+    except Exception:
+        pass
+    return None
+
+
+def _ablation_rows_from_replay(res) -> list[dict] | None:
+    """Flatten a live AblationResult into the same row shape the UI consumes. Best-effort."""
+    try:
+        rows = []
+        for arm in getattr(res, "arms", []) or []:
+            name = arm.get("arm") if isinstance(arm, dict) else getattr(arm, "arm", None)
+            pts = arm.get("points") if isinstance(arm, dict) else getattr(arm, "points", [])
+            for p in pts or []:
+                rows.append({"arm": name, "lambda_star": p["lambda_star"],
+                             "pnl_net_of_rewards": p.get("pnl_net_of_rewards", p.get("pnl", 0.0)),
+                             "sharpe": p.get("sharpe", 0.0)})
+        return rows or None
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------------------------
+# live reconciliation — recon/check.run_recon against the indexer + on-chain payout vectors
+# ---------------------------------------------------------------------------------------------
+def recon_live() -> dict:
+    import os
+    base = recon()
+    url = os.environ.get("INDEXER_GRAPHQL_URL") or os.environ.get("ENVIO_GRAPHQL_URL")
+    # accept every RPC env name used across the repo/deploy configs (AMOY_RPC_URL is what fly/render set)
+    rpc = (os.environ.get("POLYGON_RPC") or os.environ.get("RPC_URL")
+           or os.environ.get("AMOY_RPC_URL") or os.environ.get("POLYGON_RPC_URL") or "")
+    if not url:
+        base["source"] = "published"
+        base["live_error"] = "no INDEXER_GRAPHQL_URL configured on this host"
+        return base
+    try:
+        from recon.check import run_recon
+        rep = run_recon(url, rpc)
+        r = {
+            "pass_rate": rep.pass_rate, "eligible": rep.eligible, "matched": rep.matched,
+            "no_ground_truth": rep.excluded_no_ground_truth,
+            "excluded": {
+                "pending": rep.excluded_pending, "in_dispute": rep.excluded_in_dispute,
+                "reorg_window": rep.excluded_reorg_window,
+                "unsupported_adapter": rep.excluded_unsupported_adapter,
+                "no_ground_truth": rep.excluded_no_ground_truth,
+            },
+        }
+        return {"recon": r, "by_adapter": base["by_adapter"], "by_category": base["by_category"],
+                "total_disputes": base["total_disputes"], "hf_joinable_pct": base["hf_joinable_pct"],
+                "note": base["note"], "source": "live", "mismatches": len(rep.mismatches or [])}
+    except Exception as e:  # noqa: BLE001
+        base["source"] = "published"
+        base["live_error"] = str(e)
+        return base
 
 
 # ---------------------------------------------------------------------------------------------
@@ -305,7 +402,7 @@ def recon() -> dict:
     return {"recon": r, "by_adapter": stats.get("by_adapter"),
             "by_category": stats.get("by_category_joinable"),
             "total_disputes": stats.get("total_disputes"),
-            "hf_joinable_pct": stats.get("hf_joinable_pct"),
+            "hf_joinable_pct": stats.get("hf_joinable_pct"), "source": "published",
             "note": ("Reconciliation is 100% on the ELIGIBLE set — indexer finalOutcome vs the "
                      "on-chain payout vector — with counted exclusion buckets (pending / in-dispute "
                      "/ reorg / unsupported-adapter / no-ground-truth), not a flat 100%.")}
@@ -323,3 +420,84 @@ def sigma_surface() -> dict:
     cats = sorted({p["category"] for p in out})
     return {"points": out, "categories": cats, "n": len(out),
             "note": "Belief-volatility (logit-space σ) prior by category × price level — the σ estimator's shrink target."}
+
+
+# ---------------------------------------------------------------------------------------------
+# proposer leaderboard — the raw proposer_reliability signal (before the CEM-matched null)
+# ---------------------------------------------------------------------------------------------
+def proposers(limit: int = 15) -> dict:
+    by = cache.disputes_by_proposer() or {}
+    rows = sorted(({"proposer": k, "disputes": int(v)} for k, v in by.items() if k and k != "null"),
+                  key=lambda r: r["disputes"], reverse=True)[: max(1, int(limit))]
+    return {"rows": rows, "total_proposers": len(by),
+            "note": ("Disputes attributed to each proposer address across the released layer — the raw "
+                     "proposer_reliability signal, which discriminates on raw data (AUC~0.70) but collapses "
+                     "to a coin-flip once markets are CEM-matched on liquidity (see the model card).")}
+
+
+# ---------------------------------------------------------------------------------------------
+# dispute anatomy — distributions over the full released parquet
+# ---------------------------------------------------------------------------------------------
+def disputes_analytics(bins: int = 24) -> dict:
+    import numpy as np
+    df = cache.disputes_df()
+    if df.empty:
+        return {"n": 0, "histogram": [], "scatter": [], "by_round": {}, "by_outcome": {}}
+    out: dict = {"n": int(len(df))}
+    if "realizedJumpLogit" in df.columns:
+        mag = df["realizedJumpLogit"].dropna().astype(float).abs()
+        if len(mag):
+            hi = float(min(mag.max(), 3.0)) or 1.0
+            counts, edges = np.histogram(mag, bins=int(bins), range=(0.0, hi))
+            out["histogram"] = [{"x0": round(float(edges[i]), 3), "x1": round(float(edges[i + 1]), 3),
+                                 "n": int(counts[i])} for i in range(len(counts))]
+            out["jump_stats"] = {"mean": round(float(mag.mean()), 4), "median": round(float(mag.median()), 4),
+                                 "sd": round(float(mag.std()), 4), "n": int(len(mag))}
+    if "preDisputePrice" in df.columns and "postDisputePrice" in df.columns:
+        sc = df[["preDisputePrice", "postDisputePrice"]].dropna().astype(float)
+        if len(sc) > 600:
+            sc = sc.sample(600, random_state=7)
+        out["scatter"] = [{"pre": round(float(a), 4), "post": round(float(b), 4)}
+                          for a, b in sc.itertuples(index=False)]
+    if "round" in df.columns:
+        out["by_round"] = {str(int(k)): int(v) for k, v in
+                           df["round"].dropna().astype(int).value_counts().sort_index().items()}
+    if "proposedOutcome" in df.columns:
+        out["by_outcome"] = {str(k): int(v) for k, v in df["proposedOutcome"].value_counts().items()
+                             if str(k) not in ("nan", "None")}
+    return out
+
+
+# ---------------------------------------------------------------------------------------------
+# interactive A-S quote curve vs inventory (the pricing/quote.compute_quote anatomy)
+# ---------------------------------------------------------------------------------------------
+def quote_curve(*, category: str = "politics", price: float = 0.62, horizon_days: float = 5.0,
+                inv_min: float = -200.0, inv_max: float = 200.0, steps: int = 41) -> dict:
+    from config.loader import load_config
+    from estimators.hazard import feature_row, market_size_feature
+    from estimators.lambda_engine import category_base_rate as le_base_rate, estimate_lambda
+    from estimators.sigma import category_price_prior
+    from pricing.quote import compute_quote
+
+    cache.install_offline_di()
+    cfg = load_config()
+    price = min(max(float(price), 0.01), 0.99)
+    counts, _ = cache.base_rate_counts()
+    disp, _ = cache.dispute_counts_by_category()
+    br = le_base_rate(category, disp, counts)
+    feats = feature_row(category_base_rate=br["rate"], market_size=market_size_feature(800),
+                        proposer_reliability=0.0, latency_anomaly=0.0)
+    feats.update({"category": category, "price": price})
+    out = estimate_lambda("live", feats, dispute_counts=disp, model=cache.load_hazard_model(),
+                          kappa_loss=cfg.kappa_loss)
+    sigma = category_price_prior(cache.sigma_prior(), category, price) or cfg.sigma_ref
+    n = max(2, int(steps))
+    pts = []
+    for i in range(n):
+        q = inv_min + (inv_max - inv_min) * i / (n - 1)
+        bid, ask = compute_quote(price, q, sigma, horizon_days, lam=out.lambda_jump, e_loss=out.e_loss,
+                                 jump_drift=out.jump_drift, params=cfg.quote)
+        pts.append({"inventory": round(q, 1), "bid": round(bid, 4), "ask": round(ask, 4),
+                    "mid": round((bid + ask) / 2, 4)})
+    return {"points": pts, "mid": price, "sigma": round(sigma, 5), "lambda_jump": out.lambda_jump,
+            "category": category, "horizon_days": horizon_days}

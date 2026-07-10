@@ -1,7 +1,7 @@
 import { api, useApi, type Hazard, type HazardCardT } from '../api/client'
 import { C } from '../lib/theme'
-import { fixed, int } from '../lib/format'
-import { Async, Caveat, Panel, Section } from '../components/ui'
+import { fixed, int, short } from '../lib/format'
+import { Async, Caveat, CopyButton, Panel, Section } from '../components/ui'
 
 const FEAT_SHORT: Record<string, string> = {
   category_base_rate: 'cat base rate', market_size: 'market size',
@@ -34,9 +34,43 @@ export function HazardCard() {
             </Panel>
             <Caveat kind="calibration">{d.caveat}</Caveat>
           </div>
+          <ProposerLeaderboard />
         </div>
       )}</Async>
     </Section>
+  )
+}
+
+// the raw proposer signal, before the CEM-matched null — a "most dispute-prone proposers" ladder
+function ProposerLeaderboard() {
+  const q = useApi(api.proposers, [])
+  return (
+    <Async q={q}>{(d) => {
+      const max = Math.max(...d.rows.map((r) => r.disputes), 1)
+      return (
+        <Panel>
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <div className="label text-sig">most dispute-prone proposers · raw signal</div>
+            <span className="text-2xs text-muted">{int(d.total_proposers)} proposers total</span>
+          </div>
+          <div className="grid gap-x-8 gap-y-1.5 sm:grid-cols-2">
+            {d.rows.map((r, i) => (
+              <div key={r.proposer} className="flex items-center gap-2 text-xs">
+                <span className="w-4 shrink-0 text-right text-2xs text-muted">{i + 1}</span>
+                <a href={`https://polygonscan.com/address/${r.proposer}`} target="_blank" rel="noreferrer"
+                  className="num w-24 shrink-0 text-ink-2 link-underline">{short(r.proposer, 5, 4)}</a>
+                <CopyButton value={r.proposer} label="Copy proposer address" />
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-bg">
+                  <div className="h-full rounded-full" style={{ width: `${(r.disputes / max) * 100}%`, background: C.series[3] }} />
+                </div>
+                <span className="num w-8 text-right text-muted">{r.disputes}</span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-2xs leading-relaxed text-muted">{d.note}</p>
+        </Panel>
+      )
+    }}</Async>
   )
 }
 
@@ -86,6 +120,11 @@ function ModelCard({ card, highlight, nullish }: { card: HazardCardT | null; hig
       </div>
       <div className="num mt-3 flex justify-between border-t border-line pt-2 text-2xs text-muted">
         <span>n={int(card.n)}</span><span>pos={int(card.positives)}</span><span>Brier {fixed(card.brier, 3)}</span>
+      </div>
+      <div className="num mt-1.5 flex justify-between text-2xs text-muted">
+        <span title="prior-corrected logistic intercept">intercept {fixed(card.intercept, 2)}</span>
+        <span title="log-prior offset to the ~1% natural rate">offset {fixed(card.offset, 2)}</span>
+        <span title="base dispute rate the model is corrected to">nat. rate {card.natural_rate != null ? `${(card.natural_rate * 100).toFixed(2)}%` : '—'}</span>
       </div>
     </Panel>
   )

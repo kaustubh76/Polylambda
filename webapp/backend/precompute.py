@@ -67,9 +67,33 @@ def build_dispute_names(force: bool = False) -> str:
     return f"wrote dispute_names.json ({len(mapping)}/{len(rows)} named)"
 
 
+def build_ablation_full(force: bool = False) -> str:
+    """The richer 4-arm powered replay (incl. the hazard arm) → .data_cache/webapp/ablation_full.json,
+    which services.ablation() serves in place of the published 3-arm constants. HEAVY + networked
+    (HF fill tape via the indexer), so it's gated behind `--ablation`; the app degrades gracefully
+    to the published constants when the artifact is absent."""
+    out = WEBAPP_CACHE / "ablation_full.json"
+    if out.exists() and not force:
+        return f"skip (exists): {out.name}"
+    url = os.environ.get("INDEXER_GRAPHQL_URL") or os.environ.get("ENVIO_GRAPHQL_URL")
+    if not url:
+        return "skip: no INDEXER_GRAPHQL_URL set (needed for the live replay)"
+    from forwardtest.replay_ablation import run_replay
+    from webapp.backend.services import _ablation_rows_from_replay
+    grid = [0.0005, 0.001, 0.002, 0.005, 0.01]
+    rows = _ablation_rows_from_replay(run_replay(url, grid))
+    if not rows:
+        return "skip: replay produced no rows"
+    _write("ablation_full.json", rows)
+    return f"wrote ablation_full.json ({len(rows)} rows)"
+
+
 def main() -> None:
     print(f"[precompute] project root: {PROJECT_ROOT}")
-    for step in (build_disputes_by_proposer, build_dispute_names, build_base_rate_counts):
+    steps = [build_disputes_by_proposer, build_dispute_names, build_base_rate_counts]
+    if "--ablation" in os.sys.argv:
+        steps.append(build_ablation_full)  # opt-in: heavy + networked
+    for step in steps:
         try:
             print("[precompute]", step(force="--force" in os.sys.argv))
         except Exception as e:  # noqa: BLE001 — precompute is best-effort; fallbacks cover gaps

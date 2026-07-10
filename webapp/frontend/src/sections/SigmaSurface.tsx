@@ -1,15 +1,16 @@
-import { useState } from 'react'
 import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis } from 'recharts'
 import { api, useApi, type SigmaPoint } from '../api/client'
 import { useInViewOnce } from '../lib/motion'
+import { usePersistentState } from '../lib/urlState'
 import { CATEGORY_COLORS, C } from '../lib/theme'
 import { Async, Panel, Section } from '../components/ui'
 
 export function SigmaSurface() {
   const q = useApi(api.sigma, [])
   const [chartRef, chartIn] = useInViewOnce<HTMLDivElement>()
-  const [off, setOff] = useState<Set<string>>(new Set())
-  const toggle = (c: string) => setOff((s) => { const n = new Set(s); n.has(c) ? n.delete(c) : n.add(c); return n })
+  const [offList, setOffList] = usePersistentState<string[]>('pl:sigma-off', [])
+  const off = new Set(offList)
+  const toggle = (c: string) => setOffList((s) => (s.includes(c) ? s.filter((x) => x !== c) : [...s, c]))
 
   return (
     <Section id="sigma" kicker="belief-volatility · the σ estimator's prior"

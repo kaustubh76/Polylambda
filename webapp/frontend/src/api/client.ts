@@ -19,11 +19,16 @@ export const api = {
   baserates: () => req<BaseRates>('/baserates'),
   score: (body: ScoreReq) => req<ScoreResp>('/lambda/score', { method: 'POST', body: JSON.stringify(body) }),
   session: (body: SessionReq) => req<SessionResp>('/session/run', { method: 'POST', body: JSON.stringify(body) }),
-  ablation: () => req<Ablation>('/ablation'),
+  ablation: (live = false) => req<Ablation>(`/ablation${live ? '?live=1' : ''}`),
   hazard: () => req<Hazard>('/hazard'),
   disputes: (qs: string) => req<Disputes>(`/disputes${qs}`),
   recon: () => req<Recon>('/recon'),
+  reconLive: () => req<Recon>('/recon/live'),
   sigma: () => req<Sigma>('/sigma'),
+  proposers: (limit = 15) => req<Proposers>(`/proposers?limit=${limit}`),
+  disputeAnalytics: (bins = 24) => req<DisputeAnalytics>(`/disputes/analytics?bins=${bins}`),
+  quoteCurve: (category: string, price: number, horizon_days: number) =>
+    req<QuoteCurve>(`/quote-curve?category=${encodeURIComponent(category)}&price=${price}&horizon_days=${horizon_days}`),
   liveStatus: () => req<LiveStatus>('/live/status'),
   liveDisputes: (limit = 25) => req<LiveDisputes>(`/live/disputes?limit=${limit}`),
   // testnet (on-chain PolyLambda market, Polygon Amoy)
@@ -88,7 +93,7 @@ export interface ScoreResp {
   exit_gate: { lambda_jump: number; lambda_star: number; e_jump_loss_usd: number; forgone_rewards: number; spread_cost: number; would_exit: boolean; reason: string }
 }
 
-export interface SessionReq { scenario: string; category?: string; entry_price?: number; inventory?: number; dispute_tick?: number; gap_logit?: number; n_ticks?: number; n_markets?: number; seed?: number }
+export interface SessionReq { scenario: string; category?: string; entry_price?: number; inventory?: number; dispute_tick?: number; gap_logit?: number; n_ticks?: number; n_markets?: number; seed?: number; source?: string; hazard?: boolean }
 export interface DDPoint { i: number; mid: number; inventory: number; equity: number; cash: number }
 export interface ExitEvent { cid: string; trigger: string; inventory_before: number; inventory_after: number; exit_price: number; haircut_paid: number; lambda_jump: number; lambda_star: number; e_jump_loss: number; forgone_rewards: number }
 export interface SessionResp {
@@ -100,6 +105,8 @@ export interface SessionResp {
   narrative?: string
   quotes?: Record<string, any[]>
   n_fills?: number
+  market_source?: string
+  hazard?: boolean
 }
 
 export interface AblationArm { arm: string; arm_label: string; points: { lambda_star: number; pnl_net_of_rewards: number; sharpe: number }[] }
@@ -109,9 +116,23 @@ export interface HazardCardT { label: string; coef: number[]; intercept: number;
 export interface Hazard { deployed: HazardCardT | null; matched: HazardCardT | null; matched_eval: HazardCardT | null; caveat: string; null_finding: string }
 
 export interface Disputes { total: number; rows: Record<string, any>[]; columns: string[]; facets: { category: Record<string, number>; adapter: Record<string, number>; year: Record<string, number> } }
-export interface Recon { recon: Record<string, any>; by_adapter: Record<string, number>; by_category: Record<string, number>; total_disputes: number; hf_joinable_pct: number; note: string }
+export interface Recon { recon: Record<string, any>; by_adapter: Record<string, number>; by_category: Record<string, number>; total_disputes: number; hf_joinable_pct: number; note: string; source?: string; mismatches?: number; live_error?: string }
 export interface SigmaPoint { category: string; price: number; sigma: number }
 export interface Sigma { points: SigmaPoint[]; categories: string[]; n: number; note: string }
+
+export interface Proposers { rows: { proposer: string; disputes: number }[]; total_proposers: number; note: string }
+export interface DisputeAnalytics {
+  n: number
+  histogram?: { x0: number; x1: number; n: number }[]
+  jump_stats?: { mean: number; median: number; sd: number; n: number }
+  scatter?: { pre: number; post: number }[]
+  by_round?: Record<string, number>
+  by_outcome?: Record<string, number>
+}
+export interface QuoteCurve {
+  points: { inventory: number; bid: number; ask: number; mid: number }[]
+  mid: number; sigma: number; lambda_jump: number; category: string; horizon_days: number
+}
 
 export interface LiveStatus { reachable: boolean; endpoint: string; latency_ms?: number; head_ts?: number | null; head_id?: string | null; error?: string }
 export interface LiveDispute { id: string; round: number | null; disputeTs: number; disputer: string | null; proposedOutcome: string | null; proposer: string | null; conditionId: string | null; marketStatus: string | null; finalOutcome: string | null; outcomeSlotCount: number | null }
@@ -137,5 +158,5 @@ export interface TnEvent {
   user?: string; buy?: boolean; size?: number; usdc?: number; bid?: number; ask?: number
   category?: string; lambda_jump?: number; yes_won?: boolean; payout?: number; amount?: number
 }
-export interface TnEvents { reachable: boolean; events: TnEvent[]; explorer?: string }
+export interface TnEvents { reachable: boolean; events: TnEvent[]; explorer?: string; note?: string }
 export interface TnTx { tx: string; explorer: string; bid?: number; ask?: number; category?: string; lambda_jump?: number; sigma?: number; yesWon?: boolean }
