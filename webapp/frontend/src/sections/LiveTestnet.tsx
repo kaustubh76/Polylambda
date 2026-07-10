@@ -64,7 +64,8 @@ export function LiveTestnet() {
   // ("size" > maxTrade, unapproved, or over-balance) — the buttons explain why they're disabled.
   const maxTrade = market?.max_trade ?? 0
   const nSize = Number(size) || 0
-  const buyCost = nSize * (market?.ask ?? 0)
+  const buyCost = nSize * (market?.ask ?? 0)    // USDC you pay to buy `nSize` YES at the ask
+  const sellValue = nSize * (market?.bid ?? 0)  // USDC you receive selling `nSize` YES at the bid
   const usdcBal = +(bal?.usdc ?? 0)
   const canBuy = tradable && approved && nSize > 0 && nSize <= maxTrade && buyCost <= usdcBal
   const canSell = tradable && nSize > 0 && nSize <= (pos?.shares ?? 0)
@@ -192,12 +193,12 @@ export function LiveTestnet() {
                       <input className="field num" value={size} inputMode="decimal" aria-label="Trade size in YES shares" onChange={(e) => setSize(e.target.value.replace(/[^0-9.]/g, ''))} />
                     </label>
                     <button className="btn btn-primary" disabled={!canBuy || busy}
-                      onClick={() => run(() => w.buyYes(marketAddr!, size || '0'), `buy ${size} YES`)}>
-                      Buy YES · {buyCost.toFixed(2)} USDC
+                      onClick={() => run(() => w.buyYes(marketAddr!, size || '0'), `buy ${size} YES · ${buyCost.toFixed(2)} USDC`)}>
+                      Buy {nSize || 0} YES · {buyCost.toFixed(2)} USDC
                     </button>
                     <button className="btn" disabled={!canSell || busy}
-                      onClick={() => run(() => w.sellYes(marketAddr!, size || '0'), `sell ${size} YES`)}>
-                      Sell YES · {(nSize * (market?.bid || 0)).toFixed(2)}
+                      onClick={() => run(() => w.sellYes(marketAddr!, size || '0'), `sell ${size} YES · ${sellValue.toFixed(2)} USDC`)}>
+                      Sell {nSize || 0} YES · {sellValue.toFixed(2)} USDC
                     </button>
                   </div>
                   {tradeMsg && <div className="mt-2 text-2xs text-warn">{tradeMsg}</div>}
