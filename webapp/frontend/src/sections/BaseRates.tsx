@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { api, useApi, type BaseRateRow } from '../api/client'
+import { useInViewOnce } from '../lib/motion'
 import { CATEGORY_COLORS, C } from '../lib/theme'
 import { int, pct } from '../lib/format'
 import { Async, Panel, Section, SourceTag } from '../components/ui'
@@ -8,6 +9,7 @@ import { Async, Panel, Section, SourceTag } from '../components/ui'
 // HTML). Linear scale so the ~22× ordering reads as bar-length; CI drawn as an inked whisker.
 export function BaseRates() {
   const q = useApi(api.baserates, [])
+  const [barsRef, grown] = useInViewOnce<HTMLDivElement>()
   const [hover, setHover] = useState<number | null>(null)
   return (
     <Section id="baserates" kicker="the λ_select signal"
@@ -31,9 +33,9 @@ export function BaseRates() {
                 <span key={t} className="absolute -translate-x-1/2 num" style={{ left: x(t / 100) }}>{t}%</span>
               ))}
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5" ref={barsRef}>
               {rows.map((r, i) => (
-                <Row key={r.category} r={r} x={x} active={hover === i}
+                <Row key={r.category} r={r} x={x} active={hover === i} grown={grown} idx={i}
                   onEnter={() => setHover(i)} onLeave={() => setHover(null)} ticks={ticks} />
               ))}
             </div>
@@ -49,8 +51,9 @@ export function BaseRates() {
   )
 }
 
-function Row({ r, x, active, onEnter, onLeave, ticks }: {
-  r: BaseRateRow; x: (f: number) => string; active: boolean; onEnter: () => void; onLeave: () => void; ticks: number[]
+function Row({ r, x, active, grown, idx, onEnter, onLeave, ticks }: {
+  r: BaseRateRow; x: (f: number) => string; active: boolean; grown: boolean; idx: number
+  onEnter: () => void; onLeave: () => void; ticks: number[]
 }) {
   const col = CATEGORY_COLORS[r.category] || C.sig
   return (
@@ -64,8 +67,11 @@ function Row({ r, x, active, onEnter, onLeave, ticks }: {
         {ticks.slice(1).map((t) => (
           <div key={t} className="absolute top-0 h-full w-px bg-line/60" style={{ left: x(t / 100) }} />
         ))}
-        {/* bar */}
-        <div className="absolute top-1 h-4 rounded-r" style={{ width: x(r.rate), background: col, opacity: active ? 1 : 0.85 }} />
+        {/* bar — grows in left→right, staggered by row, when scrolled into view */}
+        <div className="absolute top-1 h-4 rounded-r" style={{
+          width: grown ? x(r.rate) : '0%', background: col, opacity: active ? 1 : 0.85,
+          transition: `width 0.7s cubic-bezier(0.16,1,0.3,1) ${idx * 55}ms`,
+        }} />
         {/* CI whisker */}
         <div className="absolute top-1/2 h-px -translate-y-1/2" style={{ left: x(r.ci_low), width: `calc(${x(r.ci_high)} - ${x(r.ci_low)})`, background: C.ink2 }} />
         <div className="absolute top-1/2 h-2 w-px -translate-y-1/2" style={{ left: x(r.ci_low), background: C.ink2 }} />

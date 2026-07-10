@@ -17,12 +17,6 @@ export const TEST_USDC = {
   decimals: 6,
 } as const
 
-// The spender the ALLOWANCE is granted to. We use Polymarket's CTF Exchange address — the *same*
-// contract the mainnet engine approves before it can quote — so the testnet action mirrors the real
-// pre-trade authorization 1:1 (here it's a harmless testnet allowance).
-export const DEMO_SPENDER = '0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E' as `0x${string}`
-export const DEMO_SPENDER_LABEL = 'Polymarket CTF Exchange'
-
 export const FAUCETS = {
   pol: 'https://faucet.polygon.technology/', // testnet POL (gas)
   usdc: 'https://faucet.circle.com/',        // testnet USDC on Amoy

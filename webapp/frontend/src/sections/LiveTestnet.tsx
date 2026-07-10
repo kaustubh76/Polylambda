@@ -1,30 +1,34 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, m } from 'framer-motion'
 import type { Address } from 'viem'
 import { api, type TnEvent, type TnMarket, type TnPosition, type TnStatus } from '../api/client'
-import { readAllowance, readBalances, useWallet, type Balances } from '../lib/wallet'
+import { readAllowance, useWallet } from '../lib/wallet'
+import { useToast } from '../components/Toast'
 import { FAUCETS, addressUrl, txUrl } from '../lib/testnet'
 import { C } from '../lib/theme'
 import { ago, num, short, usd } from '../lib/format'
-import { Caveat, ErrorBox, Panel, Section, Stat } from '../components/ui'
+import { Caveat, ConfirmDialog, CopyButton, Panel, Section, Stat } from '../components/ui'
 
-type Tx = { state: 'idle' | 'pending' | 'ok' | 'err'; hash?: string; msg?: string; note?: string }
 const POLL_MS = 5000
+type ConfirmSpec = { title: string; body: React.ReactNode; confirmLabel: string; tone: 'warn' | 'default'; act: () => void }
 
 export function LiveTestnet() {
   const w = useWallet()
+  const toast = useToast()
   const [status, setStatus] = useState<TnStatus | null>(null)
   const [market, setMarket] = useState<TnMarket | null>(null)
   const [pos, setPos] = useState<TnPosition | null>(null)
   const [events, setEvents] = useState<TnEvent[]>([])
-  const [bal, setBal] = useState<Balances | null>(null)
   const [allowance, setAllowance] = useState<number>(0)
   const [now, setNow] = useState(Date.now())
   const [size, setSize] = useState('1')
-  const [tx, setTx] = useState<Tx>({ state: 'idle' })
+  const [busy, setBusy] = useState(false)
+  const [confirm, setConfirm] = useState<ConfirmSpec | null>(null)
 
   const marketAddr = (status?.market_address || null) as Address | null
+  const bal = w.balances
 
-  // --- polling: backend market/position/events + client-side balances/allowance ---
+  // --- polling: backend market/position/events + client-side allowance ---
   const refreshChain = useCallback(async () => {
     try {
       const [s, m, e] = await Promise.all([api.tnStatus(), api.tnMarket(), api.tnEvents(30)])
@@ -35,18 +39,15 @@ export function LiveTestnet() {
     } catch { /* keep last good */ }
   }, [w.address])
 
-  const refreshWallet = useCallback(async () => {
-    if (!w.address || !w.onAmoy) return
-    try {
-      const b = await readBalances(w.address as Address); setBal(b)
-      if (marketAddr) setAllowance(+(await readAllowance(w.address as Address, marketAddr)))
-    } catch { /* transient */ }
+  const refreshAllowance = useCallback(async () => {
+    if (!w.address || !w.onAmoy || !marketAddr) return
+    try { setAllowance(+(await readAllowance(w.address as Address, marketAddr))) } catch { /* transient */ }
   }, [w.address, w.onAmoy, marketAddr])
 
   useEffect(() => {
     refreshChain(); const p = setInterval(refreshChain, POLL_MS); return () => clearInterval(p)
   }, [refreshChain])
-  useEffect(() => { refreshWallet() }, [refreshWallet])
+  useEffect(() => { refreshAllowance() }, [refreshAllowance])
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
 
   // --- readiness gating for the onboarding stepper ---
@@ -62,15 +63,28 @@ export function LiveTestnet() {
   const markValue = pos?.mark_value ?? 0
   const pnl = markValue - netInvested
 
+  // --- tx runners → all feedback goes through the global toast stack ---
   const run = async (fn: () => Promise<`0x${string}`>, note: string) => {
-    setTx({ state: 'pending', note })
-    try { const hash = await fn(); setTx({ state: 'ok', hash, note }); setTimeout(() => { refreshChain(); refreshWallet() }, 1500) }
-    catch (e: any) { setTx({ state: 'err', msg: e?.shortMessage || e?.details || e?.message || 'transaction failed', note }) }
+    setBusy(true)
+    const id = toast.pending(`${note}`, 'confirm in your wallet…')
+    try {
+      const hash = await fn()
+      toast.update(id, { variant: 'success', title: `${note} confirmed`, message: short(hash, 10, 8), href: txUrl(hash), hrefLabel: 'view on Amoyscan ↗' })
+      setTimeout(() => { refreshChain(); w.refreshBalances(); refreshAllowance() }, 1200)
+    } catch (e: any) {
+      toast.update(id, { variant: 'error', title: `${note} failed`, message: e?.shortMessage || e?.details || e?.message || 'transaction failed' })
+    } finally { setBusy(false) }
   }
   const runApi = async (fn: () => Promise<{ tx: string }>, note: string) => {
-    setTx({ state: 'pending', note })
-    try { const r = await fn(); setTx({ state: 'ok', hash: r.tx, note }); setTimeout(refreshChain, 1500) }
-    catch (e: any) { setTx({ state: 'err', msg: String(e?.message || e), note }) }
+    setBusy(true)
+    const id = toast.pending(`${note}…`)
+    try {
+      const r = await fn()
+      toast.update(id, { variant: 'success', title: `${note} confirmed`, message: r.tx ? short(r.tx, 10, 8) : undefined, href: r.tx ? txUrl(r.tx) : undefined, hrefLabel: 'view ↗' })
+      setTimeout(refreshChain, 1200)
+    } catch (e: any) {
+      toast.update(id, { variant: 'error', title: `${note} failed`, message: String(e?.message || e) })
+    } finally { setBusy(false) }
   }
 
   const engineDown = status && status.reachable && !status.engine_ready
@@ -99,21 +113,19 @@ export function LiveTestnet() {
                 : !w.address ? <button className="btn btn-primary" onClick={w.connect} disabled={w.connecting}>{w.connecting ? 'connecting…' : 'Connect'}</button>
                 : <span className="chip">{short(w.address, 6, 4)}</span>} />
             <Step n={2} done={w.onAmoy} title="Switch to Polygon Amoy"
-              action={w.address && !w.onAmoy ? <button className="btn btn-primary" onClick={w.ensureAmoy}>Switch network</button> : w.onAmoy ? <span className="chip text-sig">on Amoy</span> : null} />
+              action={w.address && !w.onAmoy ? <button className="btn btn-primary" onClick={() => w.ensureAmoy().catch(() => {})}>Switch network</button> : w.onAmoy ? <span className="chip text-sig">on Amoy</span> : null} />
             <Step n={3} done={hasGas && hasUsdc} title="Fund test POL (gas) + test USDC"
               action={w.onAmoy ? <div className="flex flex-wrap items-center gap-2">
                 <span className="chip">{bal ? `${num(+bal.pol, 3)} POL` : '—'}</span>
                 <span className="chip">{bal ? `${num(+bal.usdc, 2)} USDC` : '—'}</span>
                 <a className="btn !py-1.5 text-2xs" href={FAUCETS.pol} target="_blank" rel="noreferrer">POL faucet ↗</a>
                 <a className="btn !py-1.5 text-2xs" href={FAUCETS.usdc} target="_blank" rel="noreferrer">USDC faucet ↗</a>
-                <button className="text-2xs text-muted hover:text-ink-2" onClick={refreshWallet}>↻</button>
+                <button className="text-2xs text-muted hover:text-ink-2" onClick={() => w.refreshBalances()} aria-label="Refresh balances">↻</button>
               </div> : null} />
             <Step n={4} done={approved} title="Approve the market to settle your USDC"
               action={w.onAmoy && hasUsdc && marketAddr ? (approved ? <span className="chip text-sig">approved · {num(allowance, 0)} USDC</span>
-                : <button className="btn btn-primary" onClick={() => run(() => w.approveToken(marketAddr, '1000'), 'approve market')} disabled={tx.state === 'pending'}>Approve</button>) : null} />
+                : <button className="btn btn-primary" onClick={() => run(() => w.approveToken(marketAddr, '1000'), 'approve market')} disabled={busy}>Approve</button>) : null} />
           </ol>
-          {tx.state === 'err' && <div className="mt-3"><ErrorBox error={`${tx.note}: ${tx.msg}`} /></div>}
-          {tx.state === 'ok' && tx.hash && <TxOk tx={tx} />}
         </Panel>
       ) : null}
 
@@ -127,7 +139,7 @@ export function LiveTestnet() {
                 <div className="label text-sig">engine quote · YES · {market?.category ?? '—'}</div>
                 <div className="flex items-center gap-2 text-2xs text-muted">
                   <span>λ {market ? (market.lambda_jump! * 100).toFixed(2) : '—'}% · σ {market ? market.sigma!.toFixed(3) : '—'} · {ago(market?.quote_ts, now)}</span>
-                  <button className="btn !py-1 !px-2 text-2xs" disabled={!!engineDown || tx.state === 'pending'} onClick={() => runApi(api.tnEngineQuote.bind(null, {}), 'engine re-quote')}>↻ re-quote</button>
+                  <button className="btn !py-1 !px-2 text-2xs" disabled={!!engineDown || busy} onClick={() => runApi(api.tnEngineQuote.bind(null, {}), 'engine re-quote')} aria-label="Request a fresh engine quote">↻ re-quote</button>
                 </div>
               </div>
               <QuoteBar bid={market!.bid} ask={market!.ask} />
@@ -152,26 +164,23 @@ export function LiveTestnet() {
                 <div className="flex flex-wrap items-end gap-3">
                   <label className="min-w-[120px] flex-1">
                     <div className="label mb-1">size (YES shares)</div>
-                    <input className="field num" value={size} inputMode="decimal" onChange={(e) => setSize(e.target.value.replace(/[^0-9.]/g, ''))} />
+                    <input className="field num" value={size} inputMode="decimal" aria-label="Trade size in YES shares" onChange={(e) => setSize(e.target.value.replace(/[^0-9.]/g, ''))} />
                   </label>
-                  <button className="btn btn-primary" disabled={!tradable || tx.state === 'pending'}
+                  <button className="btn btn-primary" disabled={!tradable || busy}
                     onClick={() => run(() => w.buyYes(marketAddr!, size || '0'), `buy ${size} YES`)}>
                     Buy YES · {(Number(size || 0) * (market?.ask || 0)).toFixed(2)} USDC
                   </button>
-                  <button className="btn" disabled={!tradable || tx.state === 'pending' || (pos?.shares ?? 0) <= 0}
+                  <button className="btn" disabled={!tradable || busy || (pos?.shares ?? 0) <= 0}
                     onClick={() => run(() => w.sellYes(marketAddr!, size || '0'), `sell ${size} YES`)}>
                     Sell YES · {(Number(size || 0) * (market?.bid || 0)).toFixed(2)}
                   </button>
                 </div>
               )}
               {market?.resolved && (pos?.shares ?? 0) > 0 && (
-                <button className="btn btn-primary mt-3" disabled={tx.state === 'pending'} onClick={() => run(() => w.redeem(marketAddr!), 'redeem')}>
+                <button className="btn btn-primary mt-3" disabled={busy} onClick={() => run(() => w.redeem(marketAddr!), 'redeem')}>
                   Redeem {num(pos!.shares, 2)} YES → {market.yes_won ? usd(pos!.shares) : '$0'}
                 </button>
               )}
-              {tx.state === 'pending' && <div className="mt-3 flex items-center gap-2 text-sm text-muted"><span className="h-2 w-2 animate-pulse2 rounded-full bg-sig" />{tx.note} · confirm in wallet…</div>}
-              {tx.state === 'ok' && tx.hash && <TxOk tx={tx} />}
-              {tx.state === 'err' && <div className="mt-3"><ErrorBox error={`${tx.note}: ${tx.msg}`} /></div>}
             </Panel>
 
             {/* the λ-defense controls */}
@@ -179,9 +188,16 @@ export function LiveTestnet() {
               <div className="label mb-2 text-warn">λ-dispute-defense (engine-signed)</div>
               <p className="mb-3 text-sm text-ink-2">Simulate a dispute: the engine flags it on-chain and pulls its ask — halting the dangerous side. Then resolve the market so positions settle.</p>
               <div className="flex flex-wrap gap-2">
-                <button className="btn" disabled={!!engineDown || market?.disputed || market?.resolved || tx.state === 'pending'} onClick={() => runApi(api.tnDispute, 'flag dispute')}>⚠ Trigger dispute</button>
-                <button className="btn" disabled={!!engineDown || market?.resolved || tx.state === 'pending'} onClick={() => runApi(() => api.tnResolve(true), 'resolve YES')}>Resolve YES</button>
-                <button className="btn" disabled={!!engineDown || market?.resolved || tx.state === 'pending'} onClick={() => runApi(() => api.tnResolve(false), 'resolve NO')}>Resolve NO</button>
+                <button className="btn" disabled={!!engineDown || market?.disputed || market?.resolved || busy} aria-label="Trigger a dispute on-chain"
+                  onClick={() => setConfirm({ title: 'Trigger a dispute?', tone: 'warn', confirmLabel: 'Trigger dispute',
+                    body: 'The engine flags a dispute on-chain and pulls its ask — halting new buys (the λ-defense). This is a real Amoy transaction.',
+                    act: () => runApi(api.tnDispute, 'flag dispute') })}>⚠ Trigger dispute</button>
+                <button className="btn" disabled={!!engineDown || market?.resolved || busy}
+                  onClick={() => setConfirm({ title: 'Resolve this market YES?', tone: 'default', confirmLabel: 'Resolve YES',
+                    body: 'Settles every position with YES as the winning outcome. Irreversible on-chain.', act: () => runApi(() => api.tnResolve(true), 'resolve YES') })}>Resolve YES</button>
+                <button className="btn" disabled={!!engineDown || market?.resolved || busy}
+                  onClick={() => setConfirm({ title: 'Resolve this market NO?', tone: 'default', confirmLabel: 'Resolve NO',
+                    body: 'Settles every position with NO as the winning outcome. Irreversible on-chain.', act: () => runApi(() => api.tnResolve(false), 'resolve NO') })}>Resolve NO</button>
               </div>
             </Panel>
           </div>
@@ -189,24 +205,28 @@ export function LiveTestnet() {
           {/* position + activity rail */}
           <div className="space-y-4 self-start">
             <div className="grid grid-cols-2 gap-3">
-              <Stat label="Your YES" value={num(pos?.shares ?? 0, 2)} accent sub={`mark ${mid.toFixed(3)}`} />
-              <Stat label="P&L" value={usd(pnl)} tone={pnl >= 0 ? 'profit' : 'loss'} sub={`invested ${usd(netInvested)}`} />
+              <Stat label="Your YES" value={pos?.shares ?? 0} format={(n) => num(n, 2)} accent sub={`mark ${mid.toFixed(3)}`} />
+              <Stat label="P&L" value={pnl} format={(n) => usd(n)} tone={pnl >= 0 ? 'profit' : 'loss'} sub={`invested ${usd(netInvested)}`} />
             </div>
             <Panel className="!p-3">
               <div className="mb-1 flex items-center justify-between"><span className="label">engine wallet</span><span className="num text-2xs text-muted">{status?.engine_pol != null ? `${num(status.engine_pol, 3)} POL` : '—'}</span></div>
-              {status?.engine && <a className="break-all font-mono text-2xs text-ink-2 link-underline" href={addressUrl(status.engine)} target="_blank" rel="noreferrer">{short(status.engine, 8, 6)} ↗</a>}
+              {status?.engine && (
+                <div className="flex items-center gap-1.5">
+                  <a className="break-all font-mono text-2xs text-ink-2 link-underline" href={addressUrl(status.engine)} target="_blank" rel="noreferrer">{short(status.engine, 8, 6)} ↗</a>
+                  <CopyButton value={status.engine} label="Copy engine address" />
+                </div>
+              )}
               <div className="num mt-2 flex justify-between border-t border-line pt-2 text-2xs text-muted"><span>escrow</span><span>{usd(market?.escrow_usdc ?? 0)}</span></div>
-              {marketAddr && <a className="mt-1 block text-2xs text-muted link-underline" href={addressUrl(marketAddr)} target="_blank" rel="noreferrer">market {short(marketAddr, 6, 4)} ↗</a>}
+              {marketAddr && (
+                <div className="mt-1 flex items-center gap-1.5">
+                  <a className="text-2xs text-muted link-underline" href={addressUrl(marketAddr)} target="_blank" rel="noreferrer">market {short(marketAddr, 6, 4)} ↗</a>
+                  <CopyButton value={marketAddr} label="Copy market address" />
+                </div>
+              )}
             </Panel>
 
             {/* on-chain activity feed */}
-            <Panel pad={false} className="overflow-hidden">
-              <div className="border-b border-line px-4 py-2 text-2xs text-muted">on-chain activity</div>
-              <div className="max-h-[300px] divide-y divide-line/50 overflow-y-auto">
-                {events.length === 0 && <div className="p-4 text-sm text-muted">no on-chain activity yet</div>}
-                {events.map((e, i) => <FeedRow key={`${e.tx}-${i}`} e={e} />)}
-              </div>
-            </Panel>
+            <ActivityFeed events={events} />
           </div>
         </div>
       )}
@@ -218,6 +238,10 @@ export function LiveTestnet() {
           this is the on-chain demonstration of the same engine + λ-defense. Contract, engine wallet, and every tx link to Amoyscan.
         </Caveat>
       </div>
+
+      <ConfirmDialog open={!!confirm} onClose={() => setConfirm(null)} busy={busy}
+        title={confirm?.title ?? ''} body={confirm?.body} confirmLabel={confirm?.confirmLabel} tone={confirm?.tone}
+        onConfirm={() => { confirm?.act(); setConfirm(null) }} />
     </Section>
   )
 }
@@ -248,27 +272,62 @@ function QuoteBar({ bid, ask }: { bid: number; ask: number }) {
   )
 }
 
-function TxOk({ tx }: { tx: Tx }) {
+const EV_COLOR: Record<string, string> = { Traded: C.sig, QuotePosted: C.series[1], Disputed: C.warn, Resolved: C.serious, Redeemed: C.profit, Collateral: C.muted }
+
+// activity feed with new-event highlight + an unread pill when scrolled away from the top
+function ActivityFeed({ events }: { events: TnEvent[] }) {
+  const seen = useRef<Set<string>>(new Set())
+  const [fresh, setFresh] = useState<Set<string>>(new Set())
+  const [unread, setUnread] = useState(0)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const evKey = (e: TnEvent) => `${e.tx}-${e.type}-${e.block}`
+
+  useEffect(() => {
+    const incoming = events.map(evKey)
+    const newly = incoming.filter((k) => seen.current.size > 0 && !seen.current.has(k))
+    incoming.forEach((k) => seen.current.add(k))
+    if (newly.length) {
+      setFresh(new Set(newly))
+      if ((scrollRef.current?.scrollTop ?? 0) > 8) setUnread((c) => c + newly.length)
+      const t = setTimeout(() => setFresh(new Set()), 2500)
+      return () => clearTimeout(t)
+    }
+  }, [events])
+
+  const toTop = () => { scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' }); setUnread(0) }
+
   return (
-    <div className="mt-3 rounded-lg border border-good/30 bg-good/10 p-2.5 text-sm">
-      <span className="text-good">✓ {tx.note} confirmed on-chain.</span>{' '}
-      <a href={txUrl(tx.hash!)} target="_blank" rel="noreferrer" className="num link-underline text-ink-2">{short(tx.hash!, 10, 8)} ↗</a>
-    </div>
+    <Panel pad={false} className="overflow-hidden">
+      <div className="flex items-center justify-between border-b border-line px-4 py-2 text-2xs text-muted">
+        <span>on-chain activity</span>
+        {unread > 0 && (
+          <button onClick={toTop} className="chip !py-0.5 border-sig/40 text-sig" aria-label={`${unread} new events, scroll to top`}>↑ {unread} new</button>
+        )}
+      </div>
+      <div ref={scrollRef} onScroll={(e) => { if ((e.target as HTMLDivElement).scrollTop < 8) setUnread(0) }}
+        className="max-h-[300px] divide-y divide-line/50 overflow-y-auto">
+        {events.length === 0 && <div className="p-4 text-sm text-muted">no on-chain activity yet</div>}
+        <AnimatePresence initial={false}>
+          {events.map((e) => <FeedRow key={evKey(e)} e={e} fresh={fresh.has(evKey(e))} />)}
+        </AnimatePresence>
+      </div>
+    </Panel>
   )
 }
 
-const EV_COLOR: Record<string, string> = { Traded: C.sig, QuotePosted: C.series[1], Disputed: C.warn, Resolved: C.serious, Redeemed: C.profit, Collateral: C.muted }
-function FeedRow({ e }: { e: TnEvent }) {
+function FeedRow({ e, fresh }: { e: TnEvent; fresh: boolean }) {
   const label = e.type === 'Traded' ? `${e.buy ? 'BUY' : 'SELL'} ${num(e.size || 0, 2)} YES · ${usd(e.usdc || 0)}`
     : e.type === 'QuotePosted' ? `quote ${e.bid?.toFixed(3)}/${e.ask?.toFixed(3)}`
     : e.type === 'Resolved' ? `resolved ${e.yes_won ? 'YES' : 'NO'}`
     : e.type === 'Redeemed' ? `redeem ${usd(e.payout || 0)}`
     : e.type === 'Collateral' ? `collateral +${usd(e.amount || 0)}` : e.type
   return (
-    <a href={txUrl(e.tx)} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-4 py-2 text-xs transition hover:bg-elevated/40">
+    <m.a href={txUrl(e.tx)} target="_blank" rel="noreferrer" layout
+      initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+      className={`flex items-center gap-2 px-4 py-2 text-xs transition ${fresh ? 'animate-flash-up' : 'hover:bg-elevated/40'}`}>
       <span className="rounded px-1.5 py-0.5 text-2xs" style={{ background: `${EV_COLOR[e.type] || C.muted}1f`, color: EV_COLOR[e.type] || C.muted }}>{e.type}</span>
       <span className="num truncate text-ink-2">{label}</span>
       <span className="num ml-auto shrink-0 text-2xs text-muted">#{e.block}</span>
-    </a>
+    </m.a>
   )
 }

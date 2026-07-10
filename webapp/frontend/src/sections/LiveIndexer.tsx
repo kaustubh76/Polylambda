@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import { AnimatePresence, m } from 'framer-motion'
 import { api, type LiveDispute, type LiveDisputes, type LiveStatus } from '../api/client'
 import { C } from '../lib/theme'
 import { ago, short } from '../lib/format'
-import { Caveat, ErrorBox, Panel, Section, Stat } from '../components/ui'
+import { Caveat, CopyButton, ErrorBox, Panel, Section, Stat } from '../components/ui'
 
 const OUTCOME_COLOR: Record<string, string> = { YES: C.profit, NO: C.loss, UNRESOLVABLE: C.warn, OTHER: C.muted }
 const POLL_MS = 5000
@@ -14,6 +15,7 @@ export function LiveIndexer() {
   const [fresh, setFresh] = useState<Set<string>>(new Set())
   const [fails, setFails] = useState(0)
   const seen = useRef<Set<string>>(new Set())
+  const tickRef = useRef<() => void>()
 
   useEffect(() => {
     let alive = true
@@ -34,6 +36,7 @@ export function LiveIndexer() {
       }
       setFails((prev) => (ok ? 0 : prev + 1))
     }
+    tickRef.current = tick
     // stagger the first poll so the other ~8 section fetches clear first on a weak instance
     const start = setTimeout(tick, 1200)
     const poll = setInterval(tick, POLL_MS)
@@ -58,7 +61,8 @@ export function LiveIndexer() {
         </span>
       }>
       {!connecting && !up && (
-        <ErrorBox error={`Indexer unreachable — the live feed is optional; the rest of the dashboard runs off the shipped snapshot. ${status?.error || ''}`} />
+        <ErrorBox error={`Indexer unreachable — the live feed is optional; the rest of the dashboard runs off the shipped snapshot. ${status?.error || ''}`}
+          onRetry={() => tickRef.current?.()} />
       )}
 
       {up && (
@@ -85,7 +89,9 @@ export function LiveIndexer() {
               <span className="num">{feed?.disputes.length ?? 0} shown</span>
             </div>
             <div className="max-h-[420px] divide-y divide-line/50 overflow-y-auto">
-              {(feed?.disputes ?? []).map((d) => <Row key={d.id} d={d} now={now} fresh={fresh.has(d.id)} />)}
+              <AnimatePresence initial={false}>
+                {(feed?.disputes ?? []).map((d) => <Row key={d.id} d={d} now={now} fresh={fresh.has(d.id)} />)}
+              </AnimatePresence>
               {feed && feed.disputes.length === 0 && <div className="p-6 text-sm text-muted">no disputes returned</div>}
             </div>
           </Panel>
@@ -108,7 +114,8 @@ export function LiveIndexer() {
 function Row({ d, now, fresh }: { d: LiveDispute; now: number; fresh: boolean }) {
   const oc = OUTCOME_COLOR[d.proposedOutcome || 'OTHER'] || C.muted
   return (
-    <div className={`grid grid-cols-[76px_1fr_auto] items-center gap-3 px-4 py-2.5 text-xs transition ${fresh ? 'bg-sig/10' : 'hover:bg-elevated/40'}`}>
+    <m.div layout initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+      className={`grid grid-cols-[76px_1fr_auto] items-center gap-3 px-4 py-2.5 text-xs transition ${fresh ? 'animate-flash-up' : 'hover:bg-elevated/40'}`}>
       <span className="num text-muted">{ago(d.disputeTs, now)}</span>
       <div className="min-w-0">
         <div className="flex items-center gap-2">
@@ -116,16 +123,18 @@ function Row({ d, now, fresh }: { d: LiveDispute; now: number; fresh: boolean })
             proposed {d.proposedOutcome ?? '—'}
           </span>
           <span className="num truncate text-2xs text-muted" title={d.conditionId || ''}>{short(d.conditionId, 8, 6)}</span>
+          {d.conditionId && <CopyButton value={d.conditionId} label="Copy conditionId" />}
           {d.round != null && d.round > 1 && <span className="chip !py-0.5 !text-[10px]">round {d.round}</span>}
         </div>
-        <div className="num mt-0.5 text-2xs text-muted">
-          proposer {short(d.proposer, 6, 4)} · disputed by {short(d.disputer, 6, 4)}
+        <div className="num mt-0.5 flex flex-wrap items-center gap-x-1 text-2xs text-muted">
+          <span>proposer {short(d.proposer, 6, 4)}</span>{d.proposer && <CopyButton value={d.proposer} label="Copy proposer address" />}
+          <span>· disputed by {short(d.disputer, 6, 4)}</span>{d.disputer && <CopyButton value={d.disputer} label="Copy disputer address" />}
         </div>
       </div>
       <span className="num rounded px-1.5 py-0.5 text-2xs" style={{ color: d.marketStatus === 'RESOLVED' ? C.ink2 : C.warn }}>
         {d.marketStatus ?? '—'}
       </span>
-    </div>
+    </m.div>
   )
 }
 

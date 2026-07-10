@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis } from 'recharts'
 import { api, useApi, type SigmaPoint } from '../api/client'
+import { useInViewOnce } from '../lib/motion'
 import { CATEGORY_COLORS, C } from '../lib/theme'
 import { Async, Panel, Section } from '../components/ui'
 
 export function SigmaSurface() {
   const q = useApi(api.sigma, [])
+  const [chartRef, chartIn] = useInViewOnce<HTMLDivElement>()
   const [off, setOff] = useState<Set<string>>(new Set())
   const toggle = (c: string) => setOff((s) => { const n = new Set(s); n.has(c) ? n.delete(c) : n.add(c); return n })
 
@@ -26,7 +28,7 @@ export function SigmaSurface() {
                 </button>
               ))}
             </div>
-            <div className="h-[340px] w-full">
+            <div className="h-[340px] w-full" ref={chartRef}>
               <ResponsiveContainer>
                 <ScatterChart margin={{ left: 6, right: 16, top: 8, bottom: 16 }}>
                   <CartesianGrid stroke={C.line} />
@@ -39,7 +41,8 @@ export function SigmaSurface() {
                   <ZAxis range={[24, 24]} />
                   <Tooltip content={<SP />} cursor={{ stroke: C.line }} />
                   {d.categories.filter((c) => !off.has(c)).map((c) => (
-                    <Scatter key={c} name={c} data={byCat[c]} fill={CATEGORY_COLORS[c] || C.muted} fillOpacity={0.55} isAnimationActive={false} />
+                    <Scatter key={c} name={c} data={byCat[c]} fill={CATEGORY_COLORS[c] || C.muted} fillOpacity={0.55}
+                      isAnimationActive={chartIn} animationDuration={600} animationEasing="ease-out" />
                   ))}
                 </ScatterChart>
               </ResponsiveContainer>

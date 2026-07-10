@@ -1,5 +1,6 @@
 import type { Overview } from '../api/client'
 import { int, num, pct1 } from '../lib/format'
+import { AnimatedNumber, Reveal, Stagger } from '../lib/motion'
 import { Async, Caveat, Panel, PanelSkeleton, Section, Skeleton } from '../components/ui'
 
 function fmtTile(v: number, fmt: string) {
@@ -14,12 +15,19 @@ export function Hero({ q }: { q: { data: Overview | null; error: string | null; 
     <Section id="overview" kicker="Polymarket Builders Program · research MVP"
       title="Treat disputes as jumps — and exit before they lock your capital.">
       <Async q={q} skeleton={<HeroSkeleton />}>{(d) => (
-        <div className="grid gap-5 lg:grid-cols-[1.15fr_1fr]">
+        <div className="relative grid gap-5 lg:grid-cols-[1.15fr_1fr]">
+          {/* on-theme aurora: two slow-drifting brand-hue radial glows behind the panels */}
+          <div aria-hidden className="pointer-events-none absolute -inset-8 -z-10 overflow-hidden">
+            <div className="absolute left-[8%] top-[-20%] h-72 w-72 animate-aurora-drift rounded-full blur-3xl"
+              style={{ background: 'radial-gradient(circle, rgba(36,201,138,0.16), transparent 65%)' }} />
+            <div className="absolute right-[6%] top-[10%] h-80 w-80 animate-aurora-drift rounded-full blur-3xl"
+              style={{ background: 'radial-gradient(circle, rgba(57,135,229,0.13), transparent 65%)', animationDelay: '-8s' }} />
+          </div>
           <Panel className="flex flex-col justify-between">
             <div>
               <p className="text-[15px] leading-relaxed text-ink-2">{d.thesis}</p>
               <div className="my-5 flex items-center gap-3">
-                <span className="rounded-lg border border-line bg-bg px-4 py-2 font-mono text-lg text-sig">
+                <span className="animate-breathe rounded-lg border border-sig/25 bg-bg px-4 py-2 font-mono text-lg text-sig shadow-glow">
                   {d.jump_diffusion}
                 </span>
                 <span className="text-2xs text-muted">log-odds jump-diffusion:<br />drift + belief-vol σ + dispute jumps λ</span>
@@ -41,15 +49,17 @@ export function Hero({ q }: { q: { data: Overview | null; error: string | null; 
             </div>
           </Panel>
 
-          <div className="grid grid-cols-2 gap-4 self-start">
+          <Stagger className="grid grid-cols-2 gap-4 self-start">
             {d.tiles.map((t) => (
-              <div key={t.label} className="panel p-4">
+              <Reveal key={t.label} className="panel panel-interactive p-4">
                 <div className="label">{t.label}</div>
-                <div className="num mt-1.5 text-2xl font-semibold text-sig">{fmtTile(t.value, t.fmt)}</div>
+                <div className="num mt-1.5 text-2xl font-semibold text-sig">
+                  <AnimatedNumber value={t.value} format={(n) => fmtTile(n, t.fmt)} />
+                </div>
                 <div className="mt-1 text-2xs leading-snug text-muted">{t.sub}</div>
-              </div>
+              </Reveal>
             ))}
-          </div>
+          </Stagger>
         </div>
       )}</Async>
     </Section>

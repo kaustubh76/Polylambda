@@ -22,6 +22,7 @@ export function Recon() {
             </div>
             <Panel>
               <div className="label mb-3">joinability by adapter</div>
+              {adapters.length === 0 && <div className="py-6 text-center text-sm text-muted">no adapter breakdown available</div>}
               <div className="space-y-2.5">
                 {adapters.map(([a, n], i) => {
                   const total = adapters.reduce((s, [, v]) => s + v, 0)

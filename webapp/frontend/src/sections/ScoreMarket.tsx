@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 import { api, useAction, type ScoreReq, type ScoreResp } from '../api/client'
 import { C } from '../lib/theme'
 import { fixed, num, pct, usd } from '../lib/format'
-import { Async, Caveat, Drift, KV, Panel, Section } from '../components/ui'
+import { Caveat, Drift, ErrorBox, KV, Loading, Panel, Section } from '../components/ui'
 
 const CATS = ['politics', 'entertainment', 'economics', 'geopolitics', 'tech-ai', 'sports', 'other', 'crypto']
+const DEFAULTS: ScoreReq = { category: 'politics', fill_count: 800, price: 0.62, inventory: 60, horizon_days: 5, proposer: null }
+const isAddr = (s: string) => /^0x[0-9a-fA-F]{40}$/.test(s.trim())
 
 function Slider({ label, value, min, max, step, onChange, fmt }: {
   label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; fmt: (v: number) => string
@@ -16,21 +18,25 @@ function Slider({ label, value, min, max, step, onChange, fmt }: {
         <span className="num text-sm text-sig">{fmt(value)}</span>
       </div>
       <input type="range" min={min} max={max} step={step} value={value}
+        aria-label={label} aria-valuetext={fmt(value)}
         onChange={(e) => onChange(+e.target.value)}
-        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-line accent-sig" />
+        className="h-2 w-full cursor-pointer appearance-none rounded-full bg-line accent-sig" />
     </div>
   )
 }
 
 export function ScoreMarket() {
-  const [req, setReq] = useState<ScoreReq>({ category: 'politics', fill_count: 800, price: 0.62, inventory: 60, horizon_days: 5, proposer: null })
-  const { run, data, loading } = useAction(api.score)
+  const [req, setReq] = useState<ScoreReq>(DEFAULTS)
+  const { run, data, error, loading } = useAction(api.score)
   const set = (patch: Partial<ScoreReq>) => setReq((r) => ({ ...r, ...patch }))
+  const proposerInvalid = !!req.proposer && !isAddr(req.proposer)
+  const atDefaults = JSON.stringify(req) === JSON.stringify(DEFAULTS)
 
   useEffect(() => {
+    if (proposerInvalid) return // don't fire on an in-progress malformed address
     const t = setTimeout(() => run(req), 250)
     return () => clearTimeout(t)
-  }, [req]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [req, proposerInvalid]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Section id="score" kicker="live λ engine · wired to estimate_lambda()"
@@ -39,14 +45,16 @@ export function ScoreMarket() {
       <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
         {/* --- inputs --- */}
         <Panel className="space-y-4 self-start">
-          <div>
+          <div className="flex items-center justify-between">
             <span className="label">category</span>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {CATS.map((c) => (
-                <button key={c} onClick={() => set({ category: c })}
-                  className={`chip capitalize ${req.category === c ? 'border-sig/50 bg-sig/10 text-sig' : ''}`}>{c}</button>
-              ))}
-            </div>
+            <button onClick={() => setReq(DEFAULTS)} disabled={atDefaults}
+              className="text-2xs text-muted transition-colors hover:text-sig disabled:opacity-40">↺ reset</button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {CATS.map((c) => (
+              <button key={c} onClick={() => set({ category: c })} aria-pressed={req.category === c}
+                className={`chip capitalize ${req.category === c ? 'border-sig/50 bg-sig/10 text-sig' : ''}`}>{c}</button>
+            ))}
           </div>
           <Slider label="price (YES mid)" value={req.price} min={0.02} max={0.98} step={0.01} onChange={(v) => set({ price: v })} fmt={(v) => v.toFixed(2)} />
           <Slider label="market size (fills)" value={req.fill_count} min={0} max={5000} step={50} onChange={(v) => set({ fill_count: v })} fmt={(v) => num(v, 0)} />
@@ -54,16 +62,19 @@ export function ScoreMarket() {
           <Slider label="horizon (days to resolve)" value={req.horizon_days} min={0.25} max={30} step={0.25} onChange={(v) => set({ horizon_days: v })} fmt={(v) => `${v}d`} />
           <div>
             <span className="label">proposer (optional)</span>
-            <input className="field mt-1.5 font-mono text-xs" placeholder="0x… address (reliability feature)"
+            <input className={`field mt-1.5 font-mono text-xs ${proposerInvalid ? '!border-loss/60' : ''}`} placeholder="0x… address (reliability feature)"
+              aria-label="proposer address" aria-invalid={proposerInvalid}
               value={req.proposer ?? ''} onChange={(e) => set({ proposer: e.target.value || null })} />
+            {proposerInvalid && <div className="mt-1 text-2xs text-loss">enter a full 0x… 40-hex address, or clear the field</div>}
           </div>
           <div className="text-2xs text-muted">Features assemble via the real <span className="font-mono text-ink-2">market_size / proposer_reliability</span> transforms; latency_anomaly is unbuildable (no proposedAt) → 0.</div>
         </Panel>
 
         {/* --- outputs --- */}
-        <div className={`space-y-4 transition ${loading ? 'opacity-60' : ''}`}>
+        <div className={`space-y-4 transition ${loading && data ? 'opacity-60' : ''}`}>
+          {error && !data && <ErrorBox error={error} onRetry={() => run(req)} />}
           {data && <Outputs d={data} />}
-          {!data && <Panel><Async q={{ data: null, error: null, loading: true }}>{() => null}</Async></Panel>}
+          {!data && !error && <Panel><Loading label="scoring the market" /></Panel>}
         </div>
       </div>
     </Section>

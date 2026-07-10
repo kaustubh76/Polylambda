@@ -7,6 +7,12 @@ const FEAT_SHORT: Record<string, string> = {
   category_base_rate: 'cat base rate', market_size: 'market size',
   proposer_reliability: 'proposer rep', latency_anomaly: 'latency',
 }
+const FEAT_FULL: Record<string, string> = {
+  category_base_rate: 'category_base_rate — the category’s historical dispute rate',
+  market_size: 'market_size — fill count / liquidity proxy',
+  proposer_reliability: 'proposer_reliability — the proposer’s prior track record',
+  latency_anomaly: 'latency_anomaly — proposal timing anomaly (unbuildable here → 0)',
+}
 
 export function HazardCard() {
   const q = useApi(api.hazard, [])
@@ -52,13 +58,20 @@ function ModelCard({ card, highlight, nullish }: { card: HazardCardT | null; hig
         <span className="num text-3xl font-semibold" style={{ color: nullish ? C.warn : highlight ? C.sig : C.ink }}>{auc.toFixed(3)}</span>
         <span className="mb-1 text-2xs text-muted">held-out AUC</span>
       </div>
+      <div className="mb-1.5 flex items-center justify-between text-[10px] text-muted">
+        <span>coefficient (logit)</span>
+        <span className="flex items-center gap-2">
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm" style={{ background: C.loss }} />−</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm" style={{ background: C.series[1] }} />+</span>
+        </span>
+      </div>
       <div className="space-y-1.5">
         {card.feature_order.map((f, i) => {
           const c = card.coef[i]
           const w = (Math.abs(c) / maxAbs) * 50
           return (
             <div key={f} className="flex items-center gap-2 text-2xs">
-              <span className="w-24 shrink-0 text-muted">{FEAT_SHORT[f] || f}</span>
+              <span className="w-24 shrink-0 cursor-help text-muted" title={FEAT_FULL[f] || f}>{FEAT_SHORT[f] || f}</span>
               <div className="relative h-3 flex-1 rounded-sm bg-bg">
                 <div className="absolute left-1/2 top-0 h-full w-px bg-line" />
                 <div className="absolute top-0 h-full rounded-sm" style={{

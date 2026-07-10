@@ -23,7 +23,7 @@
   ::selection { background: rgba(36, 201, 138, 0.25); }
   /* keyboard focus rings on every interactive element (mouse clicks stay clean) */
   a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
-    @apply outline-none ring-2 ring-sig/50 ring-offset-2 ring-offset-bg rounded;
+    @apply outline-none ring-2 ring-sig/50 ring-offset-2 ring-offset-bg rounded transition-shadow duration-150;
   }
   /* respect reduced-motion: kill the infinite pulses + entrance animations */
   @media (prefers-reduced-motion: reduce) {
@@ -43,15 +43,22 @@
 @layer components {
   .num { @apply font-mono tabular-nums; }
   .panel { @apply rounded-xl border border-line bg-surface shadow-panel; }
+  /* opt-in: cards that are scannable/clickable get a subtle lift + aqua glow on hover */
+  .panel-interactive {
+    @apply transition-[transform,box-shadow,border-color] duration-200 ease-out
+           hover:-translate-y-0.5 hover:border-sig/30 hover:shadow-glow-soft;
+  }
   .hairline { @apply border-line; }
   .chip {
     @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-elevated
-           px-2.5 py-1 text-2xs font-medium text-ink-2;
+           px-2.5 py-1 text-2xs font-medium text-ink-2 transition-colors
+           hover:border-line/80 hover:text-ink;
   }
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line
-           bg-elevated px-3.5 py-2 text-sm font-medium text-ink transition
-           hover:border-sig/50 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed;
+           bg-elevated px-3.5 py-2 text-sm font-medium text-ink transition duration-150
+           hover:border-sig/50 hover:text-white active:scale-[0.98] active:translate-y-px
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 disabled:active:translate-y-0;
   }
   .btn-primary {
     @apply border-sig/40 bg-sig/10 text-sig hover:bg-sig/20 hover:text-sig;
@@ -62,4 +69,11 @@
   }
   .label { @apply text-2xs font-medium uppercase tracking-wider text-muted; }
   .link-underline { @apply underline decoration-line underline-offset-2 hover:decoration-sig; }
+  /* premium loading placeholder: a light band sweeps across (replaces the opacity blink) */
+  .skeleton {
+    @apply rounded-md;
+    background-image: linear-gradient(100deg, #1a1d26 30%, #262a35 50%, #1a1d26 70%);
+    background-size: 200% 100%;
+    @apply animate-shimmer;
+  }
 }

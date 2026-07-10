@@ -1,5 +1,6 @@
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api, useApi } from '../api/client'
+import { useInViewOnce } from '../lib/motion'
 import { ARM_COLORS, C } from '../lib/theme'
 import { int } from '../lib/format'
 import { Async, Caveat, Panel, Section } from '../components/ui'
@@ -53,10 +54,11 @@ export function Ablation() {
 }
 
 function MiniChart({ title, data, frozen, fmt }: { title: string; data: any[]; frozen: number; fmt: (v: number) => string }) {
+  const [ref, inView] = useInViewOnce<HTMLDivElement>()
   return (
     <div>
       <div className="mb-1 text-2xs text-muted">{title}</div>
-      <div className="h-[230px] w-full">
+      <div className="h-[230px] w-full" ref={ref}>
         <ResponsiveContainer>
           <LineChart data={data} margin={{ left: 6, right: 12, top: 8, bottom: 4 }}>
             <CartesianGrid stroke={C.line} vertical={false} />
@@ -68,7 +70,8 @@ function MiniChart({ title, data, frozen, fmt }: { title: string; data: any[]; f
             <ReferenceLine x={frozen} stroke={C.warn} strokeDasharray="3 3" />
             {ARMS.map((a) => (
               <Line key={a} type="monotone" dataKey={a} stroke={ARM_COLORS[a]} strokeWidth={2}
-                dot={{ r: 3, fill: ARM_COLORS[a], strokeWidth: 0 }} isAnimationActive={false} />
+                dot={{ r: 3, fill: ARM_COLORS[a], strokeWidth: 0 }}
+                isAnimationActive={inView} animationDuration={700} animationEasing="ease-out" />
             ))}
           </LineChart>
         </ResponsiveContainer>

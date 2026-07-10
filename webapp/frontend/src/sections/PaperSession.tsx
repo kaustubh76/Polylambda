@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { m } from 'framer-motion'
 import {
-  CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  CartesianGrid, Line, LineChart, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { api, useAction, type DDPoint, type SessionReq } from '../api/client'
+import { useInViewOnce } from '../lib/motion'
 import { C } from '../lib/theme'
 import { num, signed, usd } from '../lib/format'
 import { Caveat, ErrorBox, Loading, Panel, Section, Stat } from '../components/ui'
@@ -19,8 +21,12 @@ export function PaperSession() {
         <div className="flex gap-1 rounded-lg border border-line bg-elevated p-1 text-xs">
           {(['dispute_defense', 'live_quoting'] as Tab[]).map((t) => (
             <button key={t} onClick={() => setTab(t)}
-              className={`rounded-md px-3 py-1.5 transition ${tab === t ? 'bg-sig/15 text-sig' : 'text-muted hover:text-ink-2'}`}>
-              {t === 'dispute_defense' ? 'Dispute defense' : 'Raw quoting loop'}
+              className={`relative rounded-md px-3 py-1.5 transition-colors ${tab === t ? 'text-sig' : 'text-muted hover:text-ink-2'}`}>
+              {tab === t && (
+                <m.span layoutId="session-tab" className="absolute inset-0 rounded-md bg-sig/15"
+                  transition={{ type: 'spring', stiffness: 500, damping: 40 }} />
+              )}
+              <span className="relative">{t === 'dispute_defense' ? 'Dispute defense' : 'Raw quoting loop'}</span>
             </button>
           ))}
         </div>
@@ -118,6 +124,11 @@ function DisputeDefense() {
                     <ReferenceLine y={0} stroke={C.axis} />
                     <Line type="monotone" dataKey="off" stroke={C.loss} strokeWidth={2} dot={false} isAnimationActive={false} name="λ-OFF" />
                     <Line type="monotone" dataKey="on" stroke={C.profit} strokeWidth={2} dot={false} isAnimationActive={false} name="λ-ON" />
+                    {/* leading-edge marker: a glowing dot tracking the advancing tick (the replay IS the animation) */}
+                    {shown.length > 0 && (
+                      <ReferenceDot x={shown[shown.length - 1].i} y={shown[shown.length - 1].on} r={4}
+                        fill={C.profit} stroke={C.bg} strokeWidth={2} isFront ifOverflow="extendDomain" />
+                    )}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -125,13 +136,13 @@ function DisputeDefense() {
 
             {/* summary tiles */}
             <div className="space-y-3">
-              <Stat label="Capital protected" value={usd(s?.protected)} tone="profit"
+              <Stat label="Capital protected" value={s?.protected ?? 0} format={(n) => usd(n)} tone="profit"
                 sub={`${s?.loss_reduction_pct}% smaller loss vs holding`} />
               <div className="grid grid-cols-2 gap-3">
-                <Stat label="λ-ON final" value={usd(s?.on_final_equity)} tone={s?.on_final_equity >= 0 ? 'profit' : 'loss'} />
-                <Stat label="λ-OFF final" value={usd(s?.off_final_equity)} tone="loss" />
+                <Stat label="λ-ON final" value={s?.on_final_equity ?? 0} format={(n) => usd(n)} tone={s?.on_final_equity >= 0 ? 'profit' : 'loss'} />
+                <Stat label="λ-OFF final" value={s?.off_final_equity ?? 0} format={(n) => usd(n)} tone="loss" />
               </div>
-              <Stat label="Exit events fired" value={s?.n_exits} sub="real should_exit() triggers" />
+              <Stat label="Exit events fired" value={s?.n_exits ?? 0} format={(n) => String(Math.round(n))} sub="real should_exit() triggers" />
             </div>
           </div>
 
@@ -181,6 +192,7 @@ function DisputeDefense() {
 // ============================================================================================
 function LiveQuoting() {
   const [n, setN] = useState(30)
+  const [chartRef, chartIn] = useInViewOnce<HTMLDivElement>()
   const { run, data, error, loading } = useAction(api.session)
   useEffect(() => { run({ scenario: 'live_quoting', n_ticks: n, n_markets: 4, seed: 7 }) }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const series = (data?.series ?? {}) as Record<string, any[]>
@@ -212,16 +224,16 @@ function LiveQuoting() {
             <Legend color={C.series[1]} label="mid (belief)" />
             <span className="ml-auto num text-2xs text-muted">{data.n_fills} fills · driftless synthetic book → quoting-behavior view, not a P&L race</span>
           </div>
-          <div className="h-[280px] w-full">
+          <div className="h-[280px] w-full" ref={chartRef}>
             <ResponsiveContainer>
               <LineChart data={rows} margin={{ left: 4, right: 12, top: 8, bottom: 4 }}>
                 <CartesianGrid stroke={C.line} vertical={false} />
                 <XAxis dataKey="i" stroke={C.axis} tick={{ fill: C.muted, fontSize: 11 }} tickLine={false} />
                 <YAxis domain={[0, 1]} stroke={C.axis} tick={{ fill: C.muted, fontSize: 11 }} tickLine={false} width={40} />
                 <Tooltip content={<QuoteTip />} />
-                <Line type="monotone" dataKey="best_ask" stroke={C.profit} strokeWidth={1} dot={false} opacity={0.5} isAnimationActive={false} />
-                <Line type="monotone" dataKey="best_bid" stroke={C.loss} strokeWidth={1} dot={false} opacity={0.5} isAnimationActive={false} />
-                <Line type="monotone" dataKey="mid" stroke={C.series[1]} strokeWidth={2} dot={false} isAnimationActive={false} />
+                <Line type="monotone" dataKey="best_ask" stroke={C.profit} strokeWidth={1} dot={false} opacity={0.5} isAnimationActive={chartIn} animationDuration={700} animationEasing="ease-out" />
+                <Line type="monotone" dataKey="best_bid" stroke={C.loss} strokeWidth={1} dot={false} opacity={0.5} isAnimationActive={chartIn} animationDuration={700} animationEasing="ease-out" />
+                <Line type="monotone" dataKey="mid" stroke={C.series[1]} strokeWidth={2} dot={false} isAnimationActive={chartIn} animationDuration={800} animationEasing="ease-out" />
               </LineChart>
             </ResponsiveContainer>
           </div>

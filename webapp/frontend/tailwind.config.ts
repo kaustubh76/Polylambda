@@ -35,14 +35,33 @@ export default {
       boxShadow: {
         panel: '0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 30px rgba(0,0,0,0.35)',
         glow: '0 0 0 1px rgba(36,201,138,0.25), 0 0 24px rgba(36,201,138,0.12)',
+        // softer hover ring for interactive panels (lower opacity than `glow`)
+        'glow-soft': '0 1px 0 rgba(255,255,255,0.04) inset, 0 10px 34px rgba(0,0,0,0.42), 0 0 20px rgba(36,201,138,0.10)',
       },
       keyframes: {
         'fade-up': { '0%': { opacity: '0', transform: 'translateY(6px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
         pulse2: { '0%,100%': { opacity: '1' }, '50%': { opacity: '0.35' } },
+        // premium skeleton: a light band sweeping across the placeholder
+        shimmer: { '0%': { backgroundPosition: '200% 0' }, '100%': { backgroundPosition: '-200% 0' } },
+        // slow ambient drift for the hero aurora layer
+        'aurora-drift': {
+          '0%,100%': { transform: 'translate3d(0,0,0) rotate(0deg)' },
+          '33%': { transform: 'translate3d(3%,-2%,0) rotate(4deg)' },
+          '66%': { transform: 'translate3d(-2%,2%,0) rotate(-3deg)' },
+        },
+        // brief tint sweep when a live value ticks up / down
+        'flash-up': { '0%': { backgroundColor: 'rgba(34,197,138,0.14)' }, '100%': { backgroundColor: 'transparent' } },
+        'flash-down': { '0%': { backgroundColor: 'rgba(230,103,103,0.14)' }, '100%': { backgroundColor: 'transparent' } },
+        breathe: { '0%,100%': { opacity: '1' }, '50%': { opacity: '0.72' } },
       },
       animation: {
         'fade-up': 'fade-up 0.4s ease-out both',
         pulse2: 'pulse2 1.6s ease-in-out infinite',
+        shimmer: 'shimmer 1.6s linear infinite',
+        'aurora-drift': 'aurora-drift 24s ease-in-out infinite',
+        'flash-up': 'flash-up 0.9s ease-out',
+        'flash-down': 'flash-down 0.9s ease-out',
+        breathe: 'breathe 3.2s ease-in-out infinite',
       },
     },
   },
