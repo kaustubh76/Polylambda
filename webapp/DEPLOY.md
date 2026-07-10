@@ -52,3 +52,14 @@ gcloud run deploy polylambda --source . --port 8000 --allow-unauthenticated --me
   endpoint is unreachable the panel shows "offline" and the rest of the dashboard is unaffected.
 - **Refreshing artifacts:** if you retrain the hazard model or rebuild the σ prior, re-snapshot with
   `cp .data_cache/hazard_model*.json .data_cache/sigma_prior.json webapp/deploy/cache/ && cp .data_cache/webapp/*.json webapp/deploy/cache/webapp/` and rebuild.
+- **Live engine paths (recon / ablation):** `/api/recon/live` and `/api/ablation?live=1` attempt the
+  real engine when `INDEXER_GRAPHQL_URL` is set (it is, by default) and **fall back to the published
+  artifact with a truthful `source`/`live_error`** otherwise. Each runs in a worker thread under a
+  hard deadline (`LIVE_TIMEOUT_S` in `routes.py`) so a slow call never blocks the single uvicorn
+  worker. The slim `requirements-deploy.txt` omits the HF/sklearn replay deps, so `?live=1` reports
+  "replay deps not installed" and serves the published curve — to ship the richer 4-arm result, run
+  `python -m webapp.backend.precompute --ablation` where the full deps exist and commit
+  `webapp/deploy/cache/webapp/ablation_full.json`. Live recon also wants an RPC: set `AMOY_RPC_URL`
+  (already in the deploy configs) or any of `POLYGON_RPC` / `RPC_URL` / `POLYGON_RPC_URL`.
+- **Real-market paper session:** the "real markets" toggle (`source=data`) runs fully offline over the
+  shipped `disputes.parquet` — no env needed; it's timeout-guarded like the other heavy calls.

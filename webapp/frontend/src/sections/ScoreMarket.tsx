@@ -1,8 +1,13 @@
-import { useEffect, useState } from 'react'
-import { api, useAction, type ScoreReq, type ScoreResp } from '../api/client'
+import { useEffect } from 'react'
+import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { api, useApi, useAction, type ScoreReq, type ScoreResp } from '../api/client'
+import { useInViewOnce } from '../lib/motion'
+import { downloadJson } from '../lib/export'
+import { usePersistentState } from '../lib/urlState'
+import { useToast } from '../components/Toast'
 import { C } from '../lib/theme'
-import { fixed, num, pct, usd } from '../lib/format'
-import { Caveat, Drift, ErrorBox, KV, Loading, Panel, Section } from '../components/ui'
+import { fixed, int, num, pct, usd } from '../lib/format'
+import { Async, Caveat, Drift, ErrorBox, KV, Loading, Panel, Section } from '../components/ui'
 
 const CATS = ['politics', 'entertainment', 'economics', 'geopolitics', 'tech-ai', 'sports', 'other', 'crypto']
 const DEFAULTS: ScoreReq = { category: 'politics', fill_count: 800, price: 0.62, inventory: 60, horizon_days: 5, proposer: null }
@@ -26,7 +31,8 @@ function Slider({ label, value, min, max, step, onChange, fmt }: {
 }
 
 export function ScoreMarket() {
-  const [req, setReq] = useState<ScoreReq>(DEFAULTS)
+  const [req, setReq] = usePersistentState<ScoreReq>('pl:score', DEFAULTS)
+  const toast = useToast()
   const { run, data, error, loading } = useAction(api.score)
   const set = (patch: Partial<ScoreReq>) => setReq((r) => ({ ...r, ...patch }))
   const proposerInvalid = !!req.proposer && !isAddr(req.proposer)
@@ -72,9 +78,16 @@ export function ScoreMarket() {
 
         {/* --- outputs --- */}
         <div className={`space-y-4 transition ${loading && data ? 'opacity-60' : ''}`}>
+          {data && (
+            <div className="flex justify-end">
+              <button onClick={() => { downloadJson('polylambda-score.json', data); toast.info('score exported as JSON') }}
+                className="btn !py-1 text-2xs" aria-label="Export score result as JSON">⭳ JSON</button>
+            </div>
+          )}
           {error && !data && <ErrorBox error={error} onRetry={() => run(req)} />}
           {data && <Outputs d={data} />}
           {!data && !error && <Panel><Loading label="scoring the market" /></Panel>}
+          {data && <QuoteCurvePanel category={req.category} price={req.price} horizon={req.horizon_days} />}
         </div>
       </div>
     </Section>
@@ -130,6 +143,25 @@ function Outputs({ d }: { d: ScoreResp }) {
         </Panel>
       </div>
 
+      {/* the point-in-time feature vector the estimator actually consumed + this market's base rate */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Panel className="md:col-span-2">
+          <div className="label mb-2 text-sig">features assembled · fed to estimate_lambda()</div>
+          <div className="grid grid-cols-2 gap-x-6 sm:grid-cols-4">
+            <Feat label="category base rate" v={pct(d.features.category_base_rate, 2)} />
+            <Feat label="market size" v={fixed(d.features.market_size, 3)} hint="log1p(fills)" />
+            <Feat label="proposer reliability" v={fixed(d.features.proposer_reliability, 3)} />
+            <Feat label="latency anomaly" v={fixed(d.features.latency_anomaly, 3)} hint="unbuildable → 0" />
+          </div>
+        </Panel>
+        <Panel>
+          <div className="label mb-2 text-sig">this market's base rate</div>
+          <div className="num text-2xl font-semibold text-ink">{pct(d.base_rate.rate, 3)}</div>
+          <div className="num text-2xs text-muted">Wilson 95% [{pct(d.base_rate.ci_low, 2)}, {pct(d.base_rate.ci_high, 2)}]</div>
+          <div className="num mt-2 border-t border-line pt-2 text-2xs text-muted">{int(d.base_rate.disputes)} disputes / {int(d.base_rate.resolved)} resolved</div>
+        </Panel>
+      </div>
+
       {/* exit gate */}
       <Panel>
         <div className="mb-3 flex items-center justify-between">
@@ -160,6 +192,60 @@ function Outputs({ d }: { d: ScoreResp }) {
         </div>
       </Panel>
     </>
+  )
+}
+
+// the A-S quote's inventory anatomy: bid/ask as the engine skews the book vs signed position
+function QuoteCurvePanel({ category, price, horizon }: { category: string; price: number; horizon: number }) {
+  const q = useApi(() => api.quoteCurve(category, price, horizon), [category, Math.round(price * 100), Math.round(horizon * 4)])
+  const [ref, inView] = useInViewOnce<HTMLDivElement>()
+  return (
+    <Async q={q}>{(d) => (
+      <Panel>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="label text-sig">quote anatomy · bid/ask vs inventory</div>
+          <div className="num text-2xs text-muted">λ_jump {(d.lambda_jump * 100).toFixed(2)}% · σ {fixed(d.sigma, 4)}</div>
+        </div>
+        <div className="h-[220px] w-full" ref={ref}>
+          <ResponsiveContainer>
+            <LineChart data={d.points} margin={{ left: 2, right: 12, top: 8, bottom: 4 }}>
+              <CartesianGrid stroke={C.line} vertical={false} />
+              <XAxis dataKey="inventory" type="number" stroke={C.axis} tick={{ fill: C.muted, fontSize: 10 }} tickLine={false}
+                label={{ value: 'signed inventory (tokens)', fill: C.muted, fontSize: 10, position: 'insideBottom', offset: -2 }} />
+              <YAxis domain={['auto', 'auto']} stroke={C.axis} tick={{ fill: C.muted, fontSize: 10 }} tickLine={false} width={40} tickFormatter={(v) => v.toFixed(2)} />
+              <Tooltip content={<CurveTip />} />
+              <ReferenceLine x={0} stroke={C.axis} strokeDasharray="3 3" />
+              <ReferenceLine y={d.mid} stroke={C.muted} strokeDasharray="2 2" label={{ value: 'mid', fill: C.muted, fontSize: 9, position: 'right' }} />
+              <Line type="monotone" dataKey="ask" stroke={C.profit} strokeWidth={2} dot={false} isAnimationActive={inView} animationDuration={700} />
+              <Line type="monotone" dataKey="bid" stroke={C.loss} strokeWidth={2} dot={false} isAnimationActive={inView} animationDuration={700} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        <p className="mt-1 text-2xs text-muted">As inventory grows long the engine skews both quotes down (to shed risk) and vice-versa — the real <span className="font-mono text-ink-2">compute_quote</span> reservation-price skew.</p>
+      </Panel>
+    )}</Async>
+  )
+}
+
+function CurveTip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null
+  const d = payload[0].payload
+  return (
+    <div className="panel p-2.5 text-xs num">
+      <div className="mb-1 text-2xs text-muted">inventory {label}</div>
+      <div className="text-profit">ask {d.ask.toFixed(3)}</div>
+      <div className="text-loss">bid {d.bid.toFixed(3)}</div>
+      <div className="text-muted">mid {d.mid.toFixed(3)}</div>
+    </div>
+  )
+}
+
+function Feat({ label, v, hint }: { label: string; v: string; hint?: string }) {
+  return (
+    <div className="border-b border-line/50 py-1.5 sm:border-0">
+      <div className="num text-sm font-semibold text-ink-2">{v}</div>
+      <div className="text-2xs text-muted">{label}{hint && <span className="text-muted/70"> · {hint}</span>}</div>
+    </div>
   )
 }
 

@@ -19,6 +19,7 @@ export function LiveTestnet() {
   const [market, setMarket] = useState<TnMarket | null>(null)
   const [pos, setPos] = useState<TnPosition | null>(null)
   const [events, setEvents] = useState<TnEvent[]>([])
+  const [feedNote, setFeedNote] = useState<string | undefined>(undefined)
   const [allowance, setAllowance] = useState<number>(0)
   const [now, setNow] = useState(Date.now())
   const [size, setSize] = useState('1')
@@ -32,7 +33,7 @@ export function LiveTestnet() {
   const refreshChain = useCallback(async () => {
     try {
       const [s, m, e] = await Promise.all([api.tnStatus(), api.tnMarket(), api.tnEvents(30)])
-      setStatus(s); setMarket(m); setEvents(e.events || [])
+      setStatus(s); setMarket(m); setEvents(e.events || []); setFeedNote(e.note)
       if (w.address && s.market_address) {
         api.tnPosition(w.address).then(setPos).catch(() => {})
       }
@@ -75,17 +76,25 @@ export function LiveTestnet() {
       toast.update(id, { variant: 'error', title: `${note} failed`, message: e?.shortMessage || e?.details || e?.message || 'transaction failed' })
     } finally { setBusy(false) }
   }
-  const runApi = async (fn: () => Promise<{ tx: string }>, note: string) => {
+  const runApi = async (fn: () => Promise<any>, note: string, onOk?: (r: any) => void) => {
     setBusy(true)
     const id = toast.pending(`${note}…`)
     try {
       const r = await fn()
+      onOk?.(r)
       toast.update(id, { variant: 'success', title: `${note} confirmed`, message: r.tx ? short(r.tx, 10, 8) : undefined, href: r.tx ? txUrl(r.tx) : undefined, hrefLabel: 'view ↗' })
       setTimeout(refreshChain, 1200)
     } catch (e: any) {
       toast.update(id, { variant: 'error', title: `${note} failed`, message: String(e?.message || e) })
     } finally { setBusy(false) }
   }
+
+  // re-quote returns the fresh quote — reflect it instantly instead of waiting for the next poll
+  const reQuote = () => runApi(() => api.tnEngineQuote({}), 'engine re-quote', (r) => {
+    if (r?.bid != null && r?.ask != null) {
+      setMarket((mkt) => mkt ? { ...mkt, bid: r.bid, ask: r.ask, lambda_jump: r.lambda_jump ?? mkt.lambda_jump, sigma: r.sigma ?? mkt.sigma, quote_ts: Math.floor(Date.now() / 1000) } : mkt)
+    }
+  })
 
   const engineDown = status && status.reachable && !status.engine_ready
   const mid = market ? (market.bid + market.ask) / 2 : 0
@@ -139,7 +148,7 @@ export function LiveTestnet() {
                 <div className="label text-sig">engine quote · YES · {market?.category ?? '—'}</div>
                 <div className="flex items-center gap-2 text-2xs text-muted">
                   <span>λ {market ? (market.lambda_jump! * 100).toFixed(2) : '—'}% · σ {market ? market.sigma!.toFixed(3) : '—'} · {ago(market?.quote_ts, now)}</span>
-                  <button className="btn !py-1 !px-2 text-2xs" disabled={!!engineDown || busy} onClick={() => runApi(api.tnEngineQuote.bind(null, {}), 'engine re-quote')} aria-label="Request a fresh engine quote">↻ re-quote</button>
+                  <button className="btn !py-1 !px-2 text-2xs" disabled={!!engineDown || busy} onClick={reQuote} aria-label="Request a fresh engine quote">↻ re-quote</button>
                 </div>
               </div>
               <QuoteBar bid={market!.bid} ask={market!.ask} />
@@ -217,6 +226,8 @@ export function LiveTestnet() {
                 </div>
               )}
               <div className="num mt-2 flex justify-between border-t border-line pt-2 text-2xs text-muted"><span>escrow</span><span>{usd(market?.escrow_usdc ?? 0)}</span></div>
+              <div className="num flex justify-between text-2xs text-muted"><span>open interest</span><span>{num(market?.total_yes ?? 0, 2)} YES</span></div>
+              {status?.block != null && <div className="num flex justify-between text-2xs text-muted"><span>chain block</span><span>#{status.block}</span></div>}
               {marketAddr && (
                 <div className="mt-1 flex items-center gap-1.5">
                   <a className="text-2xs text-muted link-underline" href={addressUrl(marketAddr)} target="_blank" rel="noreferrer">market {short(marketAddr, 6, 4)} ↗</a>
@@ -226,7 +237,7 @@ export function LiveTestnet() {
             </Panel>
 
             {/* on-chain activity feed */}
-            <ActivityFeed events={events} />
+            <ActivityFeed events={events} note={feedNote} />
           </div>
         </div>
       )}
@@ -275,7 +286,7 @@ function QuoteBar({ bid, ask }: { bid: number; ask: number }) {
 const EV_COLOR: Record<string, string> = { Traded: C.sig, QuotePosted: C.series[1], Disputed: C.warn, Resolved: C.serious, Redeemed: C.profit, Collateral: C.muted }
 
 // activity feed with new-event highlight + an unread pill when scrolled away from the top
-function ActivityFeed({ events }: { events: TnEvent[] }) {
+function ActivityFeed({ events, note }: { events: TnEvent[]; note?: string }) {
   const seen = useRef<Set<string>>(new Set())
   const [fresh, setFresh] = useState<Set<string>>(new Set())
   const [unread, setUnread] = useState(0)
@@ -306,7 +317,8 @@ function ActivityFeed({ events }: { events: TnEvent[] }) {
       </div>
       <div ref={scrollRef} onScroll={(e) => { if ((e.target as HTMLDivElement).scrollTop < 8) setUnread(0) }}
         className="max-h-[300px] divide-y divide-line/50 overflow-y-auto">
-        {events.length === 0 && <div className="p-4 text-sm text-muted">no on-chain activity yet</div>}
+        {events.length === 0 && <div className="p-4 text-sm text-muted">{note || 'no on-chain activity yet'}</div>}
+        {events.length > 0 && note && <div className="px-4 py-2 text-2xs text-warn">⚠ {note}</div>}
         <AnimatePresence initial={false}>
           {events.map((e) => <FeedRow key={evKey(e)} e={e} fresh={fresh.has(evKey(e))} />)}
         </AnimatePresence>
@@ -317,7 +329,7 @@ function ActivityFeed({ events }: { events: TnEvent[] }) {
 
 function FeedRow({ e, fresh }: { e: TnEvent; fresh: boolean }) {
   const label = e.type === 'Traded' ? `${e.buy ? 'BUY' : 'SELL'} ${num(e.size || 0, 2)} YES · ${usd(e.usdc || 0)}`
-    : e.type === 'QuotePosted' ? `quote ${e.bid?.toFixed(3)}/${e.ask?.toFixed(3)}`
+    : e.type === 'QuotePosted' ? `quote ${e.bid?.toFixed(3)}/${e.ask?.toFixed(3)}${e.category ? ` · ${e.category}` : ''}${e.lambda_jump != null ? ` · λ ${(e.lambda_jump * 100).toFixed(1)}%` : ''}`
     : e.type === 'Resolved' ? `resolved ${e.yes_won ? 'YES' : 'NO'}`
     : e.type === 'Redeemed' ? `redeem ${usd(e.payout || 0)}`
     : e.type === 'Collateral' ? `collateral +${usd(e.amount || 0)}` : e.type

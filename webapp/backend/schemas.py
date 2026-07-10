@@ -34,3 +34,5 @@ class SessionRequest(BaseModel):
     # live_quoting knobs
     n_markets: int = Field(4, ge=2, le=6)
     seed: int = 7
+    source: str = Field("synthetic", description="synthetic | data (real disputed markets)")
+    hazard: bool = Field(False, description="drive λ from the hazard logistic (real-market runs)")

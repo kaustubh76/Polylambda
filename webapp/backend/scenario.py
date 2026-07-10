@@ -153,15 +153,26 @@ def _category_base_rate_point(category: str) -> float:
         return 0.0183
 
 
-def run_live_quoting(*, n_ticks: int = 40, n_markets: int = 4, seed: int = 7) -> dict:
+def run_live_quoting(*, n_ticks: int = 40, n_markets: int = 4, seed: int = 7,
+                     source: str = "synthetic", hazard: bool = False) -> dict:
     """The genuine multi-market paper session via the REAL runner.run — shows the engine quoting
     (mid / σ / spread / size / inventory-cap dynamics). Honest: fills are rare in a driftless sim,
-    so this is presented as quoting behavior, not a P&L race."""
+    so this is presented as quoting behavior, not a P&L race.
+
+    source="data" runs on REAL disputed markets (real λ/σ priors, offline parquet); hazard=True
+    drives λ from the hazard logistic. Falls back to synthetic if the real-market source fails.
+    """
     from forwardtest.runner import run
 
     n_ticks = max(5, min(int(n_ticks), 80))
     n_markets = max(2, min(int(n_markets), 6))
-    summary = run(mode="paper", source="synthetic", n_ticks=n_ticks, n_markets=n_markets, seed=seed)
+    src = source if source in ("synthetic", "data") else "synthetic"
+    used_source, used_hazard = src, bool(hazard)
+    try:
+        summary = run(mode="paper", source=src, n_ticks=n_ticks, n_markets=n_markets, seed=seed, hazard=bool(hazard))
+    except Exception:
+        used_source, used_hazard = "synthetic", False
+        summary = run(mode="paper", source="synthetic", n_ticks=n_ticks, n_markets=n_markets, seed=seed)
     events = _read_session_log(summary.get("out_path"))
     per_market = {}
     for r in events:
@@ -180,7 +191,8 @@ def run_live_quoting(*, n_ticks: int = 40, n_markets: int = 4, seed: int = 7) ->
                 "bid_size": r["bid_size"], "ask_size": r["ask_size"],
                 "risk_scale": round(r.get("risk_scale", 1.0), 4), "pos_cap": round(r.get("pos_cap", 0.0), 2)})
     return {"simulated": True, "scenario": "live_quoting", "summary": summary,
-            "series": per_market, "quotes": quotes, "n_fills": sum(1 for r in events if r.get("type") == "fill")}
+            "series": per_market, "quotes": quotes, "n_fills": sum(1 for r in events if r.get("type") == "fill"),
+            "market_source": used_source, "hazard": used_hazard}
 
 
 def _read_session_log(path) -> list[dict]:

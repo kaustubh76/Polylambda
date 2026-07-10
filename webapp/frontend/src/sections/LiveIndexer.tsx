@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
-import { api, type LiveDispute, type LiveDisputes, type LiveStatus } from '../api/client'
+import { api, type LiveDispute, type LiveDisputes } from '../api/client'
+import { useLiveStatus } from '../components/LiveStatus'
 import { C } from '../lib/theme'
 import { ago, short } from '../lib/format'
 import { Caveat, CopyButton, ErrorBox, Panel, Section, Stat } from '../components/ui'
@@ -9,8 +10,8 @@ const OUTCOME_COLOR: Record<string, string> = { YES: C.profit, NO: C.loss, UNRES
 const POLL_MS = 5000
 
 export function LiveIndexer() {
-  const [status, setStatus] = useState<LiveStatus | null>(null) // last GOOD status (kept through blips)
-  const [feed, setFeed] = useState<LiveDisputes | null>(null)   // last GOOD feed
+  const live = useLiveStatus()                                   // shared /live/status poller
+  const [feed, setFeed] = useState<LiveDisputes | null>(null)   // last GOOD feed (polled here)
   const [now, setNow] = useState(Date.now())
   const [fresh, setFresh] = useState<Set<string>>(new Set())
   const [fails, setFails] = useState(0)
@@ -19,36 +20,34 @@ export function LiveIndexer() {
 
   useEffect(() => {
     let alive = true
-    // status and feed are fetched INDEPENDENTLY so one hiccup never blanks the other, and the last
-    // good value is kept — resilient to the free-tier CPU starving the outbound GraphQL under load.
+    // only the disputes feed is polled here now; reachability/latency/head come from the shared
+    // LiveStatus context (one status poller for the whole app). Last good feed is kept through blips.
     const tick = async () => {
-      const [sRes, fRes] = await Promise.allSettled([api.liveStatus(), api.liveDisputes(30)])
-      if (!alive) return
-      let ok = false
-      if (sRes.status === 'fulfilled') { setStatus(sRes.value); ok = ok || !!sRes.value.reachable }
-      if (fRes.status === 'fulfilled' && fRes.value.reachable) {
-        ok = true
-        setFeed(fRes.value)
-        const incoming = fRes.value.disputes.map((d) => d.id)
-        const newly = incoming.filter((id) => seen.current.size > 0 && !seen.current.has(id))
-        incoming.forEach((id) => seen.current.add(id))
-        if (newly.length) { setFresh(new Set(newly)); setTimeout(() => alive && setFresh(new Set()), 2500) }
-      }
-      setFails((prev) => (ok ? 0 : prev + 1))
+      try {
+        const f = await api.liveDisputes(30)
+        if (!alive) return
+        if (f.reachable) {
+          setFeed(f); setFails(0)
+          const incoming = f.disputes.map((d) => d.id)
+          const newly = incoming.filter((id) => seen.current.size > 0 && !seen.current.has(id))
+          incoming.forEach((id) => seen.current.add(id))
+          if (newly.length) { setFresh(new Set(newly)); setTimeout(() => alive && setFresh(new Set()), 2500) }
+        } else { setFails((p) => p + 1) }
+      } catch { if (alive) setFails((p) => p + 1) }
     }
     tickRef.current = tick
-    // stagger the first poll so the other ~8 section fetches clear first on a weak instance
     const start = setTimeout(tick, 1200)
     const poll = setInterval(tick, POLL_MS)
     const clock = setInterval(() => alive && setNow(Date.now()), 1000)
     return () => { alive = false; clearTimeout(start); clearInterval(poll); clearInterval(clock) }
   }, [])
 
-  const everConnected = status?.reachable || (feed?.reachable ?? false)
-  const connecting = !everConnected && fails < 2       // still trying — not yet "offline"
+  const everConnected = live.up || (feed?.reachable ?? false)
+  const connecting = (live.connecting && !feed) || (!everConnected && fails < 2)
   const up = everConnected && fails < 3                // sticky-live: tolerate transient blips
-  const latency = status?.latency_ms ?? feed?.latency_ms
+  const latency = live.latency ?? feed?.latency_ms
   const subSecond = latency != null && latency < 1000
+  const status = { head_ts: live.headTs, head_id: live.headId, endpoint: live.endpoint, error: live.error }
 
   return (
     <Section id="live" kicker="fully live · hosted Envio HyperIndex"
@@ -62,7 +61,7 @@ export function LiveIndexer() {
       }>
       {!connecting && !up && (
         <ErrorBox error={`Indexer unreachable — the live feed is optional; the rest of the dashboard runs off the shipped snapshot. ${status?.error || ''}`}
-          onRetry={() => tickRef.current?.()} />
+          onRetry={() => { tickRef.current?.(); live.refresh() }} />
       )}
 
       {up && (
@@ -76,6 +75,12 @@ export function LiveIndexer() {
             <Panel className="!p-3">
               <div className="label mb-1">endpoint</div>
               <div className="break-all font-mono text-2xs text-ink-2">{prettyEndpoint(status?.endpoint || feed?.endpoint || '')}</div>
+              {status?.head_id && (
+                <div className="mt-1.5 flex items-center gap-1.5 text-2xs text-muted">
+                  <span>head</span><span className="num truncate text-ink-2" title={status.head_id}>{short(status.head_id, 8, 6)}</span>
+                  <CopyButton value={status.head_id} label="Copy head id" />
+                </div>
+              )}
               <div className="mt-2 flex items-center gap-1.5 text-2xs text-muted">
                 <span className="h-1.5 w-1.5 animate-pulse2 rounded-full bg-sig" /> polling every 5s · GraphQL
               </div>
@@ -129,11 +134,17 @@ function Row({ d, now, fresh }: { d: LiveDispute; now: number; fresh: boolean })
         <div className="num mt-0.5 flex flex-wrap items-center gap-x-1 text-2xs text-muted">
           <span>proposer {short(d.proposer, 6, 4)}</span>{d.proposer && <CopyButton value={d.proposer} label="Copy proposer address" />}
           <span>· disputed by {short(d.disputer, 6, 4)}</span>{d.disputer && <CopyButton value={d.disputer} label="Copy disputer address" />}
+          {d.outcomeSlotCount != null && <span>· {d.outcomeSlotCount} slots</span>}
         </div>
       </div>
-      <span className="num rounded px-1.5 py-0.5 text-2xs" style={{ color: d.marketStatus === 'RESOLVED' ? C.ink2 : C.warn }}>
-        {d.marketStatus ?? '—'}
-      </span>
+      <div className="text-right">
+        <span className="num rounded px-1.5 py-0.5 text-2xs" style={{ color: d.marketStatus === 'RESOLVED' ? C.ink2 : C.warn }}>
+          {d.marketStatus ?? '—'}
+        </span>
+        {d.finalOutcome && (
+          <div className="num mt-0.5 text-2xs" style={{ color: OUTCOME_COLOR[d.finalOutcome] || C.muted }}>final {d.finalOutcome}</div>
+        )}
+      </div>
     </m.div>
   )
 }

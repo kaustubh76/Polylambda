@@ -1,39 +1,73 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis } from 'recharts'
 import { api, useApi } from '../api/client'
 import { useDebounced } from '../lib/useDebounced'
+import { useInViewOnce } from '../lib/motion'
+import { downloadCsv } from '../lib/export'
+import { readQueryParam, writeQuery } from '../lib/urlState'
+import { useToast } from '../components/Toast'
 import { C } from '../lib/theme'
 import { fixed, int, short } from '../lib/format'
-import { Async, CopyButton, Panel, Section } from '../components/ui'
+import { Async, CopyButton, KV, Modal, Panel, Section } from '../components/ui'
+
+const CSV_COLS = ['conditionId', 'marketName', 'category', 'adapter', 'disputeDate', 'proposedOutcome',
+  'preDisputePrice', 'postDisputePrice', 'realizedJumpLogit', 'disputer', 'proposer', 'round']
 
 interface DisputeRow {
   marketName?: string; conditionId: string; category: string; adapter: string; disputeDate: string
   proposedOutcome: string; preDisputePrice: number | null; postDisputePrice: number | null; realizedJumpLogit: number | null
+  disputer?: string | null; proposer?: string | null; round?: number | null
 }
 
 const ADAPTER_LABEL = (a: string) => (a?.startsWith('0x') ? 'legacy' : a)
 const OUTCOME_COLOR: Record<string, string> = { YES: C.profit, NO: C.loss, UNRESOLVABLE: C.warn, OTHER: C.muted }
+const scanAddr = (a: string) => `https://polygonscan.com/address/${a}`
 
 type Filters = { category?: string; adapter?: string; year?: string }
 type SortKey = 'date' | 'prepost' | 'jump'
 type Sort = { key: SortKey; dir: 'asc' | 'desc' }
-
-// client-side sort of the loaded page (nulls always sink to the bottom)
-const ACCESS: Record<SortKey, (r: DisputeRow) => number | null> = {
-  date: (r) => (r.disputeDate ? Date.parse(r.disputeDate) : null),
-  prepost: (r) => r.postDisputePrice ?? null,
-  jump: (r) => (r.realizedJumpLogit != null ? Math.abs(r.realizedJumpLogit) : null),
+// map the UI sort keys to the real dataframe columns the backend sorts on (full-dataset, server-side)
+const SORT_COL: Record<SortKey, string> = { date: 'disputeDate', prepost: 'postDisputePrice', jump: 'realizedJumpLogit' }
+const SORT_KEYS: SortKey[] = ['date', 'prepost', 'jump']
+const initSort = (): Sort | null => {
+  const k = readQueryParam('sort') as SortKey | undefined
+  if (k && SORT_KEYS.includes(k)) return { key: k, dir: readQueryParam('dir') === 'asc' ? 'asc' : 'desc' }
+  return null
 }
 
 export function Disputes() {
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(() => readQueryParam('q') ?? '')
   const dq = useDebounced(search, 300)
-  const [f, setF] = useState<Filters>({})
+  const [f, setF] = useState<Filters>(() => ({ category: readQueryParam('cat'), adapter: readQueryParam('adapter'), year: readQueryParam('year') }))
   const [page, setPage] = useState(0)
-  const [sort, setSort] = useState<Sort | null>(null)
+  const [sort, setSort] = useState<Sort | null>(initSort)
+  const [detail, setDetail] = useState<DisputeRow | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const toast = useToast()
   const limit = 25
 
-  // any filter/search change resets to page 1
-  useEffect(() => { setPage(0) }, [dq, f])
+  // export the full filtered set (up to the backend cap), not just the current page
+  const exportCsv = async () => {
+    setExporting(true)
+    try {
+      const p = new URLSearchParams(qs)
+      p.set('limit', '200'); p.set('offset', '0')
+      const res = await api.disputes(`?${p.toString()}`)
+      downloadCsv('polylambda-disputes.csv', res.rows as Record<string, unknown>[], CSV_COLS)
+      toast.info(`exported ${res.rows.length} disputes to CSV`)
+    } catch (e: any) {
+      toast.error('export failed', { message: String(e?.message || e) })
+    } finally { setExporting(false) }
+  }
+
+  // any filter/search/sort change resets to page 1
+  useEffect(() => { setPage(0) }, [dq, f, sort])
+
+  // reflect filters/sort into the URL for shareable deep-links
+  useEffect(() => {
+    writeQuery({ q: dq || undefined, cat: f.category, adapter: f.adapter, year: f.year,
+      sort: sort?.key, dir: sort ? sort.dir : undefined })
+  }, [dq, f, sort])
 
   const qs = useMemo(() => {
     const p = new URLSearchParams()
@@ -41,9 +75,10 @@ export function Disputes() {
     if (f.adapter) p.set('adapter', f.adapter)
     if (f.year) p.set('year', f.year)
     if (dq) p.set('q', dq)
+    if (sort) { p.set('sort', SORT_COL[sort.key]); p.set('desc', String(sort.dir === 'desc')) }
     p.set('limit', String(limit)); p.set('offset', String(page * limit))
     return `?${p.toString()}`
-  }, [f, dq, page])
+  }, [f, dq, sort, page])
   const q = useApi(() => api.disputes(qs), [qs])
   const setFilter = (patch: Partial<Filters>) => setF((prev) => ({ ...prev, ...patch }))
 
@@ -61,17 +96,16 @@ export function Disputes() {
   return (
     <Section id="disputes" kicker="the released dataset · polymarket-oov2-disputes-v1"
       title="Disputes explorer"
-      subtitle="1,794 UMA OptimisticOracle disputes — the net-new dispute layer (not in the HF dataset), 100% joinable across all adapters, enriched with real market titles.">
+      subtitle="The net-new UMA OptimisticOracle dispute layer (not in the HF dataset), 100% joinable across all adapters, enriched with real market titles. Sort any column across the full dataset; click a row for the full record.">
       <Async q={q}>{(d) => {
-        const all = d.rows as DisputeRow[]
-        const rows = sort ? sortRows(all, sort) : all
+        const rows = d.rows as DisputeRow[]
         const from = d.total === 0 ? 0 : page * limit + 1
         const to = Math.min((page + 1) * limit, d.total)
         return (
           <Panel pad={false}>
             {/* filter bar */}
             <div className="flex flex-wrap items-center gap-2 border-b border-line p-4">
-              <input className="field max-w-xs flex-1" placeholder="search title / conditionId / disputer…"
+              <input id="disputes-search" className="field max-w-xs flex-1" placeholder="search title / conditionId / disputer…  ( / )"
                 aria-label="search disputes" value={search} onChange={(e) => setSearch(e.target.value)} />
               <Facet label="category" value={f.category} options={d.facets.category} onPick={(v) => setFilter({ category: v })} />
               <Facet label="adapter" value={f.adapter} options={d.facets.adapter} labelFn={ADAPTER_LABEL} onPick={(v) => setFilter({ adapter: v })} />
@@ -80,6 +114,9 @@ export function Disputes() {
                 {Object.keys(d.facets.year).sort().map((y) => <option key={y} value={y}>{y} ({d.facets.year[y]})</option>)}
               </select>
               <span className="num ml-auto text-2xs text-muted">{d.total === 0 ? '0 rows' : `${from}–${to} of ${int(d.total)}`}</span>
+              <button onClick={exportCsv} disabled={exporting || d.total === 0} className="btn !py-1 text-2xs" aria-label="Export filtered disputes to CSV">
+                {exporting ? '…' : '⭳ CSV'}
+              </button>
             </div>
 
             {/* active filters */}
@@ -108,13 +145,14 @@ export function Disputes() {
                 </thead>
                 <tbody className="num">
                   {rows.map((r, i) => (
-                    <tr key={i} className="border-b border-line/40 transition hover:bg-elevated/40">
+                    <tr key={i} onClick={() => setDetail(r)}
+                      className="cursor-pointer border-b border-line/40 transition hover:bg-elevated/40">
                       <td className="max-w-[320px] px-4 py-2 font-sans text-ink-2">
                         <div className="flex items-center gap-1.5">
                           <span className="truncate" title={r.marketName || r.conditionId}>
                             {r.marketName || <span className="font-mono text-muted">{short(r.conditionId, 10, 6)}</span>}
                           </span>
-                          {r.conditionId && <CopyButton value={r.conditionId} label="Copy conditionId" className="shrink-0" />}
+                          {r.conditionId && <span onClick={(e) => e.stopPropagation()}><CopyButton value={r.conditionId} label="Copy conditionId" className="shrink-0" /></span>}
                         </div>
                       </td>
                       <td className="px-2 capitalize text-muted">{r.category}</td>
@@ -140,26 +178,109 @@ export function Disputes() {
             {/* pagination */}
             <div className="flex items-center justify-between p-3 text-xs">
               <button className="btn" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>← prev</button>
-              <span className="num text-muted">page {page + 1} / {Math.max(1, Math.ceil(d.total / limit))}{sort && <span className="ml-2 text-2xs">· sorted (this page)</span>}</span>
+              <span className="num text-muted">page {page + 1} / {Math.max(1, Math.ceil(d.total / limit))}</span>
               <button className="btn" disabled={(page + 1) * limit >= d.total} onClick={() => setPage((p) => p + 1)}>next →</button>
             </div>
           </Panel>
         )
       }}</Async>
+
+      <DisputeAnatomy />
+      <DisputeDetail row={detail} onClose={() => setDetail(null)} />
     </Section>
   )
 }
 
-function sortRows(rows: DisputeRow[], sort: Sort): DisputeRow[] {
-  const acc = ACCESS[sort.key]
-  const mul = sort.dir === 'asc' ? 1 : -1
-  return [...rows].sort((a, b) => {
-    const va = acc(a), vb = acc(b)
-    if (va == null && vb == null) return 0
-    if (va == null) return 1 // nulls last
-    if (vb == null) return -1
-    return (va - vb) * mul
-  })
+// distributions over the full released parquet — jump magnitude, price impact, outcome mix
+function DisputeAnatomy() {
+  const q = useApi(api.disputeAnalytics, [])
+  const [hRef, hIn] = useInViewOnce<HTMLDivElement>()
+  return (
+    <Async q={q}>{(d) => (
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <Panel>
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+            <div className="label text-sig">jump-magnitude distribution · |realized logit|</div>
+            {d.jump_stats && <span className="num text-2xs text-muted">mean {fixed(d.jump_stats.mean, 3)} · median {fixed(d.jump_stats.median, 3)} · n {int(d.jump_stats.n)}</span>}
+          </div>
+          <div className="h-[220px] w-full" ref={hRef}>
+            <ResponsiveContainer>
+              <BarChart data={d.histogram ?? []} margin={{ left: 2, right: 8, top: 8, bottom: 4 }}>
+                <CartesianGrid stroke={C.line} vertical={false} />
+                <XAxis dataKey="x0" tickFormatter={(v) => Number(v).toFixed(1)} stroke={C.axis} tick={{ fill: C.muted, fontSize: 10 }} tickLine={false} />
+                <YAxis stroke={C.axis} tick={{ fill: C.muted, fontSize: 10 }} tickLine={false} width={36} />
+                <Tooltip cursor={{ fill: C.elevated }} content={({ active, payload }: any) => active && payload?.length ? (
+                  <div className="panel p-2 text-xs num"><span className="text-muted">|logit| {fixed(payload[0].payload.x0, 2)}–{fixed(payload[0].payload.x1, 2)}</span> · <span className="text-sig">{payload[0].payload.n}</span></div>
+                ) : null} />
+                <Bar dataKey="n" fill={C.sig} radius={[2, 2, 0, 0]} isAnimationActive={hIn} animationDuration={700} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Panel>
+
+        <Panel>
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+            <div className="label text-sig">price impact · pre → post dispute</div>
+            <span className="num text-2xs text-muted">{d.by_outcome ? Object.entries(d.by_outcome).map(([k, v]) => `${k} ${v}`).join(' · ') : ''}</span>
+          </div>
+          <div className="h-[220px] w-full">
+            <ResponsiveContainer>
+              <ScatterChart margin={{ left: 2, right: 8, top: 8, bottom: 4 }}>
+                <CartesianGrid stroke={C.line} />
+                <XAxis type="number" dataKey="pre" name="pre" domain={[0, 1]} stroke={C.axis} tick={{ fill: C.muted, fontSize: 10 }} tickLine={false}
+                  label={{ value: 'pre-dispute price', fill: C.muted, fontSize: 10, position: 'insideBottom', offset: -2 }} />
+                <YAxis type="number" dataKey="post" name="post" domain={[0, 1]} stroke={C.axis} tick={{ fill: C.muted, fontSize: 10 }} tickLine={false} width={36} />
+                <ZAxis range={[14, 14]} />
+                <Tooltip cursor={{ stroke: C.line }} content={({ active, payload }: any) => active && payload?.length ? (
+                  <div className="panel p-2 text-xs num text-muted">pre {payload[0].payload.pre.toFixed(2)} → post {payload[0].payload.post.toFixed(2)}</div>
+                ) : null} />
+                <Scatter data={d.scatter ?? []} fill={C.series[3]} fillOpacity={0.4} isAnimationActive={false} />
+              </ScatterChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="mt-1 text-2xs text-muted">Points off the diagonal are the dispute jump — how far the market re-priced once the dispute landed.</p>
+        </Panel>
+      </div>
+    )}</Async>
+  )
+}
+
+function DisputeDetail({ row, onClose }: { row: DisputeRow | null; onClose: () => void }) {
+  return (
+    <Modal open={!!row} onClose={onClose} labelledBy="dispute-detail-title">
+      {row && (
+        <div>
+          <h3 id="dispute-detail-title" className="mb-1 text-base font-semibold text-ink">{row.marketName || 'Dispute'}</h3>
+          <div className="mb-3 flex items-center gap-1.5 text-2xs text-muted">
+            <span className="num truncate">{short(row.conditionId, 14, 10)}</span>
+            <CopyButton value={row.conditionId} label="Copy conditionId" />
+          </div>
+          <div className="space-y-0.5">
+            <KV k="category" v={<span className="capitalize">{row.category}</span>} mono={false} />
+            <KV k="adapter" v={ADAPTER_LABEL(row.adapter)} mono={false} />
+            <KV k="dispute date" v={row.disputeDate} />
+            <KV k="proposed outcome" v={<span style={{ color: OUTCOME_COLOR[row.proposedOutcome] || C.muted }}>{row.proposedOutcome ?? '—'}</span>} mono={false} />
+            <KV k="pre → post price" v={row.preDisputePrice != null ? `${fixed(row.preDisputePrice, 3)} → ${fixed(row.postDisputePrice, 3)}` : '—'} />
+            <KV k="realized jump (logit)" v={row.realizedJumpLogit != null ? fixed(row.realizedJumpLogit, 3) : '—'} />
+            {row.round != null && <KV k="dispute round" v={row.round} />}
+            <KV k="proposer" v={<AddrCell addr={row.proposer} />} mono={false} />
+            <KV k="disputer" v={<AddrCell addr={row.disputer} />} mono={false} />
+          </div>
+          <div className="mt-4 flex justify-end"><button className="btn" onClick={onClose}>Close</button></div>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+function AddrCell({ addr }: { addr?: string | null }) {
+  if (!addr) return <span className="text-muted">—</span>
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <a href={scanAddr(addr)} target="_blank" rel="noreferrer" className="num text-ink-2 link-underline">{short(addr, 6, 4)} ↗</a>
+      <CopyButton value={addr} label="Copy address" />
+    </span>
+  )
 }
 
 function SortTh({ label, k, sort, onSort, align = 'left' }: {

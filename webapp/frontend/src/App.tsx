@@ -1,21 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, LazyMotion, domMax, m, MotionConfig } from 'framer-motion'
 import { api, useApi } from './api/client'
-import { Ablation } from './sections/Ablation'
 import { BaseRates } from './sections/BaseRates'
-import { Disputes } from './sections/Disputes'
-import { HazardCard } from './sections/HazardCard'
 import { Hero } from './sections/Hero'
-import { LiveIndexer } from './sections/LiveIndexer'
-import { PaperSession } from './sections/PaperSession'
-import { Recon } from './sections/Recon'
-import { ScoreMarket } from './sections/ScoreMarket'
-import { SigmaSurface } from './sections/SigmaSurface'
 import { LiveTestnet } from './sections/LiveTestnet'
+// below-the-fold sections are code-split + viewport-deferred so recharts and their code load on
+// scroll, not up front (see DeferSection). Named exports → default-shaped for React.lazy.
+const ScoreMarket = lazy(() => import('./sections/ScoreMarket').then((m) => ({ default: m.ScoreMarket })))
+const PaperSession = lazy(() => import('./sections/PaperSession').then((m) => ({ default: m.PaperSession })))
+const Ablation = lazy(() => import('./sections/Ablation').then((m) => ({ default: m.Ablation })))
+const HazardCard = lazy(() => import('./sections/HazardCard').then((m) => ({ default: m.HazardCard })))
+const Disputes = lazy(() => import('./sections/Disputes').then((m) => ({ default: m.Disputes })))
+const LiveIndexer = lazy(() => import('./sections/LiveIndexer').then((m) => ({ default: m.LiveIndexer })))
+const Recon = lazy(() => import('./sections/Recon').then((m) => ({ default: m.Recon })))
+const SigmaSurface = lazy(() => import('./sections/SigmaSurface').then((m) => ({ default: m.SigmaSurface })))
 import { WalletProvider, useWallet } from './lib/wallet'
 import { ToastProvider, useToast } from './components/Toast'
+import { LiveStatusProvider, useLiveStatus } from './components/LiveStatus'
 import { CommandPalette, type Command } from './components/CommandPalette'
-import { CopyButton } from './components/ui'
+import { CopyButton, PanelSkeleton } from './components/ui'
 import { addressUrl } from './lib/testnet'
 import { short } from './lib/format'
 
@@ -32,6 +35,11 @@ const NAV = [
   { id: 'recon', label: 'Integrity' },
   { id: 'sigma', label: 'σ surface' },
 ]
+// `g`-then-letter jump keys (shown as hints in the command palette)
+const GOTO_KEYS: Record<string, string> = {
+  overview: 'o', trade: 't', baserates: 'b', score: 's', session: 'e', ablation: 'a',
+  hazard: 'h', disputes: 'd', live: 'i', recon: 'r', sigma: 'v',
+}
 
 function useScrollSpy(ids: string[]) {
   const [active, setActive] = useState(ids[0])
@@ -43,30 +51,48 @@ function useScrollSpy(ids: string[]) {
       },
       { rootMargin: '-45% 0px -50% 0px', threshold: [0, 0.25, 0.5, 1] },
     )
-    ids.forEach((id) => { const el = document.getElementById(id); if (el) obs.observe(el) })
-    return () => obs.disconnect()
+    // lazy/deferred sections swap their id-bearing node (skeleton → loaded), so re-observe on DOM
+    // changes (debounced via rAF) rather than a one-shot observe.
+    let scheduled = false
+    const rescan = () => {
+      scheduled = false
+      obs.disconnect()
+      ids.forEach((id) => { const el = document.getElementById(id); if (el) obs.observe(el) })
+    }
+    rescan()
+    const mo = new MutationObserver(() => { if (!scheduled) { scheduled = true; requestAnimationFrame(rescan) } })
+    mo.observe(document.body, { childList: true, subtree: true })
+    return () => { obs.disconnect(); mo.disconnect() }
   }, [ids])
   return active
 }
 
-function LivePill() {
-  const [s, setS] = useState<{ up: boolean; ms?: number } | null>(null)
-  const fails = useRef(0)
+// Viewport-deferred, code-split section: renders a height-reserving skeleton until it nears the
+// viewport, then streams in the lazy chunk. The id lives on whichever node is mounted (skeleton or
+// loaded Section) — never both — so anchors (#id / g-jumps) and the scroll-spy always resolve.
+function DeferSection({ id, lines = 6, children }: { id: string; lines?: number; children: ReactNode }) {
+  const [show, setShow] = useState(false)
+  const ref = useRef<HTMLElement>(null)
   useEffect(() => {
-    let alive = true
-    // keep the last good state; only flip to "down" after 2 consecutive failures (free-tier blips)
-    const tick = () => api.liveStatus()
-      .then((r) => { if (alive) { fails.current = 0; setS({ up: r.reachable, ms: r.latency_ms }) } })
-      .catch(() => { if (alive && ++fails.current >= 2) setS((p) => ({ up: false, ms: p?.ms })) })
-    const start = setTimeout(tick, 1500)
-    const t = setInterval(tick, 10000)
-    return () => { alive = false; clearTimeout(start); clearInterval(t) }
-  }, [])
-  if (!s) return null
+    if (show) return
+    const el = ref.current
+    if (!el) return
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) setShow(true) }, { rootMargin: '800px 0px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [show])
+  const skeleton = <PanelSkeleton lines={lines} />
+  if (!show) return <section id={id} ref={ref} className="scroll-mt-28">{skeleton}</section>
+  return <Suspense fallback={<section id={id} className="scroll-mt-28">{skeleton}</section>}>{children}</Suspense>
+}
+
+function LivePill() {
+  const s = useLiveStatus()
+  if (s.connecting) return null
   return (
     <a href="#live" aria-live="polite" className={`chip ${s.up ? 'border-sig/40 text-sig' : 'border-warn/50 text-warn'}`} title="hosted Envio HyperIndex">
       <span className={`h-1.5 w-1.5 rounded-full ${s.up ? 'animate-pulse2' : ''}`} style={{ background: s.up ? '#24c98a' : '#fab219' }} />
-      {s.up ? <>LIVE{s.ms != null && s.ms < 1000 ? ` · ${s.ms.toFixed(0)}ms` : ''}</> : 'indexer down'}
+      {s.up ? <>LIVE{s.latency != null && s.latency < 1000 ? ` · ${s.latency.toFixed(0)}ms` : ''}</> : 'indexer down'}
     </a>
   )
 }
@@ -173,9 +199,31 @@ function AppInner() {
       ?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
   }, [active])
 
+  // keyboard shortcuts: `/` focuses the disputes search, `g`+letter jumps to a section
+  useEffect(() => {
+    let gPending = false
+    let gTimer: ReturnType<typeof setTimeout> | undefined
+    const isTyping = (el: HTMLElement | null) =>
+      !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+      const t = e.target as HTMLElement
+      if (e.key === '/' && !isTyping(t)) { e.preventDefault(); document.getElementById('disputes-search')?.focus(); return }
+      if (isTyping(t)) return
+      if (e.key === 'g') { gPending = true; clearTimeout(gTimer); gTimer = setTimeout(() => { gPending = false }, 1200); return }
+      if (gPending) {
+        gPending = false
+        const id = Object.entries(GOTO_KEYS).find(([, k]) => k === e.key.toLowerCase())?.[0]
+        if (id) { e.preventDefault(); document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' }) }
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('keydown', onKey); clearTimeout(gTimer) }
+  }, [])
+
   const commands = useMemo<Command[]>(() => {
     const goto = NAV.map((n) => ({
-      id: `go-${n.id}`, group: 'Go to', label: n.label,
+      id: `go-${n.id}`, group: 'Go to', label: n.label, hint: `g ${GOTO_KEYS[n.id]}`,
       run: () => document.getElementById(n.id)?.scrollIntoView({ behavior: 'smooth' }),
     }))
     const wallet: Command[] = w.address
@@ -233,17 +281,19 @@ function AppInner() {
 
       {/* --- body --- */}
       <main className="mx-auto max-w-7xl space-y-16 px-5 py-10">
+        {/* above the fold: eager */}
         <Hero q={overview} />
         <LiveTestnet />
         <BaseRates />
-        <ScoreMarket />
-        <PaperSession />
-        <Ablation />
-        <HazardCard />
-        <Disputes />
-        <LiveIndexer />
-        <Recon />
-        <SigmaSurface />
+        {/* below the fold: code-split + viewport-deferred (recharts loads on scroll) */}
+        <DeferSection id="score" lines={7}><ScoreMarket /></DeferSection>
+        <DeferSection id="session" lines={8}><PaperSession /></DeferSection>
+        <DeferSection id="ablation" lines={6}><Ablation /></DeferSection>
+        <DeferSection id="hazard" lines={6}><HazardCard /></DeferSection>
+        <DeferSection id="disputes" lines={8}><Disputes /></DeferSection>
+        <DeferSection id="live" lines={6}><LiveIndexer /></DeferSection>
+        <DeferSection id="recon" lines={5}><Recon /></DeferSection>
+        <DeferSection id="sigma" lines={6}><SigmaSurface /></DeferSection>
       </main>
 
       <footer className="border-t border-line">
@@ -276,7 +326,9 @@ export default function App() {
       <MotionConfig reducedMotion="user">
         <WalletProvider>
           <ToastProvider>
-            <AppInner />
+            <LiveStatusProvider>
+              <AppInner />
+            </LiveStatusProvider>
           </ToastProvider>
         </WalletProvider>
       </MotionConfig>

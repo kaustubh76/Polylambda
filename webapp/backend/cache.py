@@ -154,14 +154,31 @@ def load_hazard_model():
 
 
 def frozen_config() -> tuple[dict, str]:
-    """config/model.yaml frozen params via the real loader; fallback to published constants."""
+    """config/model.yaml frozen params via the real loader; fallback to published constants.
+
+    Exposes the full knob set (not just the headline nine) so the UI can render the complete
+    frozen strategy card.
+    """
     try:
         from config.loader import load_config
         cfg = load_config()
         return {
+            # quote (Avellaneda–Stoikov) params
             "gamma": cfg.quote.gamma, "k": cfg.quote.k, "kappa": cfg.quote.kappa,
-            "lambda_star": cfg.lambda_star, "kappa_loss": cfg.kappa_loss, "ewma_b": cfg.ewma_b,
-            "sigma_ref": cfg.sigma_ref, "positioning": cfg.positioning, "mode": cfg.mode,
+            "min_horizon": cfg.quote.min_horizon, "boundary_floor": cfg.quote.boundary_floor,
+            "base_inventory_cap": cfg.quote.base_inventory_cap,
+            # signal / exit
+            "lambda_star": cfg.lambda_star, "kappa_loss": cfg.kappa_loss,
+            # sigma estimator
+            "ewma_b": cfg.ewma_b, "sigma_ref": cfg.sigma_ref,
+            "shrinkage_strength": cfg.shrinkage_strength, "min_trades_for_sigma": cfg.min_trades_for_sigma,
+            # sizing / inventory
+            "quote_size": cfg.quote_size, "reduce_fraction": cfg.reduce_fraction,
+            "light_factor": cfg.light_factor, "size_floor": cfg.size_floor,
+            "size_lambda_k": cfg.size_lambda_k, "inventory_cap_horizon_days": cfg.inventory_cap_horizon_days,
+            # data / run
+            "control_ratio": cfg.control_ratio, "fill_limit": cfg.fill_limit,
+            "positioning": cfg.positioning, "mode": cfg.mode,
         }, "live"
     except Exception:
         return dict(K.FROZEN_PARAMS_FALLBACK), "published"
