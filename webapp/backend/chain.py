@@ -220,18 +220,26 @@ def events(limit: int = 30) -> dict:
     def fetch():
         w3 = _w3()
         latest = w3.eth.block_number
-        # ONE get_logs by contract address over a small recent window — tiny range every RPC accepts
-        # (per-topic queries over a wide range trip "block range exceeds limit" on public nodes).
-        win = int(os.environ.get("EVENTS_WINDOW_BLOCKS", "2000"))
         dep = int(_meta().get("deployed_block") or 0)
-        logs = None
-        for w in (win, 400):  # retry with a tiny window if a node rejects the range
+        # drpc (and most public Amoy nodes) cap eth_getLogs at ~10k blocks/call, so page BACKWARD from
+        # head in bounded chunks by contract address — covers the market's full history even as it ages
+        # past any single window, and never trips the range limit. (A fixed window silently goes empty
+        # once the market's events are older than it.)
+        chunk = int(os.environ.get("EVENTS_CHUNK_BLOCKS", "9000"))
+        max_scan = int(os.environ.get("EVENTS_MAX_SCAN_BLOCKS", "90000"))
+        start = max(dep, latest - max_scan)
+        logs, ok, hi = [], False, latest
+        while hi >= start:
+            lo = max(start, hi - chunk)
             try:
-                logs = w3.eth.get_logs({"address": m.address, "fromBlock": max(dep, latest - w), "toBlock": latest})
-                break
+                logs.extend(w3.eth.get_logs({"address": m.address, "fromBlock": lo, "toBlock": hi}))
+                ok = True
             except Exception:  # noqa: BLE001
-                continue
-        if logs is None:
+                pass  # skip a rejected chunk, keep paging back
+            if len(logs) >= limit or lo <= start:  # newest-first: stop once we have enough
+                break
+            hi = lo - 1
+        if not ok:
             return {"reachable": True, "events": [], "note": "logs unavailable on this RPC"}
         out = []
         for log in logs:
