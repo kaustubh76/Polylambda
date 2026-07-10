@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api, useApi } from '../api/client'
 import { useInViewOnce } from '../lib/motion'
-import { ARM_COLORS, C } from '../lib/theme'
+import { useColors } from '../components/Theme'
+import type { Colors } from '../lib/theme'
 import { int } from '../lib/format'
 import { Async, Caveat, Panel, Section, SourceTag } from '../components/ui'
 
@@ -10,9 +11,11 @@ const ARM_SHORT: Record<string, string> = {
   lambda_jump: 'λ-jump (surgical exit)', diffusion_only: 'diffusion (hold)',
   lambda_select: 'λ-select (blanket avoid)', lambda_jump_hazard: 'λ-jump · hazard',
 }
-const armColor = (arm: string, i: number) => ARM_COLORS[arm] || C.series[i % C.series.length]
+const armColor = (C: Colors, ARM_COLORS: Record<string, string>, arm: string, i: number) =>
+  ARM_COLORS[arm] || C.series[i % C.series.length]
 
 export function Ablation() {
+  const { C, ARM_COLORS } = useColors()
   const [live, setLive] = useState(false)
   const q = useApi(() => api.ablation(live), [live])
   return (
@@ -53,7 +56,7 @@ export function Ablation() {
               <div className="mt-3 flex flex-wrap gap-4 text-xs">
                 {arms.map((a, i) => (
                   <span key={a} className="flex items-center gap-1.5 text-ink-2">
-                    <span className="h-2 w-3 rounded-sm" style={{ background: armColor(a, i) }} />{ARM_SHORT[a] || a}
+                    <span className="h-2 w-3 rounded-sm" style={{ background: armColor(C, ARM_COLORS, a, i) }} />{ARM_SHORT[a] || a}
                   </span>
                 ))}
                 <span className="ml-auto flex items-center gap-1.5 text-muted"><span className="h-3 w-px bg-warn" />frozen λ*={String(d.meta.lambda_star_frozen)}</span>
@@ -68,6 +71,7 @@ export function Ablation() {
 }
 
 function MiniChart({ title, data, arms, frozen, fmt }: { title: string; data: any[]; arms: string[]; frozen: number; fmt: (v: number) => string }) {
+  const { C, ARM_COLORS } = useColors()
   const [ref, inView] = useInViewOnce<HTMLDivElement>()
   return (
     <div>
@@ -83,8 +87,8 @@ function MiniChart({ title, data, arms, frozen, fmt }: { title: string; data: an
             <Tooltip content={<Tip fmt={fmt} />} />
             <ReferenceLine x={frozen} stroke={C.warn} strokeDasharray="3 3" />
             {arms.map((a, i) => (
-              <Line key={a} type="monotone" dataKey={a} stroke={armColor(a, i)} strokeWidth={2}
-                dot={{ r: 3, fill: armColor(a, i), strokeWidth: 0 }}
+              <Line key={a} type="monotone" dataKey={a} stroke={armColor(C, ARM_COLORS, a, i)} strokeWidth={2}
+                dot={{ r: 3, fill: armColor(C, ARM_COLORS, a, i), strokeWidth: 0 }}
                 isAnimationActive={inView} animationDuration={700} animationEasing="ease-out" />
             ))}
           </LineChart>
@@ -95,6 +99,7 @@ function MiniChart({ title, data, arms, frozen, fmt }: { title: string; data: an
 }
 
 function Tip({ active, payload, label, fmt }: any) {
+  const { C, ARM_COLORS } = useColors()
   if (!active || !payload?.length) return null
   return (
     <div className="panel p-2.5 text-xs num">

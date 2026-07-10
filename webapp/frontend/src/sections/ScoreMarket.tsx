@@ -5,7 +5,7 @@ import { useInViewOnce } from '../lib/motion'
 import { downloadJson } from '../lib/export'
 import { usePersistentState } from '../lib/urlState'
 import { useToast } from '../components/Toast'
-import { C } from '../lib/theme'
+import { useColors } from '../components/Theme'
 import { fixed, int, num, pct, usd } from '../lib/format'
 import { Async, Caveat, Drift, ErrorBox, KV, Loading, Panel, Section } from '../components/ui'
 
@@ -95,6 +95,7 @@ export function ScoreMarket() {
 }
 
 function Outputs({ d }: { d: ScoreResp }) {
+  const { C } = useColors()
   const jumpPct = Math.round(d.quote.jump_share * 100)
   return (
     <>
@@ -197,6 +198,7 @@ function Outputs({ d }: { d: ScoreResp }) {
 
 // the A-S quote's inventory anatomy: bid/ask as the engine skews the book vs signed position
 function QuoteCurvePanel({ category, price, horizon }: { category: string; price: number; horizon: number }) {
+  const { C } = useColors()
   const q = useApi(() => api.quoteCurve(category, price, horizon), [category, Math.round(price * 100), Math.round(horizon * 4)])
   const [ref, inView] = useInViewOnce<HTMLDivElement>()
   return (
@@ -250,12 +252,13 @@ function Feat({ label, v, hint }: { label: string; v: string; hint?: string }) {
 }
 
 function QuoteBar({ mid, bid, ask }: { mid: number; bid: number; ask: number }) {
+  const { C } = useColors()
   // fixed 0..1 price axis with bid/mid/ask ticks
   const pos = (x: number) => `${x * 100}%`
   return (
     <div className="relative mt-2 h-9">
       <div className="absolute inset-x-0 top-4 h-1 rounded-full bg-bg" />
-      <div className="absolute top-4 h-1 rounded-full" style={{ left: pos(bid), width: pos(ask - bid), background: 'linear-gradient(90deg,#e6676799,#22c58a99)' }} />
+      <div className="absolute top-4 h-1 rounded-full" style={{ left: pos(bid), width: pos(ask - bid), background: 'linear-gradient(90deg, rgb(var(--loss) / 0.6), rgb(var(--profit) / 0.6))' }} />
       {[['bid', bid, C.loss], ['mid', mid, C.ink], ['ask', ask, C.profit]].map(([lbl, x, col]) => (
         <div key={lbl as string} className="absolute -translate-x-1/2" style={{ left: pos(x as number) }}>
           <div className="mx-auto h-5 w-px" style={{ background: col as string }} />

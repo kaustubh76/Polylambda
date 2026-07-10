@@ -150,9 +150,13 @@ function useWalletState(): WalletState {
     return createWalletClient({ account: address, chain: polygonAmoy, transport: custom(window.ethereum) })
   }, [address])
 
+  // NOTE: explicit `gas` on every write. Amoy caps a tx at 33,554,432 gas (2^25); MetaMask's estimate
+  // on Amoy inflates to ~49M for these calls and the RPC rejects the raw send ("gas limit too high").
+  // These functions are bounded (measured: buyYes ~143k, approve ~46k), so we pass a fixed sane limit
+  // and skip the wallet's broken estimate entirely.
   const approveToken = useCallback(async (spender: Address, amount: string): Promise<`0x${string}`> => {
     const hash = await walletClient().writeContract({ address: TEST_USDC.address, abi: ERC20,
-      functionName: 'approve', args: [spender, parseUnits(amount, TEST_USDC.decimals)] })
+      functionName: 'approve', args: [spender, parseUnits(amount, TEST_USDC.decimals)], gas: 90_000n })
     await publicClient.waitForTransactionReceipt({ hash })
     return hash
   }, [walletClient])
@@ -160,7 +164,7 @@ function useWalletState(): WalletState {
   const marketWrite = useCallback(async (
     market: Address, fn: 'buyYes' | 'sellYes' | 'redeem', args: readonly bigint[] = [],
   ): Promise<`0x${string}`> => {
-    const hash = await walletClient().writeContract({ address: market, abi: MARKET_ABI, functionName: fn, args } as any)
+    const hash = await walletClient().writeContract({ address: market, abi: MARKET_ABI, functionName: fn, args, gas: 350_000n } as any)
     await publicClient.waitForTransactionReceipt({ hash })
     return hash
   }, [walletClient])

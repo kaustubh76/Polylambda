@@ -87,8 +87,9 @@ export function useToast(): ToastApi {
   return ctx
 }
 
+// theme-aware status dot classes (follow the CSS-var tokens across light/dark)
 const DOT: Record<ToastVariant, string> = {
-  pending: '#fab219', success: '#22c58a', error: '#e66767', info: '#6b7280',
+  pending: 'bg-warn', success: 'bg-profit', error: 'bg-loss', info: 'bg-muted',
 }
 
 function ToastViewport({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: string) => void }) {
@@ -104,8 +105,7 @@ function ToastViewport({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id:
             exit={{ opacity: 0, x: 24, scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 480, damping: 38 }}
             className="panel pointer-events-auto flex items-start gap-3 p-3 shadow-panel">
-            <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${t.variant === 'pending' ? 'animate-pulse2' : ''}`}
-              style={{ background: DOT[t.variant] }} />
+            <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${DOT[t.variant]} ${t.variant === 'pending' ? 'animate-pulse2' : ''}`} />
             <div className="min-w-0 flex-1">
               <div className="text-sm font-medium text-ink">{t.title}</div>
               {t.message && <div className="mt-0.5 break-words text-2xs text-ink-2">{t.message}</div>}

@@ -5,7 +5,7 @@ import {
 } from 'recharts'
 import { api, useAction, type DDPoint, type SessionReq } from '../api/client'
 import { useInViewOnce } from '../lib/motion'
-import { C } from '../lib/theme'
+import { useColors } from '../components/Theme'
 import { fixed, num, short, signed, usd } from '../lib/format'
 import { Caveat, ErrorBox, Loading, Panel, Section, Stat } from '../components/ui'
 
@@ -41,6 +41,7 @@ export function PaperSession() {
 // Dispute-defense A/B (the centerpiece)
 // ============================================================================================
 function DisputeDefense() {
+  const { C } = useColors()
   const [cfg, setCfg] = useState<SessionReq>({ scenario: 'dispute_defense', category: 'politics', entry_price: 0.62, inventory: 100, dispute_tick: 5, gap_logit: -1.35, n_ticks: 13 })
   const { run, data, error, loading } = useAction(api.session)
   const [frame, setFrame] = useState(0)
@@ -211,6 +212,7 @@ function DisputeDefense() {
 // Raw quoting loop (secondary)
 // ============================================================================================
 function LiveQuoting() {
+  const { C } = useColors()
   const [n, setN] = useState(30)
   const [seed, setSeed] = useState(7)
   const [nMarkets, setNMarkets] = useState(4)

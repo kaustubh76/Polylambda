@@ -1,5 +1,5 @@
 import { api, useApi, type Hazard, type HazardCardT } from '../api/client'
-import { C } from '../lib/theme'
+import { useColors } from '../components/Theme'
 import { fixed, int, short } from '../lib/format'
 import { Async, Caveat, CopyButton, Panel, Section } from '../components/ui'
 
@@ -43,6 +43,7 @@ export function HazardCard() {
 
 // the raw proposer signal, before the CEM-matched null — a "most dispute-prone proposers" ladder
 function ProposerLeaderboard() {
+  const { C } = useColors()
   const q = useApi(api.proposers, [])
   return (
     <Async q={q}>{(d) => {
@@ -75,6 +76,7 @@ function ProposerLeaderboard() {
 }
 
 function ModelCard({ card, highlight, nullish }: { card: HazardCardT | null; highlight?: boolean; nullish?: boolean }) {
+  const { C } = useColors()
   if (!card) return <Panel><div className="text-sm text-muted">unavailable</div></Panel>
   const auc = card.holdout_auc ?? 0.5
   const discr = card.discriminates

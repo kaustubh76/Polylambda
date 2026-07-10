@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api, useApi, type BaseRateRow } from '../api/client'
 import { useInViewOnce } from '../lib/motion'
-import { CATEGORY_COLORS, C } from '../lib/theme'
+import { useColors } from '../components/Theme'
 import { int, pct } from '../lib/format'
 import { Async, Panel, Section, SourceTag } from '../components/ui'
 
@@ -55,6 +55,7 @@ function Row({ r, x, active, grown, idx, onEnter, onLeave, ticks }: {
   r: BaseRateRow; x: (f: number) => string; active: boolean; grown: boolean; idx: number
   onEnter: () => void; onLeave: () => void; ticks: number[]
 }) {
+  const { C, CATEGORY_COLORS } = useColors()
   const col = CATEGORY_COLORS[r.category] || C.sig
   return (
     <div className={`grid grid-cols-[104px_1fr_60px] items-center gap-2 rounded-md py-1 transition ${active ? 'bg-elevated/50' : ''}`}

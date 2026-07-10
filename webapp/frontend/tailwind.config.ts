@@ -1,29 +1,35 @@
 import type { Config } from 'tailwindcss'
 
-// Quant-terminal dark theme. Series hues are the dataviz skill's validated dark categorical set
-// (validated against surface #14161c: all pass, worst adjacent CVD ΔE 13.4). Status hues are the
-// skill's fixed status palette. Text always wears ink tokens, never a series hue.
+// Quant-terminal theme, now dual dark/light. Colors resolve through CSS variables (RGB channels
+// defined in src/index.css: :root = dark, [data-theme="light"] = light) so every token — and its
+// /opacity modifiers (bg-sig/10, border-line/60) — swaps by theme. Series hues are the dataviz
+// skill's validated categorical set (dark + light columns, validated per surface). Text always
+// wears ink tokens, never a series hue.
+const v = (name: string) => `rgb(var(--${name}) / <alpha-value>)`
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  darkMode: ['selector', '[data-theme="dark"]'],
   theme: {
     extend: {
       colors: {
-        bg: '#0a0b0e',           // page plane
-        surface: '#14161c',      // panel / chart surface (the validation surface)
-        elevated: '#1a1d26',     // raised controls / hover
-        line: '#23262f',         // hairline gridlines / borders
-        axis: '#2f3340',         // baseline / axis
-        ink: '#f2f4f8',          // primary text
-        'ink-2': '#aab0bd',      // secondary text
-        muted: '#6b7280',        // axis labels / faint
-        // λ brand accent (single-series & UI; a brighter tint of the aqua series hue)
-        sig: { DEFAULT: '#24c98a', dim: '#199e70', glow: '#3ee0a0' },
+        bg: v('bg'),             // page plane
+        surface: v('surface'),   // panel / chart surface
+        elevated: v('elevated'), // raised controls / hover
+        line: v('line'),         // hairline gridlines / borders
+        axis: v('axis'),         // baseline / axis
+        ink: v('ink'),           // primary text
+        'ink-2': v('ink-2'),     // secondary text
+        muted: v('muted'),       // axis labels / faint
+        // λ brand accent
+        sig: { DEFAULT: v('sig'), dim: v('sig-dim'), glow: v('sig-glow') },
         // fixed categorical order (charts with ≥2 series) — never cycled
-        s1: '#199e70', s2: '#3987e5', s3: '#e66767', s4: '#c98500',
-        s5: '#9085e9', s6: '#d95926', s7: '#d55181', s8: '#008300',
+        s1: v('s1'), s2: v('s2'), s3: v('s3'), s4: v('s4'),
+        s5: v('s5'), s6: v('s6'), s7: v('s7'), s8: v('s8'),
         // status (reserved; always paired with icon/label)
-        good: '#0ca30c', warn: '#fab219', serious: '#ec835a', crit: '#d03b3b',
-        loss: '#e66767', profit: '#22c58a',
+        good: v('good'), warn: v('warn'), serious: v('serious'), crit: v('crit'),
+        loss: v('loss'), profit: v('profit'),
+        // modal backdrop scrim base (used as scrim/60); channels swap per theme
+        scrim: v('scrim'),
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
@@ -33,10 +39,10 @@ export default {
         '2xs': ['0.6875rem', { lineHeight: '1rem' }],
       },
       boxShadow: {
-        panel: '0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 30px rgba(0,0,0,0.35)',
-        glow: '0 0 0 1px rgba(36,201,138,0.25), 0 0 24px rgba(36,201,138,0.12)',
-        // softer hover ring for interactive panels (lower opacity than `glow`)
-        'glow-soft': '0 1px 0 rgba(255,255,255,0.04) inset, 0 10px 34px rgba(0,0,0,0.42), 0 0 20px rgba(36,201,138,0.10)',
+        // theme-tuned via CSS vars (dark = heavy black drop; light = soft neutral elevation)
+        panel: 'var(--shadow-panel)',
+        glow: 'var(--shadow-glow)',
+        'glow-soft': 'var(--shadow-glow-soft)',
       },
       keyframes: {
         'fade-up': { '0%': { opacity: '0', transform: 'translateY(6px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
@@ -49,9 +55,9 @@ export default {
           '33%': { transform: 'translate3d(3%,-2%,0) rotate(4deg)' },
           '66%': { transform: 'translate3d(-2%,2%,0) rotate(-3deg)' },
         },
-        // brief tint sweep when a live value ticks up / down
-        'flash-up': { '0%': { backgroundColor: 'rgba(34,197,138,0.14)' }, '100%': { backgroundColor: 'transparent' } },
-        'flash-down': { '0%': { backgroundColor: 'rgba(230,103,103,0.14)' }, '100%': { backgroundColor: 'transparent' } },
+        // brief tint sweep when a live value ticks up / down (theme-aware)
+        'flash-up': { '0%': { backgroundColor: 'rgb(var(--profit) / 0.16)' }, '100%': { backgroundColor: 'transparent' } },
+        'flash-down': { '0%': { backgroundColor: 'rgb(var(--loss) / 0.16)' }, '100%': { backgroundColor: 'transparent' } },
         breathe: { '0%,100%': { opacity: '1' }, '50%': { opacity: '0.72' } },
       },
       animation: {

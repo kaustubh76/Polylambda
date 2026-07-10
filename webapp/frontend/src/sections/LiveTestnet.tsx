@@ -5,7 +5,8 @@ import { api, type TnEvent, type TnMarket, type TnPosition, type TnStatus } from
 import { readAllowance, useWallet } from '../lib/wallet'
 import { useToast } from '../components/Toast'
 import { FAUCETS, addressUrl, txUrl } from '../lib/testnet'
-import { C } from '../lib/theme'
+import { useColors } from '../components/Theme'
+import type { Colors } from '../lib/theme'
 import { ago, num, short, usd } from '../lib/format'
 import { Caveat, ConfirmDialog, CopyButton, Panel, Section, Stat } from '../components/ui'
 
@@ -13,6 +14,7 @@ const POLL_MS = 5000
 type ConfirmSpec = { title: string; body: React.ReactNode; confirmLabel: string; tone: 'warn' | 'default'; act: () => void }
 
 export function LiveTestnet() {
+  const { C } = useColors()
   const w = useWallet()
   const toast = useToast()
   const [status, setStatus] = useState<TnStatus | null>(null)
@@ -22,7 +24,7 @@ export function LiveTestnet() {
   const [feedNote, setFeedNote] = useState<string | undefined>(undefined)
   const [allowance, setAllowance] = useState<number>(0)
   const [now, setNow] = useState(Date.now())
-  const [size, setSize] = useState('1')
+  const [size, setSize] = useState('0.25') // must be <= the contract's maxTrade (0.5); validated below
   const [busy, setBusy] = useState(false)
   const [confirm, setConfirm] = useState<ConfirmSpec | null>(null)
 
@@ -57,6 +59,19 @@ export function LiveTestnet() {
   const approved = allowance > 0
   const deployed = !!market?.deployed
   const tradable = w.onAmoy && deployed && !market?.resolved
+
+  // validate the trade against the on-chain limits so we never send a tx that reverts on-chain
+  // ("size" > maxTrade, unapproved, or over-balance) — the buttons explain why they're disabled.
+  const maxTrade = market?.max_trade ?? 0
+  const nSize = Number(size) || 0
+  const buyCost = nSize * (market?.ask ?? 0)
+  const usdcBal = +(bal?.usdc ?? 0)
+  const canBuy = tradable && approved && nSize > 0 && nSize <= maxTrade && buyCost <= usdcBal
+  const canSell = tradable && nSize > 0 && nSize <= (pos?.shares ?? 0)
+  const tradeMsg = nSize > maxTrade ? `Max ${maxTrade} YES per trade.`
+    : (nSize > 0 && buyCost > usdcBal) ? `Buy needs ${buyCost.toFixed(2)} USDC (you have ${usdcBal.toFixed(2)}).`
+    : !approved ? 'Approve the market once to enable buys.'
+    : ''
 
   // derive net invested + P&L from the user's on-chain Traded events
   const mine = useMemo(() => events.filter((e) => e.type === 'Traded' && e.user?.toLowerCase() === w.address?.toLowerCase()), [events, w.address])
@@ -170,19 +185,22 @@ export function LiveTestnet() {
                   {market.resolved ? `Market resolved — ${market.yes_won ? 'YES won' : 'NO won'}. Redeem your position below.` : 'Dispute flagged — the engine pulled its ask. New buys are halted (the λ-defense).'}
                 </div>
               ) : (
-                <div className="flex flex-wrap items-end gap-3">
-                  <label className="min-w-[120px] flex-1">
-                    <div className="label mb-1">size (YES shares)</div>
-                    <input className="field num" value={size} inputMode="decimal" aria-label="Trade size in YES shares" onChange={(e) => setSize(e.target.value.replace(/[^0-9.]/g, ''))} />
-                  </label>
-                  <button className="btn btn-primary" disabled={!tradable || busy}
-                    onClick={() => run(() => w.buyYes(marketAddr!, size || '0'), `buy ${size} YES`)}>
-                    Buy YES · {(Number(size || 0) * (market?.ask || 0)).toFixed(2)} USDC
-                  </button>
-                  <button className="btn" disabled={!tradable || busy || (pos?.shares ?? 0) <= 0}
-                    onClick={() => run(() => w.sellYes(marketAddr!, size || '0'), `sell ${size} YES`)}>
-                    Sell YES · {(Number(size || 0) * (market?.bid || 0)).toFixed(2)}
-                  </button>
+                <div>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <label className="min-w-[120px] flex-1">
+                      <div className="label mb-1">size (YES shares · max {maxTrade})</div>
+                      <input className="field num" value={size} inputMode="decimal" aria-label="Trade size in YES shares" onChange={(e) => setSize(e.target.value.replace(/[^0-9.]/g, ''))} />
+                    </label>
+                    <button className="btn btn-primary" disabled={!canBuy || busy}
+                      onClick={() => run(() => w.buyYes(marketAddr!, size || '0'), `buy ${size} YES`)}>
+                      Buy YES · {buyCost.toFixed(2)} USDC
+                    </button>
+                    <button className="btn" disabled={!canSell || busy}
+                      onClick={() => run(() => w.sellYes(marketAddr!, size || '0'), `sell ${size} YES`)}>
+                      Sell YES · {(nSize * (market?.bid || 0)).toFixed(2)}
+                    </button>
+                  </div>
+                  {tradeMsg && <div className="mt-2 text-2xs text-warn">{tradeMsg}</div>}
                 </div>
               )}
               {market?.resolved && (pos?.shares ?? 0) > 0 && (
@@ -268,11 +286,12 @@ function Step({ n, done, title, action }: { n: number; done: boolean; title: str
 }
 
 function QuoteBar({ bid, ask }: { bid: number; ask: number }) {
+  const { C } = useColors()
   const pos = (x: number) => `${Math.min(Math.max(x, 0), 1) * 100}%`
   return (
     <div className="relative mt-1 h-9">
       <div className="absolute inset-x-0 top-4 h-1 rounded-full bg-bg" />
-      <div className="absolute top-4 h-1 rounded-full" style={{ left: pos(bid), width: pos(ask - bid), background: 'linear-gradient(90deg,#e6676799,#22c58a99)' }} />
+      <div className="absolute top-4 h-1 rounded-full" style={{ left: pos(bid), width: pos(ask - bid), background: 'linear-gradient(90deg, rgb(var(--loss) / 0.6), rgb(var(--profit) / 0.6))' }} />
       {([['bid', bid, C.loss], ['ask', ask, C.profit]] as const).map(([lbl, x, col]) => (
         <div key={lbl} className="absolute -translate-x-1/2" style={{ left: pos(x) }}>
           <div className="mx-auto h-5 w-px" style={{ background: col }} />
@@ -283,7 +302,8 @@ function QuoteBar({ bid, ask }: { bid: number; ask: number }) {
   )
 }
 
-const EV_COLOR: Record<string, string> = { Traded: C.sig, QuotePosted: C.series[1], Disputed: C.warn, Resolved: C.serious, Redeemed: C.profit, Collateral: C.muted }
+const evColor = (C: Colors, t: string): string =>
+  (({ Traded: C.sig, QuotePosted: C.series[1], Disputed: C.warn, Resolved: C.serious, Redeemed: C.profit, Collateral: C.muted } as Record<string, string>)[t] || C.muted)
 
 // activity feed with new-event highlight + an unread pill when scrolled away from the top
 function ActivityFeed({ events, note }: { events: TnEvent[]; note?: string }) {
@@ -328,6 +348,8 @@ function ActivityFeed({ events, note }: { events: TnEvent[]; note?: string }) {
 }
 
 function FeedRow({ e, fresh }: { e: TnEvent; fresh: boolean }) {
+  const { C } = useColors()
+  const col = evColor(C, e.type)
   const label = e.type === 'Traded' ? `${e.buy ? 'BUY' : 'SELL'} ${num(e.size || 0, 2)} YES · ${usd(e.usdc || 0)}`
     : e.type === 'QuotePosted' ? `quote ${e.bid?.toFixed(3)}/${e.ask?.toFixed(3)}${e.category ? ` · ${e.category}` : ''}${e.lambda_jump != null ? ` · λ ${(e.lambda_jump * 100).toFixed(1)}%` : ''}`
     : e.type === 'Resolved' ? `resolved ${e.yes_won ? 'YES' : 'NO'}`
@@ -337,7 +359,7 @@ function FeedRow({ e, fresh }: { e: TnEvent; fresh: boolean }) {
     <m.a href={txUrl(e.tx)} target="_blank" rel="noreferrer" layout
       initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
       className={`flex items-center gap-2 px-4 py-2 text-xs transition ${fresh ? 'animate-flash-up' : 'hover:bg-elevated/40'}`}>
-      <span className="rounded px-1.5 py-0.5 text-2xs" style={{ background: `${EV_COLOR[e.type] || C.muted}1f`, color: EV_COLOR[e.type] || C.muted }}>{e.type}</span>
+      <span className="rounded px-1.5 py-0.5 text-2xs" style={{ background: `${col}1f`, color: col }}>{e.type}</span>
       <span className="num truncate text-ink-2">{label}</span>
       <span className="num ml-auto shrink-0 text-2xs text-muted">#{e.block}</span>
     </m.a>

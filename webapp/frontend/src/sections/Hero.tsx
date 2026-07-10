@@ -60,9 +60,9 @@ export function Hero({ q }: { q: { data: Overview | null; error: string | null; 
           {/* on-theme aurora: two slow-drifting brand-hue radial glows behind the panels */}
           <div aria-hidden className="pointer-events-none absolute -inset-8 -z-10 overflow-hidden">
             <div className="absolute left-[8%] top-[-20%] h-72 w-72 animate-aurora-drift rounded-full blur-3xl"
-              style={{ background: 'radial-gradient(circle, rgba(36,201,138,0.16), transparent 65%)' }} />
+              style={{ background: 'radial-gradient(circle, rgb(var(--sig) / var(--aurora-alpha-1)), transparent 65%)' }} />
             <div className="absolute right-[6%] top-[10%] h-80 w-80 animate-aurora-drift rounded-full blur-3xl"
-              style={{ background: 'radial-gradient(circle, rgba(57,135,229,0.13), transparent 65%)', animationDelay: '-8s' }} />
+              style={{ background: 'radial-gradient(circle, rgb(var(--s2) / var(--aurora-alpha-2)), transparent 65%)', animationDelay: '-8s' }} />
           </div>
           <Panel className="flex flex-col justify-between">
             <div>

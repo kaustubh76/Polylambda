@@ -17,6 +17,7 @@ const SigmaSurface = lazy(() => import('./sections/SigmaSurface').then((m) => ({
 import { WalletProvider, useWallet } from './lib/wallet'
 import { ToastProvider, useToast } from './components/Toast'
 import { LiveStatusProvider, useLiveStatus } from './components/LiveStatus'
+import { ThemeProvider, useTheme } from './components/Theme'
 import { CommandPalette, type Command } from './components/CommandPalette'
 import { CopyButton, PanelSkeleton } from './components/ui'
 import { addressUrl } from './lib/testnet'
@@ -91,7 +92,7 @@ function LivePill() {
   if (s.connecting) return null
   return (
     <a href="#live" aria-live="polite" className={`chip ${s.up ? 'border-sig/40 text-sig' : 'border-warn/50 text-warn'}`} title="hosted Envio HyperIndex">
-      <span className={`h-1.5 w-1.5 rounded-full ${s.up ? 'animate-pulse2' : ''}`} style={{ background: s.up ? '#24c98a' : '#fab219' }} />
+      <span className={`h-1.5 w-1.5 rounded-full ${s.up ? 'bg-sig animate-pulse2' : 'bg-warn'}`} />
       {s.up ? <>LIVE{s.latency != null && s.latency < 1000 ? ` · ${s.latency.toFixed(0)}ms` : ''}</> : 'indexer down'}
     </a>
   )
@@ -131,18 +132,17 @@ function AccountMenu() {
   if (!w.address) {
     return (
       <button className="chip hover:border-sig/40 hover:text-sig" onClick={w.connect} disabled={w.connecting} aria-label="Connect wallet">
-        <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#6b7280' }} />
+        <span className="h-1.5 w-1.5 rounded-full bg-muted" />
         {w.connecting ? 'connecting…' : 'Connect'}
       </button>
     )
   }
-  const color = w.onAmoy ? '#24c98a' : '#fab219'
   return (
     <div className="relative" ref={ref}>
       <button aria-haspopup="menu" aria-expanded={open} aria-live="polite" onClick={() => setOpen((o) => !o)}
         className={`chip ${w.onAmoy ? 'border-sig/40 text-sig' : 'border-warn/50 text-warn'}`}
         title={w.onAmoy ? 'Polygon Amoy' : 'Wrong network — switch to Amoy'}>
-        <span className={`h-1.5 w-1.5 rounded-full ${w.onAmoy ? 'animate-pulse2' : ''}`} style={{ background: color }} />
+        <span className={`h-1.5 w-1.5 rounded-full ${w.onAmoy ? 'bg-sig animate-pulse2' : 'bg-warn'}`} />
         {w.onAmoy ? short(w.address, 4, 4) : 'wrong network'}
       </button>
       {open && (
@@ -250,6 +250,7 @@ function AppInner() {
               className="chip hidden text-muted hover:border-sig/40 hover:text-sig lg:inline-flex" aria-label="Open command palette" title="Command palette">
               ⌘K
             </button>
+            <ThemeToggle />
             <PendingIndicator />
             <AccountMenu />
             <LivePill />
@@ -322,16 +323,29 @@ function AppInner() {
 
 export default function App() {
   return (
-    <LazyMotion features={domMax}>
-      <MotionConfig reducedMotion="user">
-        <WalletProvider>
-          <ToastProvider>
-            <LiveStatusProvider>
-              <AppInner />
-            </LiveStatusProvider>
-          </ToastProvider>
-        </WalletProvider>
-      </MotionConfig>
-    </LazyMotion>
+    <ThemeProvider>
+      <LazyMotion features={domMax}>
+        <MotionConfig reducedMotion="user">
+          <WalletProvider>
+            <ToastProvider>
+              <LiveStatusProvider>
+                <AppInner />
+              </LiveStatusProvider>
+            </ToastProvider>
+          </WalletProvider>
+        </MotionConfig>
+      </LazyMotion>
+    </ThemeProvider>
+  )
+}
+
+function ThemeToggle() {
+  const { theme, toggle } = useTheme()
+  const dark = theme === 'dark'
+  return (
+    <button onClick={toggle} className="chip hover:border-sig/40 hover:text-sig"
+      aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'} title={dark ? 'Light mode' : 'Dark mode'}>
+      <span aria-hidden>{dark ? '☾' : '☀'}</span>
+    </button>
   )
 }

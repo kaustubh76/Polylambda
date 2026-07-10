@@ -2,10 +2,11 @@ import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAx
 import { api, useApi, type SigmaPoint } from '../api/client'
 import { useInViewOnce } from '../lib/motion'
 import { usePersistentState } from '../lib/urlState'
-import { CATEGORY_COLORS, C } from '../lib/theme'
+import { useColors } from '../components/Theme'
 import { Async, Panel, Section } from '../components/ui'
 
 export function SigmaSurface() {
+  const { C, CATEGORY_COLORS } = useColors()
   const q = useApi(api.sigma, [])
   const [chartRef, chartIn] = useInViewOnce<HTMLDivElement>()
   const [offList, setOffList] = usePersistentState<string[]>('pl:sigma-off', [])
@@ -57,6 +58,7 @@ export function SigmaSurface() {
 }
 
 function SP({ active, payload }: any) {
+  const { C, CATEGORY_COLORS } = useColors()
   if (!active || !payload?.length) return null
   const p = payload[0].payload as SigmaPoint
   return (

@@ -57,7 +57,7 @@ export function CommandPalette({ commands }: { commands: Command[] }) {
       {open && (
         <m.div className="fixed inset-0 z-[95] flex items-start justify-center p-4 pt-[12vh]"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
+          <div className="absolute inset-0 bg-scrim/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
           <m.div role="dialog" aria-modal="true" aria-label="Command palette"
             initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 6, scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 460, damping: 34 }}

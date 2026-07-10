@@ -1,11 +1,26 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="dark light" />
     <title>PolyLambda — dispute-aware market making</title>
     <meta name="description" content="A belief-volatility market-making bot for Polymarket that treats disputes as jumps — live MVP dashboard wired to the real engine." />
+    <!-- apply the saved/preferred theme BEFORE first paint to avoid a flash (FOUC) -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('pl:theme')
+          if (t !== 'light' && t !== 'dark') {
+            t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark'
+          }
+          document.documentElement.dataset.theme = t
+          document.documentElement.style.colorScheme = t
+        } catch (e) {
+          document.documentElement.dataset.theme = 'dark'
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

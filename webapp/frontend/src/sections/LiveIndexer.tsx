@@ -2,14 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
 import { api, type LiveDispute, type LiveDisputes } from '../api/client'
 import { useLiveStatus } from '../components/LiveStatus'
-import { C } from '../lib/theme'
+import { useColors } from '../components/Theme'
+import type { Colors } from '../lib/theme'
 import { ago, short } from '../lib/format'
 import { Caveat, CopyButton, ErrorBox, Panel, Section, Stat } from '../components/ui'
 
-const OUTCOME_COLOR: Record<string, string> = { YES: C.profit, NO: C.loss, UNRESOLVABLE: C.warn, OTHER: C.muted }
+const outcomeColor = (C: Colors, o?: string): string =>
+  (({ YES: C.profit, NO: C.loss, UNRESOLVABLE: C.warn, OTHER: C.muted } as Record<string, string>)[o || ''] || C.muted)
 const POLL_MS = 5000
 
 export function LiveIndexer() {
+  const { C } = useColors()
   const live = useLiveStatus()                                   // shared /live/status poller
   const [feed, setFeed] = useState<LiveDisputes | null>(null)   // last GOOD feed (polled here)
   const [now, setNow] = useState(Date.now())
@@ -117,7 +120,8 @@ export function LiveIndexer() {
 }
 
 function Row({ d, now, fresh }: { d: LiveDispute; now: number; fresh: boolean }) {
-  const oc = OUTCOME_COLOR[d.proposedOutcome || 'OTHER'] || C.muted
+  const { C } = useColors()
+  const oc = outcomeColor(C, d.proposedOutcome || 'OTHER')
   return (
     <m.div layout initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
       className={`grid grid-cols-[76px_1fr_auto] items-center gap-3 px-4 py-2.5 text-xs transition ${fresh ? 'animate-flash-up' : 'hover:bg-elevated/40'}`}>
@@ -142,7 +146,7 @@ function Row({ d, now, fresh }: { d: LiveDispute; now: number; fresh: boolean })
           {d.marketStatus ?? '—'}
         </span>
         {d.finalOutcome && (
-          <div className="num mt-0.5 text-2xs" style={{ color: OUTCOME_COLOR[d.finalOutcome] || C.muted }}>final {d.finalOutcome}</div>
+          <div className="num mt-0.5 text-2xs" style={{ color: outcomeColor(C, d.finalOutcome) }}>final {d.finalOutcome}</div>
         )}
       </div>
     </m.div>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { AnimatePresence, m } from 'framer-motion'
 import { AnimatedNumber, revealUp, staggerContainer } from '../lib/motion'
+import { useColors } from './Theme'
 
 // ---- Section wrapper: anchor + header + body -------------------------------------------------
 // The <section> is a scroll-triggered stagger container: its header (kicker/title/subtitle) and
@@ -61,19 +62,21 @@ export function Stat({ label, value, sub, accent = false, tone, format, hoverabl
 }
 
 // ---- Pill / chip -----------------------------------------------------------------------------
-export function Pill({ children, dot, color = '#6b7280' }: { children: ReactNode; dot?: boolean; color?: string }) {
+// `color` overrides the dot (themed hex); omit it for the default muted dot (theme-aware class).
+export function Pill({ children, dot, color }: { children: ReactNode; dot?: boolean; color?: string }) {
   return (
     <span className="chip">
-      {dot && <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />}
+      {dot && <span className="h-1.5 w-1.5 rounded-full bg-muted" style={color ? { background: color } : undefined} />}
       {children}
     </span>
   )
 }
 
 export function SourceTag({ source }: { source: string }) {
+  const { C } = useColors()
   const live = source === 'live'
   return (
-    <Pill dot color={live ? '#24c98a' : '#fab219'}>
+    <Pill dot color={live ? C.sig : C.warn}>
       {live ? 'live-computed' : 'published'}
     </Pill>
   )
@@ -81,11 +84,12 @@ export function SourceTag({ source }: { source: string }) {
 
 // ---- Caveat / methodology note (honesty-as-a-feature) ----------------------------------------
 export function Caveat({ kind = 'note', children }: { kind?: 'note' | 'null' | 'underpowered' | 'calibration'; children: ReactNode }) {
+  const { C } = useColors()
   const map = {
-    note: { c: '#6b7280', t: 'note' },
-    null: { c: '#fab219', t: 'null result' },
-    underpowered: { c: '#fab219', t: 'underpowered' },
-    calibration: { c: '#ec835a', t: 'calibration-limited' },
+    note: { c: C.muted, t: 'note' },
+    null: { c: C.warn, t: 'null result' },
+    underpowered: { c: C.warn, t: 'underpowered' },
+    calibration: { c: C.serious, t: 'calibration-limited' },
   }[kind]
   return (
     <div className="flex gap-2.5 rounded-lg border border-line bg-elevated/40 p-3 text-2xs leading-relaxed text-ink-2">
@@ -221,7 +225,7 @@ export function Modal({ open, onClose, children, labelledBy }: {
       {open && (
         <m.div className="fixed inset-0 z-[90] flex items-center justify-center p-4"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+          <div className="absolute inset-0 bg-scrim/60 backdrop-blur-sm" onClick={onClose} />
           <m.div ref={panelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={labelledBy}
             initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 420, damping: 34 }}

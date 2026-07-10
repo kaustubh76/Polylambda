@@ -6,7 +6,8 @@ import { useInViewOnce } from '../lib/motion'
 import { downloadCsv } from '../lib/export'
 import { readQueryParam, writeQuery } from '../lib/urlState'
 import { useToast } from '../components/Toast'
-import { C } from '../lib/theme'
+import { useColors } from '../components/Theme'
+import type { Colors } from '../lib/theme'
 import { fixed, int, short } from '../lib/format'
 import { Async, CopyButton, KV, Modal, Panel, Section } from '../components/ui'
 
@@ -20,7 +21,8 @@ interface DisputeRow {
 }
 
 const ADAPTER_LABEL = (a: string) => (a?.startsWith('0x') ? 'legacy' : a)
-const OUTCOME_COLOR: Record<string, string> = { YES: C.profit, NO: C.loss, UNRESOLVABLE: C.warn, OTHER: C.muted }
+const outcomeColor = (C: Colors, o?: string): string =>
+  (({ YES: C.profit, NO: C.loss, UNRESOLVABLE: C.warn, OTHER: C.muted } as Record<string, string>)[o || ''] || C.muted)
 const scanAddr = (a: string) => `https://polygonscan.com/address/${a}`
 
 type Filters = { category?: string; adapter?: string; year?: string }
@@ -36,6 +38,7 @@ const initSort = (): Sort | null => {
 }
 
 export function Disputes() {
+  const { C } = useColors()
   const [search, setSearch] = useState(() => readQueryParam('q') ?? '')
   const dq = useDebounced(search, 300)
   const [f, setF] = useState<Filters>(() => ({ category: readQueryParam('cat'), adapter: readQueryParam('adapter'), year: readQueryParam('year') }))
@@ -158,7 +161,7 @@ export function Disputes() {
                       <td className="px-2 capitalize text-muted">{r.category}</td>
                       <td className="px-2 text-muted">{ADAPTER_LABEL(r.adapter)}</td>
                       <td className="px-2 text-muted">{r.disputeDate}</td>
-                      <td className="px-2"><span style={{ color: OUTCOME_COLOR[r.proposedOutcome] || C.muted }}>{r.proposedOutcome ?? '—'}</span></td>
+                      <td className="px-2"><span style={{ color: outcomeColor(C, r.proposedOutcome) }}>{r.proposedOutcome ?? '—'}</span></td>
                       <td className="px-2 text-right text-ink-2">{r.preDisputePrice != null ? `${fixed(r.preDisputePrice, 2)}→${fixed(r.postDisputePrice, 2)}` : '—'}</td>
                       <td className="px-2 text-right" style={{ color: r.realizedJumpLogit == null ? C.muted : Math.abs(r.realizedJumpLogit) > 0.5 ? C.warn : C.ink2 }}>
                         {r.realizedJumpLogit != null ? fixed(r.realizedJumpLogit, 2) : '—'}
@@ -193,6 +196,7 @@ export function Disputes() {
 
 // distributions over the full released parquet — jump magnitude, price impact, outcome mix
 function DisputeAnatomy() {
+  const { C } = useColors()
   const q = useApi(api.disputeAnalytics, [])
   const [hRef, hIn] = useInViewOnce<HTMLDivElement>()
   return (
@@ -246,6 +250,7 @@ function DisputeAnatomy() {
 }
 
 function DisputeDetail({ row, onClose }: { row: DisputeRow | null; onClose: () => void }) {
+  const { C } = useColors()
   return (
     <Modal open={!!row} onClose={onClose} labelledBy="dispute-detail-title">
       {row && (
@@ -259,7 +264,7 @@ function DisputeDetail({ row, onClose }: { row: DisputeRow | null; onClose: () =
             <KV k="category" v={<span className="capitalize">{row.category}</span>} mono={false} />
             <KV k="adapter" v={ADAPTER_LABEL(row.adapter)} mono={false} />
             <KV k="dispute date" v={row.disputeDate} />
-            <KV k="proposed outcome" v={<span style={{ color: OUTCOME_COLOR[row.proposedOutcome] || C.muted }}>{row.proposedOutcome ?? '—'}</span>} mono={false} />
+            <KV k="proposed outcome" v={<span style={{ color: outcomeColor(C, row.proposedOutcome) }}>{row.proposedOutcome ?? '—'}</span>} mono={false} />
             <KV k="pre → post price" v={row.preDisputePrice != null ? `${fixed(row.preDisputePrice, 3)} → ${fixed(row.postDisputePrice, 3)}` : '—'} />
             <KV k="realized jump (logit)" v={row.realizedJumpLogit != null ? fixed(row.realizedJumpLogit, 3) : '—'} />
             {row.round != null && <KV k="dispute round" v={row.round} />}

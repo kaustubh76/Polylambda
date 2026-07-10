@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, useApi } from '../api/client'
-import { C, CATEGORY_COLORS } from '../lib/theme'
+import { useColors } from '../components/Theme'
 import { int } from '../lib/format'
 import { Async, Panel, Section, SourceTag, Stat } from '../components/ui'
 
@@ -11,6 +11,7 @@ const BUCKET_LABEL: Record<string, string> = {
 }
 
 export function Recon() {
+  const { C, CATEGORY_COLORS } = useColors()
   const [live, setLive] = useState(false)
   const q = useApi(() => (live ? api.reconLive() : api.recon()), [live])
   return (

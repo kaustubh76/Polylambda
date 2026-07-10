@@ -13,16 +13,78 @@
 @tailwind utilities;
 
 @layer base {
-  :root { color-scheme: dark; }
+  /* ---- design tokens as RGB channels (Tailwind reads them via rgb(var(--x) / <alpha>)) ------
+     :root is the DARK theme (exact legacy hex); [data-theme="light"] overrides for light.
+     The channel form is REQUIRED so opacity modifiers (bg-sig/10, border-line/60) keep working. */
+  :root {
+    color-scheme: dark;
+    --bg: 10 11 14;
+    --surface: 20 22 28;
+    --elevated: 26 29 38;
+    --line: 35 38 47;
+    --axis: 47 51 64;
+    --ink: 242 244 248;
+    --ink-2: 170 176 189;
+    --muted: 107 114 128;
+    --sig: 36 201 138;
+    --sig-dim: 25 158 112;
+    --sig-glow: 62 224 160;
+    --s1: 25 158 112;  --s2: 57 135 229;  --s3: 230 103 103;  --s4: 201 133 0;
+    --s5: 144 133 233; --s6: 217 89 38;   --s7: 213 81 129;   --s8: 0 131 0;
+    --good: 12 163 12; --warn: 250 178 25; --serious: 236 131 90;
+    --crit: 208 59 59; --loss: 230 103 103; --profit: 34 197 138;
+    /* composite, theme-tuned surfaces (dark plane) */
+    --shadow-panel: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 8px 30px rgb(0 0 0 / 0.35);
+    --shadow-glow: 0 0 0 1px rgb(var(--sig) / 0.25), 0 0 24px rgb(var(--sig) / 0.12);
+    --shadow-glow-soft: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 10px 34px rgb(0 0 0 / 0.42), 0 0 20px rgb(var(--sig) / 0.10);
+    --scrim: 0 0 0;                 /* modal backdrop base (used at /60) */
+    --aurora-1: var(--sig);
+    --aurora-2: var(--s2);
+    --aurora-alpha-1: 0.16;
+    --aurora-alpha-2: 0.13;
+    --body-glow-1: 0.06;
+    --body-glow-2: 0.05;
+    --skeleton-from: 26 29 38;      /* elevated */
+    --skeleton-mid: 38 42 53;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: 246 247 249;
+    --surface: 255 255 255;
+    --elevated: 238 241 245;
+    --line: 227 230 236;
+    --axis: 203 208 216;
+    --ink: 18 21 27;
+    --ink-2: 69 75 87;
+    --muted: 95 102 115;
+    --sig: 9 122 85;
+    --sig-dim: 6 107 71;
+    --sig-glow: 18 176 122;
+    --s1: 27 175 122;  --s2: 42 120 214;  --s3: 227 73 72;   --s4: 237 161 0;
+    --s5: 74 58 167;   --s6: 235 104 52;  --s7: 232 123 164; --s8: 0 131 0;
+    --good: 6 122 47;  --warn: 154 106 0; --serious: 180 71 31;
+    --crit: 199 45 36; --loss: 201 47 43; --profit: 6 122 67;
+    /* soft neutral elevation on a light plane (no heavy black drop) */
+    --shadow-panel: 0 1px 0 rgb(255 255 255 / 0.7) inset, 0 1px 2px rgb(16 21 27 / 0.06), 0 8px 24px rgb(16 21 27 / 0.06);
+    --shadow-glow: 0 0 0 1px rgb(var(--sig) / 0.30), 0 0 20px rgb(var(--sig) / 0.10);
+    --shadow-glow-soft: 0 1px 0 rgb(255 255 255 / 0.8) inset, 0 6px 20px rgb(16 21 27 / 0.08), 0 0 16px rgb(var(--sig) / 0.10);
+    --scrim: 16 21 27;
+    --aurora-alpha-1: 0.10;
+    --aurora-alpha-2: 0.08;
+    --body-glow-1: 0.05;
+    --body-glow-2: 0.04;
+    --skeleton-from: 238 241 245;  /* elevated */
+    --skeleton-mid: 226 230 237;
+  }
   html, body, #root { height: 100%; }
   body {
     @apply bg-bg text-ink font-sans antialiased;
     background-image:
-      radial-gradient(1200px 600px at 80% -10%, rgba(36, 201, 138, 0.06), transparent 60%),
-      radial-gradient(900px 500px at 0% 0%, rgba(57, 135, 229, 0.05), transparent 55%);
+      radial-gradient(1200px 600px at 80% -10%, rgb(var(--sig) / var(--body-glow-1)), transparent 60%),
+      radial-gradient(900px 500px at 0% 0%, rgb(var(--s2) / var(--body-glow-2)), transparent 55%);
     background-attachment: fixed;
   }
-  ::selection { background: rgba(36, 201, 138, 0.25); }
+  ::selection { background: rgb(var(--sig) / 0.25); }
   /* keyboard focus rings on every interactive element (mouse clicks stay clean) */
   a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible {
     @apply outline-none ring-2 ring-sig/50 ring-offset-2 ring-offset-bg rounded transition-shadow duration-150;
@@ -36,10 +98,10 @@
       scroll-behavior: auto !important;
     }
   }
-  /* thin scrollbars that match the terminal */
-  * { scrollbar-width: thin; scrollbar-color: #2f3340 transparent; }
+  /* thin scrollbars that match the theme */
+  * { scrollbar-width: thin; scrollbar-color: rgb(var(--axis)) transparent; }
   *::-webkit-scrollbar { height: 8px; width: 8px; }
-  *::-webkit-scrollbar-thumb { background: #2f3340; border-radius: 8px; }
+  *::-webkit-scrollbar-thumb { background: rgb(var(--axis)); border-radius: 8px; }
 }
 
 @layer components {
@@ -59,7 +121,7 @@
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line
            bg-elevated px-3.5 py-2 text-sm font-medium text-ink transition duration-150
-           hover:border-sig/50 hover:text-white active:scale-[0.98] active:translate-y-px
+           hover:border-sig/50 hover:text-ink active:scale-[0.98] active:translate-y-px
            disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 disabled:active:translate-y-0;
   }
   .btn-primary {
@@ -74,7 +136,8 @@
   /* premium loading placeholder: a light band sweeps across (replaces the opacity blink) */
   .skeleton {
     @apply rounded-md;
-    background-image: linear-gradient(100deg, #1a1d26 30%, #262a35 50%, #1a1d26 70%);
+    background-image: linear-gradient(100deg,
+      rgb(var(--skeleton-from)) 30%, rgb(var(--skeleton-mid)) 50%, rgb(var(--skeleton-from)) 70%);
     background-size: 200% 100%;
     @apply animate-shimmer;
   }
