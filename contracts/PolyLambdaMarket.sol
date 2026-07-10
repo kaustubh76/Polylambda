@@ -105,8 +105,9 @@ contract PolyLambdaMarket {
         emit Disputed(uint64(block.timestamp));
     }
 
-    /// @notice Engine resolves the market. YES holders can then redeem 1 USDC/share iff yesWon.
+    /// @notice Engine resolves the market ONCE. YES holders can then redeem 1 USDC/share iff yesWon.
     function resolve(bool _yesWon) external onlyEngine {
+        require(!resolved, "resolved"); // no double-resolve / outcome flip after redemptions begin
         resolved = true;
         yesWon = _yesWon;
         emit Resolved(_yesWon);
@@ -123,8 +124,9 @@ contract PolyLambdaMarket {
         emit Redeemed(msg.sender, payout);
     }
 
-    /// @notice Engine sweeps leftover collateral (after resolution).
+    /// @notice Engine sweeps leftover collateral — only AFTER resolution, so open positions stay backed.
     function withdraw(uint256 amount) external onlyEngine {
+        require(resolved, "unresolved"); // can't drain escrow that backs live YES holders' payouts
         require(usdc.transfer(engine, amount), "wd xfer");
     }
 

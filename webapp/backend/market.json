@@ -1,8 +1,8 @@
 {
- "address": "0xd5499e0d781b123724dF253776Aa1EB09780AfBf",
+ "address": "0x1dBF7dA731e58C87B7e6644b719b84804F28b496",
  "usdc": "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
  "engine": "0xFc46DA4cbAbDca9f903863De571E03A39D9079aD",
- "deployed_block": 41803236,
+ "deployed_block": 41839995,
  "abi": [
   {
    "inputs": [

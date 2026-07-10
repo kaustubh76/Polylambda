@@ -2,7 +2,9 @@
 # Intentionally a subset of the repo's requirements.txt:
 #   - omits scikit-learn/scipy  → LoadedHazard is pure-python; sklearn is lazy-imported for TRAINING
 #     only, never at request time (the model is loaded from JSON).
-#   - omits web3/polymarket-client/eth-*  → the gated live-trade write path, never touched in paper.
+#   - includes web3 (below) → the Amoy TESTNET path (engine signs quotes/dispute/resolve on-chain,
+#     bypassing the mainnet gate); pulls eth-account transitively.
+#   - still omits polymarket-client → the gated mainnet CLOB live-trade write path, never touched here.
 # Result: an all-wheels install (no compiler), a small image, fast cold start.
 fastapi>=0.110
 uvicorn[standard]>=0.29

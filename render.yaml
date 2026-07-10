@@ -20,7 +20,7 @@ services:
       - key: AMOY_USDC_ADDRESS
         value: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582"
       - key: MARKET_ADDRESS
-        value: "0xd5499e0d781b123724dF253776Aa1EB09780AfBf"
+        value: "0x1dBF7dA731e58C87B7e6644b719b84804F28b496"
       # engine wallet key that SIGNS quotes/dispute/resolve on Amoy — SECRET, set in the dashboard.
       # Without it, reads + user-signed trades still work; only the engine controls go "offline".
       - key: ENGINE_PRIVATE_KEY
