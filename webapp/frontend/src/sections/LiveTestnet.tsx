@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
 import type { Address } from 'viem'
-import { api, type TnEvent, type TnMarket, type TnPosition, type TnStatus } from '../api/client'
+import { api, usePoll, type TnEvent, type TnMarket, type TnPosition, type TnStatus } from '../api/client'
 import { readAllowance, useWallet } from '../lib/wallet'
 import { useToast } from '../components/Toast'
 import { FAUCETS, addressUrl, txUrl } from '../lib/testnet'
@@ -32,14 +32,16 @@ export function LiveTestnet() {
   const bal = w.balances
 
   // --- polling: backend market/position/events + client-side allowance ---
-  const refreshChain = useCallback(async () => {
+  // usePoll skips overlapping ticks and backs off while the backend is unreachable (cold start).
+  const refreshChain = useCallback(async (): Promise<boolean> => {
     try {
       const [s, m, e] = await Promise.all([api.tnStatus(), api.tnMarket(), api.tnEvents(30)])
       setStatus(s); setMarket(m); setEvents(e.events || []); setFeedNote(e.note)
       if (w.address && s.market_address) {
         api.tnPosition(w.address).then(setPos).catch(() => {})
       }
-    } catch { /* keep last good */ }
+      return true
+    } catch { return false /* keep last good */ }
   }, [w.address])
 
   const refreshAllowance = useCallback(async () => {
@@ -47,9 +49,7 @@ export function LiveTestnet() {
     try { setAllowance(+(await readAllowance(w.address as Address, marketAddr))) } catch { /* transient */ }
   }, [w.address, w.onAmoy, marketAddr])
 
-  useEffect(() => {
-    refreshChain(); const p = setInterval(refreshChain, POLL_MS); return () => clearInterval(p)
-  }, [refreshChain])
+  usePoll(refreshChain, POLL_MS)
   useEffect(() => { refreshAllowance() }, [refreshAllowance])
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
-import { api, type LiveDispute, type LiveDisputes } from '../api/client'
+import { api, usePoll, type LiveDispute, type LiveDisputes } from '../api/client'
 import { useLiveStatus } from '../components/LiveStatus'
 import { useColors } from '../components/Theme'
 import type { Colors } from '../lib/theme'
@@ -21,29 +21,37 @@ export function LiveIndexer() {
   const seen = useRef<Set<string>>(new Set())
   const tickRef = useRef<() => void>()
 
+  const aliveRef = useRef(true)
   useEffect(() => {
-    let alive = true
-    // only the disputes feed is polled here now; reachability/latency/head come from the shared
-    // LiveStatus context (one status poller for the whole app). Last good feed is kept through blips.
-    const tick = async () => {
-      try {
-        const f = await api.liveDisputes(30)
-        if (!alive) return
-        if (f.reachable) {
-          setFeed(f); setFails(0)
-          const incoming = f.disputes.map((d) => d.id)
-          const newly = incoming.filter((id) => seen.current.size > 0 && !seen.current.has(id))
-          incoming.forEach((id) => seen.current.add(id))
-          if (newly.length) { setFresh(new Set(newly)); setTimeout(() => alive && setFresh(new Set()), 2500) }
-        } else { setFails((p) => p + 1) }
-      } catch { if (alive) setFails((p) => p + 1) }
-    }
-    tickRef.current = tick
-    const start = setTimeout(tick, 1200)
-    const poll = setInterval(tick, POLL_MS)
-    const clock = setInterval(() => alive && setNow(Date.now()), 1000)
-    return () => { alive = false; clearTimeout(start); clearInterval(poll); clearInterval(clock) }
+    aliveRef.current = true
+    const clock = setInterval(() => aliveRef.current && setNow(Date.now()), 1000)
+    return () => { aliveRef.current = false; clearInterval(clock) }
   }, [])
+
+  // only the disputes feed is polled here now; reachability/latency/head come from the shared
+  // LiveStatus context (one status poller for the whole app). Last good feed is kept through blips;
+  // usePoll backs the interval off while the backend is unreachable (e.g. a host cold start).
+  const tick = async (): Promise<boolean> => {
+    try {
+      const f = await api.liveDisputes(30)
+      if (!aliveRef.current) return true
+      if (f.reachable) {
+        setFeed(f); setFails(0)
+        const incoming = f.disputes.map((d) => d.id)
+        const newly = incoming.filter((id) => seen.current.size > 0 && !seen.current.has(id))
+        incoming.forEach((id) => seen.current.add(id))
+        if (newly.length) { setFresh(new Set(newly)); setTimeout(() => aliveRef.current && setFresh(new Set()), 2500) }
+        return true
+      }
+      setFails((p) => p + 1)
+      return false
+    } catch {
+      if (aliveRef.current) setFails((p) => p + 1)
+      return false
+    }
+  }
+  tickRef.current = tick
+  usePoll(tick, POLL_MS, 1200)
 
   const everConnected = live.up || (feed?.reachable ?? false)
   const connecting = (live.connecting && !feed) || (!everConnected && fails < 2)

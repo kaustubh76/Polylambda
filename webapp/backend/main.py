@@ -9,6 +9,7 @@ PAPER-mode only: the gated CLOB write path (execution.clob.place_order) is never
 from __future__ import annotations
 
 import os
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -25,10 +26,18 @@ FRONTEND_DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # make the real estimate_lambda offline (inject cached HF denominators) and warm the caches.
+    # make the real estimate_lambda offline (inject cached HF denominators) — cheap, so do it
+    # before serving. The heavier cache warms run in a background thread: uvicorn only starts
+    # accepting connections after lifespan startup returns, and on a small host (Render cold
+    # start) a synchronous warm keeps the port unbound long enough for the gateway to 502
+    # incoming requests. Every route falls back to published constants until the warm lands.
     src = cache.install_offline_di()
-    cache.dataset_stats(); cache.hazard_models(); cache.disputes_by_proposer()
-    print(f"[webapp] offline DI installed (base-rate denominators: {src}); caches warmed.")
+
+    def _warm():
+        cache.dataset_stats(); cache.hazard_models(); cache.disputes_by_proposer()
+        print(f"[webapp] offline DI installed (base-rate denominators: {src}); caches warmed.")
+
+    threading.Thread(target=_warm, name="cache-warm", daemon=True).start()
     yield
 
 

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { api } from '../api/client'
+import { api, usePoll } from '../api/client'
 
 // One shared /live/status poller for the whole app (header pill + live-indexer section) instead
 // of two independent timers. Sticky-live: only flips to down after 2 consecutive failures.
@@ -22,22 +22,25 @@ export function LiveStatusProvider({ children }: { children: ReactNode }) {
   const fails = useRef(0)
   const alive = useRef(true)
 
-  const tick = useCallback(() => {
+  const tick = useCallback((): Promise<boolean> => {
     return api.liveStatus()
       .then((r) => {
-        if (!alive.current) return
+        if (!alive.current) return true
         fails.current = 0
         setState({ up: r.reachable, latency: r.latency_ms, headTs: r.head_ts, headId: r.head_id, endpoint: r.endpoint, error: r.error })
+        return true
       })
-      .catch(() => { if (alive.current && ++fails.current >= 2) setState((p) => ({ ...(p || {}), up: false })) })
+      .catch(() => {
+        if (alive.current && ++fails.current >= 2) setState((p) => ({ ...(p || {}), up: false }))
+        return false
+      })
   }, [])
 
   useEffect(() => {
     alive.current = true
-    const start = setTimeout(tick, 1400)
-    const t = setInterval(tick, POLL_MS)
-    return () => { alive.current = false; clearTimeout(start); clearInterval(t) }
-  }, [tick])
+    return () => { alive.current = false }
+  }, [])
+  usePoll(tick, POLL_MS, 1400)
 
   const value: LiveStatusValue = {
     up: !!state?.up,

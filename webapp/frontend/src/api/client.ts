@@ -2,16 +2,37 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 const BASE = '/api'
 
-async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(BASE + path, {
-    ...init,
-    headers: { 'content-type': 'application/json', ...(init?.headers || {}) },
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error((body as any).detail || `${res.status} ${res.statusText}`)
+// Gateway errors (Render cold start / restart) and network failures are transient — one-shot GETs
+// retry through them so a page load during the boot window self-heals instead of leaving a dead
+// panel. POSTs are never retried (the engine-signed testnet writes are not idempotent), and polled
+// GETs pass retries: 0 because their poll loop already is the retry.
+const RETRYABLE_STATUS = new Set([502, 503, 504])
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+export async function req<T>(path: string, init?: RequestInit, opts?: { retries?: number }): Promise<T> {
+  const isGet = !init?.method || init.method.toUpperCase() === 'GET'
+  const retries = isGet ? opts?.retries ?? 3 : 0
+  for (let attempt = 0; ; attempt++) {
+    let res: Response
+    try {
+      res = await fetch(BASE + path, {
+        ...init,
+        headers: { 'content-type': 'application/json', ...(init?.headers || {}) },
+      })
+    } catch (e) {
+      if (attempt < retries) { await sleep(1000 * 2 ** attempt + Math.random() * 250); continue }
+      throw e
+    }
+    if (!res.ok) {
+      if (RETRYABLE_STATUS.has(res.status) && attempt < retries) {
+        await sleep(1000 * 2 ** attempt + Math.random() * 250)
+        continue
+      }
+      const body = await res.json().catch(() => ({}))
+      throw new Error((body as any).detail || `${res.status} ${res.statusText}`)
+    }
+    return res.json() as Promise<T>
   }
-  return res.json() as Promise<T>
 }
 
 export const api = {
@@ -29,13 +50,14 @@ export const api = {
   disputeAnalytics: (bins = 24) => req<DisputeAnalytics>(`/disputes/analytics?bins=${bins}`),
   quoteCurve: (category: string, price: number, horizon_days: number) =>
     req<QuoteCurve>(`/quote-curve?category=${encodeURIComponent(category)}&price=${price}&horizon_days=${horizon_days}`),
-  liveStatus: () => req<LiveStatus>('/live/status'),
-  liveDisputes: (limit = 25) => req<LiveDisputes>(`/live/disputes?limit=${limit}`),
+  // polled endpoints: retries: 0 — the poll loop (with its failure backoff) is the retry
+  liveStatus: () => req<LiveStatus>('/live/status', undefined, { retries: 0 }),
+  liveDisputes: (limit = 25) => req<LiveDisputes>(`/live/disputes?limit=${limit}`, undefined, { retries: 0 }),
   // testnet (on-chain PolyLambda market, Polygon Amoy)
-  tnStatus: () => req<TnStatus>('/testnet/status'),
-  tnMarket: () => req<TnMarket>('/testnet/market'),
-  tnPosition: (address: string) => req<TnPosition>(`/testnet/position?address=${address}`),
-  tnEvents: (limit = 30) => req<TnEvents>(`/testnet/events?limit=${limit}`),
+  tnStatus: () => req<TnStatus>('/testnet/status', undefined, { retries: 0 }),
+  tnMarket: () => req<TnMarket>('/testnet/market', undefined, { retries: 0 }),
+  tnPosition: (address: string) => req<TnPosition>(`/testnet/position?address=${address}`, undefined, { retries: 0 }),
+  tnEvents: (limit = 30) => req<TnEvents>(`/testnet/events?limit=${limit}`, undefined, { retries: 0 }),
   tnEngineQuote: (body: { price?: number; category?: string }) => req<TnTx>('/testnet/engine-quote', { method: 'POST', body: JSON.stringify(body) }),
   tnDispute: () => req<TnTx>('/testnet/dispute', { method: 'POST', body: '{}' }),
   tnResolve: (yes_won: boolean) => req<TnTx>('/testnet/resolve', { method: 'POST', body: JSON.stringify({ yes_won }) }),
@@ -56,6 +78,30 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = []): {
   }, [])
   useEffect(() => { reload() }, deps) // eslint-disable-line react-hooks/exhaustive-deps
   return { data, error, loading, reload }
+}
+
+// self-scheduling poller: never overlaps ticks (skips while one is in flight), and after 2+
+// consecutive failures stretches the delay ×4 (capped at 30s) so an unreachable backend — e.g. a
+// Render cold start — isn't hammered at full rate. The tick reports success/failure by returning
+// a boolean (a thrown error also counts as failure).
+export function usePoll(tick: () => Promise<boolean | void>, baseMs: number, startDelayMs = 0): void {
+  const tickRef = useRef(tick)
+  tickRef.current = tick
+  useEffect(() => {
+    let alive = true
+    let timer: ReturnType<typeof setTimeout>
+    let fails = 0
+    const run = async () => {
+      let ok = true
+      try { ok = (await tickRef.current()) !== false } catch { ok = false }
+      if (!alive) return
+      fails = ok ? 0 : fails + 1
+      const delay = fails >= 2 ? Math.min(baseMs * 4, 30000) : baseMs
+      timer = setTimeout(run, delay)
+    }
+    timer = setTimeout(run, startDelayMs)
+    return () => { alive = false; clearTimeout(timer) }
+  }, [baseMs, startDelayMs])
 }
 
 // mutation-style hook for POST actions the user triggers
