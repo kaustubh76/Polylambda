@@ -160,6 +160,19 @@ forfeits ~1895 reward to avoid ~13 loss), converging at λ*=0.01 (|λ_jump − d
 and surgical, but the conclusion — surgical exit > avoidance — now holds on real 2024 NegRisk fills, not
 only the thin V2 era.
 
+**Full-scale re-verification (2026-07-11, 1,409 disputed + 741 controls with fills, all adapters
+2022–2026).** A fresh end-to-end run for the pre-submission audit — pinned as a committed artifact in
+[forwardtest/results/replay_ablation_2026-07-11.json](forwardtest/results/replay_ablation_2026-07-11.json)
+— reproduces the pre-registered conclusion at every λ\* in the grid: at λ\*=0.0005,
+**λ_jump +27,668 / 0.37 > diffusion +20,746 / 0.26 > λ_select 0.0 / 0.00** (λ_select forfeits ~29,232 of
+reward to avoid ~8,486 of loss), with the B_hazard arm matching arm B at low λ\*. Absolute PnL is not
+comparable across runs — it scales with how many sampled controls have a joinable fill tape on that run
+(741 here vs 2,856 in the full-scale run the dashboard serves from
+`webapp/backend/constants.py:ABLATION_PUBLISHED`, whose λ_jump 46,975 > diffusion 40,065 > λ_select 0 at
+λ\*=0.0005 shows the same ordering). The invariant across every scale — 56-market slice, NegRisk-2024
+slice, published full-scale, and this re-run — is the **ordering B > A > C and the shape of the λ\*
+curve**, not the absolute PnL level.
+
 ## 5. Honest limitations
 
 1. **NegRisk gap — RESOLVED (2026-07-05), not a limitation.** The 2024+ high-liquidity disputes are

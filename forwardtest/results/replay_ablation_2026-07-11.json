@@ -1,0 +1,174 @@
+{
+ "run_date": "2026-07-11",
+ "command": "DATA_SOURCE=hf python -m forwardtest.replay_ablation",
+ "meta": {
+  "labeled_disputes": 1794,
+  "sampled_controls": 5382,
+  "power_calc_expected_disputes": 78.94,
+  "n_disputes_with_fills": 1409,
+  "n_controls_with_fills": 741
+ },
+ "note": "Re-verification run for the pre-submission audit. Only 741 of 5,382 sampled controls had a joinable fill tape in this run (HF-transient dependent), vs 2,856 in the published full-scale run served by the webapp (webapp/backend/constants.py ABLATION_PUBLISHED); absolute PnL therefore differs, but the pre-registered conclusion is reproduced: lambda_jump > diffusion_only > lambda_select at every lambda_star in the grid, with lambda_select worst at low thresholds (forgone rewards >> avoided loss).",
+ "results": [
+  {
+   "arm": "diffusion_only",
+   "lambda_star": 0.0005,
+   "pnl_net_of_rewards": 20746.47,
+   "sharpe": 0.26,
+   "avoided_loss": 0.0,
+   "forgone_rewards": 0.0
+  },
+  {
+   "arm": "lambda_jump",
+   "lambda_star": 0.0005,
+   "pnl_net_of_rewards": 27668.27,
+   "sharpe": 0.37,
+   "avoided_loss": 7552.01,
+   "forgone_rewards": 630.21
+  },
+  {
+   "arm": "lambda_select",
+   "lambda_star": 0.0005,
+   "pnl_net_of_rewards": 0.0,
+   "sharpe": 0.0,
+   "avoided_loss": 8485.82,
+   "forgone_rewards": 29232.28
+  },
+  {
+   "arm": "lambda_jump_hazard",
+   "lambda_star": 0.0005,
+   "pnl_net_of_rewards": 27668.27,
+   "sharpe": 0.37,
+   "avoided_loss": 7552.01,
+   "forgone_rewards": 630.21
+  },
+  {
+   "arm": "diffusion_only",
+   "lambda_star": 0.001,
+   "pnl_net_of_rewards": 20746.47,
+   "sharpe": 0.26,
+   "avoided_loss": 0.0,
+   "forgone_rewards": 0.0
+  },
+  {
+   "arm": "lambda_jump",
+   "lambda_star": 0.001,
+   "pnl_net_of_rewards": 27177.39,
+   "sharpe": 0.36,
+   "avoided_loss": 6997.58,
+   "forgone_rewards": 566.65
+  },
+  {
+   "arm": "lambda_select",
+   "lambda_star": 0.001,
+   "pnl_net_of_rewards": 3436.6,
+   "sharpe": 0.1,
+   "avoided_loss": 7849.79,
+   "forgone_rewards": 25159.65
+  },
+  {
+   "arm": "lambda_jump_hazard",
+   "lambda_star": 0.001,
+   "pnl_net_of_rewards": 27668.27,
+   "sharpe": 0.37,
+   "avoided_loss": 7552.01,
+   "forgone_rewards": 630.21
+  },
+  {
+   "arm": "diffusion_only",
+   "lambda_star": 0.002,
+   "pnl_net_of_rewards": 20746.47,
+   "sharpe": 0.26,
+   "avoided_loss": 0.0,
+   "forgone_rewards": 0.0
+  },
+  {
+   "arm": "lambda_jump",
+   "lambda_star": 0.002,
+   "pnl_net_of_rewards": 22708.9,
+   "sharpe": 0.28,
+   "avoided_loss": 2251.32,
+   "forgone_rewards": 288.89
+  },
+  {
+   "arm": "lambda_select",
+   "lambda_star": 0.002,
+   "pnl_net_of_rewards": 11215.88,
+   "sharpe": 0.17,
+   "avoided_loss": 2747.42,
+   "forgone_rewards": 12278.01
+  },
+  {
+   "arm": "lambda_jump_hazard",
+   "lambda_star": 0.002,
+   "pnl_net_of_rewards": 26498.35,
+   "sharpe": 0.34,
+   "avoided_loss": 6380.02,
+   "forgone_rewards": 628.14
+  },
+  {
+   "arm": "diffusion_only",
+   "lambda_star": 0.005,
+   "pnl_net_of_rewards": 20746.47,
+   "sharpe": 0.26,
+   "avoided_loss": 0.0,
+   "forgone_rewards": 0.0
+  },
+  {
+   "arm": "lambda_jump",
+   "lambda_star": 0.005,
+   "pnl_net_of_rewards": 22708.9,
+   "sharpe": 0.28,
+   "avoided_loss": 2251.32,
+   "forgone_rewards": 288.89
+  },
+  {
+   "arm": "lambda_select",
+   "lambda_star": 0.005,
+   "pnl_net_of_rewards": 11215.88,
+   "sharpe": 0.17,
+   "avoided_loss": 2747.42,
+   "forgone_rewards": 12278.01
+  },
+  {
+   "arm": "lambda_jump_hazard",
+   "lambda_star": 0.005,
+   "pnl_net_of_rewards": 21243.71,
+   "sharpe": 0.26,
+   "avoided_loss": 722.79,
+   "forgone_rewards": 225.54
+  },
+  {
+   "arm": "diffusion_only",
+   "lambda_star": 0.01,
+   "pnl_net_of_rewards": 20746.47,
+   "sharpe": 0.26,
+   "avoided_loss": 0.0,
+   "forgone_rewards": 0.0
+  },
+  {
+   "arm": "lambda_jump",
+   "lambda_star": 0.01,
+   "pnl_net_of_rewards": 22294.74,
+   "sharpe": 0.28,
+   "avoided_loss": 1765.11,
+   "forgone_rewards": 216.83
+  },
+  {
+   "arm": "lambda_select",
+   "lambda_star": 0.01,
+   "pnl_net_of_rewards": 14889.34,
+   "sharpe": 0.21,
+   "avoided_loss": 2089.48,
+   "forgone_rewards": 7946.6
+  },
+  {
+   "arm": "lambda_jump_hazard",
+   "lambda_star": 0.01,
+   "pnl_net_of_rewards": 20753.61,
+   "sharpe": 0.26,
+   "avoided_loss": 8.0,
+   "forgone_rewards": 0.85
+  }
+ ]
+}

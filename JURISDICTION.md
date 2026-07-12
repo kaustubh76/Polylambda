@@ -1,8 +1,11 @@
-# PolyLambda — Jurisdiction & ToS Constraint (OPEN DECISION)
+# PolyLambda — Jurisdiction & ToS Constraint (RESOLVED — option 1)
 
-> **Status: UNRESOLVED — gates the live leg.** This is recorded as an open decision, not yet
-> decided. Until it is resolved, PolyLambda runs in **paper / paper-live only** (read the real
-> book, simulate fills, place **no real orders**).
+> **Status: RESOLVED 2026-07-11 — option 1 (non-US / eligible operator).** The live leg will be
+> operated by a **non-US entity** (operator to record entity details in the resolution log below
+> before the first real order). The full `paper → paper-live → live` path is open, sequenced by
+> [ROADMAP.md](ROADMAP.md). Until ROADMAP Phase 0's exit gate passes, the code default remains
+> **paper / paper-live** (the `_require_live_gate` stays intact; `JURISDICTION_ACK` may only be
+> set by the non-US operator on the operating host).
 
 ---
 
@@ -67,4 +70,4 @@ jurisdiction/entity before relying on the live path.
 
 | Date | Decision | By | Notes |
 |---|---|---|---|
-| _TBD_ | _unresolved — assume paper-only_ | _operator_ | Update this row when jurisdiction/entity is confirmed. |
+| 2026-07-11 | **Option 1 — non-US / eligible operator.** Live leg unblocked; sequenced by [ROADMAP.md](ROADMAP.md). | operator | Entity name/registration to be recorded here **before the first real order**. `JURISDICTION_ACK` legitimate only on the non-US operating host. Anti-manipulation rules (no wash/spoof) apply regardless. |

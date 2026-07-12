@@ -442,6 +442,37 @@ Next first action: (operator) decide whether to regenerate the deployed hazard m
 
 ---
 
+## Day 16 — 2026-07-11
+Phase: Go-live planning (Builders Program)
+Learn: Verified current Builders Program mechanics against builders.polymarket.com / program docs:
+       continuous & permissionless; Builder Codes (bytes32 → `OrderFilled.builder`; only matched
+       orders earn); builder fees ≤100bps taker / 50bps maker settle to the builder-profile wallet;
+       weekly USDC pool split by attributed-volume share (Sun–Sat UTC epochs since 2025-11-02;
+       third-party est. ~0.5–1% of attributed volume); grants = $2.5M, traction-gated. Consistent
+       with DECISIONS.md #12 — no corrections needed.
+Build: **JURISDICTION RESOLVED — option 1 (non-US operating entity)**; resolution row added to
+       JURISDICTION.md (entity details to be recorded before the first real order). Authored
+       `ROADMAP.md` (8-phase paper→live sequencing: network-truth/creds → auth reads → LiveClob
+       adapter → RiskGovernor → selection/allocation + reorg-guarded proposal detector → live
+       session log + dashboard → metrics-gated rollout ladder → grant package; each phase with a
+       numeric exit gate; ranked go-live risks) and `BUSINESS_PLAN.md` (positioning, 4 stacked
+       revenue lines, traction plan, cost structure, business risks, M1–M5 milestones). No engine
+       code changed; the gate stays intact.
+Done-Checks:
+- [x] every file path / symbol cited in ROADMAP.md verified present (`_require_live_gate`,
+      `_live_notional_spent`, `BUILDER_CODE` wiring at clob.py:262, loop.py:273 live-mode raise,
+      session_log `simulated: True`, ablation `MIN_DISPUTES_FOR_SIGNAL=10`)
+- [x] both docs cross-checked against DECISIONS.md (no dispute-lock language; two-strikes flow
+      respected; pUSD not USDC.e; py-sdk pin not py-clob-client; replay = primary edge proof)
+- [x] pool-rate figure labeled as third-party estimate, not a program guarantee
+Gate status: PLANNING DONE — live leg unblocked on paper; nothing live may run until ROADMAP
+       Phase 0's exit gate (on-chain builder-code attribution proof) passes on the non-US host.
+Next first action: (operator, non-US host) ROADMAP Phase 0 — re-verify normalizer shapes vs live
+       endpoints, re-confirm §D addresses on Polygonscan, verify the pinned SDK surface, register
+       the Builder Code, and prove attribution with one manual post-only order.
+
+---
+
 ## Day NN — YYYY-MM-DD
 Phase:
 Learn:
