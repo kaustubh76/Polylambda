@@ -1,7 +1,7 @@
 {
   "name": "polylambda-indexer",
   "version": "0.1.0",
-  "description": "PolyLambda Envio HyperIndex — Polymarket lifecycle + CLOB fills on Polygon (chain 137)",
+  "description": "PolyLambda Envio HyperIndex \u2014 Polymarket lifecycle + CLOB fills on Polygon (chain 137)",
   "type": "module",
   "engines": {
     "node": ">=22.0.0"
@@ -10,7 +10,7 @@
     "codegen": "envio codegen",
     "dev": "envio dev",
     "start": "envio start",
-    "test": "vitest run"
+    "test": "vitest run && \"$npm_node_execpath\" --test test/handlers.node.test.ts"
   },
   "dependencies": {
     "bignumber.js": "^9.3.1",

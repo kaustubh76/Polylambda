@@ -1,7 +1,6 @@
 /*
  * Integration test for the resolution-lifecycle handlers, using Envio V3's createTestIndexer
- * (`MockDb` was removed in V3). Requires `pnpm install && pnpm codegen` first (imports "generated"
- * indirectly via handler registration). Run: `pnpm test`.
+ * (`MockDb` was removed in V3). Requires `pnpm install && pnpm codegen` first.
  *
  * It proves the whole join works end-to-end: QuestionInitialized (adapter, questionID) creates a
  * Market at conditionId = keccak256(adapter, questionID, 2); the OO events (which recompute
@@ -9,16 +8,27 @@
  * if the two derivation paths disagreed, the proposal/dispute would not attach and the asserts
  * would fail.
  *
- * NOTE (alpha API): simulate accepts per-event metadata under the same block/transaction/
- * srcAddress/logIndex shape real events expose. If the installed Envio alpha requires extra
- * block/transaction fields, add them to `meta()` below. `lib.test.ts` is the always-runnable pure test.
+ * RUNNER NOTE: this file runs under `node --test` (see package.json), NOT vitest. Envio's
+ * HandlerLoader registers the `tsx/esm` module hooks at import time and lazily imports the
+ * handler file through them — that works under plain node (same path `envio start` uses), but
+ * vitest's own module pipeline breaks on envio's TUI dependency graph ("Invalid regular
+ * expression flags" from ink's text-measurement deps). `lib.test.ts` stays on vitest — it is
+ * the always-runnable pure parity test.
+ *
+ * The `../src/lib` / `../src/EventHandlers` imports are dynamic and happen AFTER `generated`
+ * is imported, because importing `generated` is what registers the tsx hooks that can resolve
+ * the extensionless TypeScript imports inside those files.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 // createTestIndexer is emitted by `pnpm codegen` into "generated" (the `envio` package itself does
 // not export it at the pinned 3.0.0-alpha.21 — importing it from "envio" yields undefined).
+// Importing "generated" also registers the tsx/esm loader hooks (side effect of HandlerLoader).
 import { createTestIndexer } from "generated";
-import "../src/EventHandlers"; // register handlers
-import { ONE, deriveConditionId, questionIdFromAncillary } from "../src/lib";
+
+const lib = await import("../src/lib.ts");
+const { ONE, deriveConditionId, questionIdFromAncillary } = lib;
+await import("../src/EventHandlers.ts"); // register handlers
 
 const ADAPTER = "0x6A9D222616C90FcA5754cd1333cFD9b7fb6a4F74";
 const OO = "0xeE3Afe347D5C74317041E2618C49534dAf887c24";
@@ -75,11 +85,11 @@ describe("resolution lifecycle", () => {
     });
 
     let m = await indexer.Market.getOrThrow(CID);
-    expect(m.status).toBe("REQUESTED");
-    expect(m.ancillaryData).toBe(ANCILLARY);
+    assert.equal(m.status, "REQUESTED");
+    assert.equal(m.ancillaryData, ANCILLARY);
     let r0 = await indexer.ResolutionRequest.getOrThrow(`${CID}-0`);
-    expect(r0.status).toBe("REQUESTED");
-    expect(r0.bond).toBe(750_000_000n);
+    assert.equal(r0.status, "REQUESTED");
+    assert.equal(r0.bond, 750_000_000n);
 
     // 2) proposal (OO event joins via requester + ancillaryData)
     await indexer.process({
@@ -107,11 +117,11 @@ describe("resolution lifecycle", () => {
     });
 
     m = await indexer.Market.getOrThrow(CID);
-    expect(m.status).toBe("PROPOSED");
+    assert.equal(m.status, "PROPOSED");
     r0 = await indexer.ResolutionRequest.getOrThrow(`${CID}-0`);
-    expect(r0.status).toBe("PROPOSED");
-    expect(r0.proposedOutcome).toBe("YES");
-    expect(r0.proposer?.toLowerCase()).toBe(PROPOSER.toLowerCase());
+    assert.equal(r0.status, "PROPOSED");
+    assert.equal(r0.proposedOutcome, "YES");
+    assert.equal(r0.proposer?.toLowerCase(), PROPOSER.toLowerCase());
 
     // 3) dispute
     await indexer.process({
@@ -138,10 +148,10 @@ describe("resolution lifecycle", () => {
     });
 
     m = await indexer.Market.getOrThrow(CID);
-    expect(m.status).toBe("DISPUTED");
+    assert.equal(m.status, "DISPUTED");
     const disputes = await indexer.Dispute.getAll();
-    expect(disputes.length).toBe(1);
-    expect(disputes[0].round).toBe(0);
+    assert.equal(disputes.length, 1);
+    assert.equal(disputes[0].round, 0);
 
     // 4) first dispute auto-resets -> round 1 (the two-strikes structure)
     await indexer.process({
@@ -160,9 +170,9 @@ describe("resolution lifecycle", () => {
     });
 
     m = await indexer.Market.getOrThrow(CID);
-    expect(m.status).toBe("RESET");
-    expect(m.currentRound).toBe(1);
+    assert.equal(m.status, "RESET");
+    assert.equal(m.currentRound, 1);
     const r1 = await indexer.ResolutionRequest.getOrThrow(`${CID}-1`);
-    expect(r1.status).toBe("REQUESTED");
+    assert.equal(r1.status, "REQUESTED");
   });
 });
