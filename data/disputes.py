@@ -58,6 +58,10 @@ DERIVABLE = {
 NEGRISK = "0x2f5e3684cb1f318ec51b00edba38d79ac2c0aa9d"  # counted-only in the RPC keccak fallback; label-joined via negrisk_map in the indexer/release paths
 
 RPC_URL = os.environ.get("POLYGON_RPC_URL") or "https://polygon.gateway.tenderly.co"
+# public fallbacks (keyless) tried in order after the primary — one bad free endpoint shouldn't kill
+# the live feed. Matches the indexer/config.yaml rpc: block.
+RPC_URLS = [RPC_URL] + [u for u in (
+    "https://polygon-bor-rpc.publicnode.com", "https://polygon-rpc.com") if u != RPC_URL]
 START_BLOCK = int(os.environ.get("DISPUTE_START_BLOCK", "33000000"))   # ~early 2022
 HF_CUTOFF_BLOCK = int(os.environ.get("HF_CUTOFF_BLOCK", "85948287"))   # dataset head; markets past it aren't in HF
 CHUNK = 500_000
@@ -88,14 +92,20 @@ def _pad(addr: str) -> str:
 
 
 def _rpc(method: str, params: list, timeout: int = 60):
-    body = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
-    req = urllib.request.Request(RPC_URL, data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        out = json.loads(r.read())
-    if "error" in out:
-        raise RuntimeError(out["error"])
-    return out["result"]
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
+    last_err: Exception | None = None
+    for url in RPC_URLS:                                   # endpoint failover (keyless publics)
+        try:
+            req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                out = json.loads(r.read())
+            if "error" in out:
+                raise RuntimeError(out["error"])           # a JSON-RPC error (e.g. range too large)
+            return out["result"]
+        except Exception as e:  # noqa: BLE001 — try the next endpoint, remember the last failure
+            last_err = e
+            continue
+    raise last_err if last_err else RuntimeError("no RPC endpoint available")
 
 
 def derive_condition_id(adapter: str, ancillary: bytes) -> str:
@@ -144,6 +154,96 @@ def fetch_oov2_disputes(start_block: int = START_BLOCK, end_block: int = HF_CUTO
             log(f"  [{frm}..{to}] derivable={len(derivable)} negrisk={negrisk_count}")
         frm = to + 1
     return {"derivable": derivable, "negrisk_count": negrisk_count}
+
+
+def chain_head_block() -> int:
+    """Current Polygon head block number (the RPC liveness proof)."""
+    return int(_rpc("eth_blockNumber", []), 16)
+
+
+def chain_head_ts() -> int:
+    """Timestamp (epoch seconds) of the current Polygon head block."""
+    blk = _rpc("eth_getBlockByNumber", ["latest", False])
+    return int(blk["timestamp"], 16)
+
+
+def _get_oov2_logs_resilient(frm: int, to: int, adapters_topic, *, timeout: int = 40, log=None) -> list:
+    """eth_getLogs for OOv2 DisputePrice over [frm,to], halving the range on a transient RPC error
+    (public RPCs intermittently -32005 'range too large' / -32603). Mirrors negrisk_map._get_logs_resilient."""
+    try:
+        return _rpc("eth_getLogs", [{"address": OOV2, "topics": [DISPUTE_TOPIC0, adapters_topic],
+                                     "fromBlock": hex(frm), "toBlock": hex(to)}], timeout=timeout)
+    except Exception as e:
+        if to - frm <= 2_000:
+            raise
+        mid = (frm + to) // 2
+        if log:
+            log(f"    split [{frm}..{to}] after {str(e)[:60]}")
+        return _get_oov2_logs_resilient(frm, mid, adapters_topic, timeout=timeout, log=log) + \
+            _get_oov2_logs_resilient(mid + 1, to, adapters_topic, timeout=timeout, log=log)
+
+
+def _outcome_from_price(price: int) -> str | None:
+    """OO proposedPrice (int256, 1e18-scaled) → YES / NO / UNRESOLVABLE. None if off-grid."""
+    if price >= 10**18:
+        return "YES"
+    if price == 0:
+        return "NO"
+    if price == 5 * 10**17:
+        return "UNRESOLVABLE"
+    return None
+
+
+def recent_disputes_rpc(*, lookback_blocks: int = 4_500_000, target: int = 50,
+                        window: int = 900_000, log=None) -> list[dict]:
+    """The latest OOv2 disputes straight from Polygon via keyless RPC — the no-indexer live feed.
+
+    Scans DisputePrice logs BACKWARD from the chain head in `window`-block steps (resilient bisection
+    on RPC range errors) until `target` disputes are collected or `lookback_blocks` is exhausted.
+    Returns rows in webapp `live.live_disputes` shape (newest first), with proposer (topic2) and the
+    proposed outcome decoded. V2/Legacy conditionIds derive locally from the ancillaryData; NegRisk
+    conditionIds are NOT a function of the OO ancillary (sequential NegRiskIdLib ids), so — exactly as
+    the released/RPC path documents — NegRisk disputes are COUNTED but carry conditionId=None here (the
+    label-join needs the NegRiskOperator events / indexer, not available from an OO log alone).
+
+    Heavy (a multi-window scan); callers MUST cache it off the request path (see webapp/backend/live.py)."""
+    head = chain_head_block()
+    adapters_topic = [_pad(a) for a in list(DERIVABLE) + [NEGRISK]]
+    floor = max(START_BLOCK, head - int(lookback_blocks))
+    rows: list[dict] = []
+    hi = head
+    while hi >= floor and len(rows) < target:
+        lo = max(floor, hi - int(window) + 1)
+        logs = _get_oov2_logs_resilient(lo, hi, adapters_topic, log=log)
+        for lg in logs:
+            adapter = "0x" + lg["topics"][1][-40:]
+            proposer = "0x" + lg["topics"][2][-40:]
+            disputer = "0x" + lg["topics"][3][-40:]
+            _identifier, _oo_ts, ancillary, price = abi_decode(
+                ["bytes32", "uint256", "bytes", "int256"], bytes.fromhex(lg["data"][2:]))
+            if adapter in DERIVABLE:
+                cid, adapter_label = derive_condition_id(adapter, ancillary), DERIVABLE[adapter]
+            elif adapter == NEGRISK:
+                cid, adapter_label = None, "negrisk"   # counted, not label-joinable from an OO log
+            else:
+                continue
+            blk = int(lg["blockNumber"], 16)
+            rows.append({
+                "id": f'{lg.get("transactionHash", "")}-{int(lg.get("logIndex", "0x0"), 16)}',
+                "round": None, "disputeTs": blk, "_block": blk,
+                "disputer": disputer, "proposer": proposer,
+                "proposedOutcome": _outcome_from_price(int(price)),
+                "conditionId": cid, "adapter": adapter_label,
+                "marketStatus": None, "finalOutcome": None, "outcomeSlotCount": None,
+            })
+        hi = lo - 1
+    # attach TRUE block timestamps (disputeTs currently holds the block number as a placeholder)
+    ts = _block_timestamps(sorted({r["_block"] for r in rows}))
+    for r in rows:
+        r["disputeTs"] = ts.get(r["_block"], 0)
+        r.pop("_block", None)
+    rows.sort(key=lambda r: r["disputeTs"], reverse=True)
+    return rows[:target]
 
 
 def build_dispute_cache(*, refetch: bool = False, log=print) -> dict:

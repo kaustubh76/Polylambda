@@ -87,6 +87,32 @@ def fit_hazard(labeled_rows):
     return model, {"brier": brier, "n": len(rows), "positives": int(y.sum())}
 
 
+_KAPPA_BY_CAT_CACHE: dict | None = None
+_KAPPA_BY_CAT_LOADED = False
+
+
+def _category_kappa(category: str, fallback: float) -> float:
+    """Per-category calibrated κ (E[|realized jump|]) with a global/scalar fallback. Lazily loads the
+    `kappa_by_category.json` cache once (built by data.calibrate.build_kappa_by_category); if absent
+    every category degrades to `fallback` — the engine stays offline-pure and back-compatible."""
+    global _KAPPA_BY_CAT_CACHE, _KAPPA_BY_CAT_LOADED
+    if not _KAPPA_BY_CAT_LOADED:
+        try:
+            from data.calibrate import load_kappa_by_category
+            _KAPPA_BY_CAT_CACHE = load_kappa_by_category()
+        except Exception:
+            _KAPPA_BY_CAT_CACHE = None
+        _KAPPA_BY_CAT_LOADED = True
+    m = _KAPPA_BY_CAT_CACHE
+    if not m:
+        return fallback
+    cat = (m.get("categories") or {}).get(category)
+    if cat and cat.get("kappa"):
+        return float(cat["kappa"])
+    g = (m.get("global") or {}).get("kappa")
+    return float(g) if g else fallback
+
+
 def estimate_lambda(market_conditionid: str, features: dict,
                     *, dispute_counts: dict[str, int] | None = None,
                     model=None, kappa_loss: float = DEFAULT_KAPPA_LOSS) -> LambdaOutput:
@@ -111,16 +137,19 @@ def estimate_lambda(market_conditionid: str, features: dict,
         lambda_jump = lambda_select  # v1: fall back to the base rate
 
     # Directional jump: disputes resolve toward a boundary. Sign from the current price if given
-    # (favorites tend to be confirmed); magnitude scales with intensity. Placeholder until the
-    # replay calibrates jump_drift/e_loss from the HF realized post-resolution move.
+    # (favorites tend to be confirmed); MAGNITUDE is now the category's calibrated E[|realized jump|]
+    # (data.calibrate.build_kappa_by_category over the released dispute layer's realizedJumpLogit),
+    # shrunk toward the global mean for thin categories — replacing the old single-scalar placeholder.
+    # Falls back to `kappa_loss` when the per-category cache isn't built.
+    kappa_cat = _category_kappa(features.get("category", "other"), kappa_loss)
     p = float(features.get("price", 0.5))
     logit_p = math.log(min(max(p, 1e-6), 1 - 1e-6) / (1 - min(max(p, 1e-6), 1 - 1e-6)))
     # NB: guard logit_p == 0 (p == 0.5) — math.copysign(x, 0.0) returns +x (the sign of +0.0), which
     # would leak a spurious positive/YES drift at a perfectly neutral price. A neutral market has no
     # directional jump, so jump_drift must be exactly 0 there.
-    direction = 0.0 if logit_p == 0.0 else math.copysign(kappa_loss, logit_p)
+    direction = 0.0 if logit_p == 0.0 else math.copysign(kappa_cat, logit_p)
     jump_drift = direction * lambda_jump
-    e_loss = kappa_loss * lambda_jump
+    e_loss = kappa_cat * lambda_jump
 
     return LambdaOutput(lambda_select=lambda_select, lambda_jump=lambda_jump,
                         jump_drift=jump_drift, e_loss=e_loss,

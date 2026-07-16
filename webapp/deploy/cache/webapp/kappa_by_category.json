@@ -1,0 +1,48 @@
+{
+ "global": {
+  "kappa": 0.75873,
+  "n": 1149
+ },
+ "categories": {
+  "tech-ai": {
+   "kappa": 0.59754,
+   "kappa_raw": 0.47665,
+   "n": 40
+  },
+  "economics": {
+   "kappa": 0.6843,
+   "kappa_raw": 0.49823,
+   "n": 12
+  },
+  "geopolitics": {
+   "kappa": 0.67708,
+   "kappa_raw": 0.64646,
+   "n": 80
+  },
+  "sports": {
+   "kappa": 0.55489,
+   "kappa_raw": 0.48769,
+   "n": 91
+  },
+  "politics": {
+   "kappa": 0.68316,
+   "kappa_raw": 0.67518,
+   "n": 284
+  },
+  "other": {
+   "kappa": 0.91618,
+   "kappa_raw": 0.92532,
+   "n": 517
+  },
+  "entertainment": {
+   "kappa": 0.56567,
+   "kappa_raw": 0.43696,
+   "n": 45
+  },
+  "crypto": {
+   "kappa": 0.75999,
+   "kappa_raw": 0.76046,
+   "n": 80
+  }
+ }
+}

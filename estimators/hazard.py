@@ -100,8 +100,10 @@ class LoadedHazard:
 
 def save_hazard_model(model, metrics: dict, offset: float, *, path: str = HAZARD_MODEL_CACHE) -> str:
     """Persist a fitted sklearn LogisticRegression as plain JSON (coef/intercept/offset/features)."""
+    from datetime import datetime, timezone
     payload = {"coef": [float(c) for c in model.coef_[0]], "intercept": float(model.intercept_[0]),
-               "offset": float(offset), "feature_order": list(SAFE_FEATURES), "metrics": metrics}
+               "offset": float(offset), "feature_order": list(SAFE_FEATURES),
+               "trained_at": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "metrics": metrics}
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w") as f:
         json.dump(payload, f, indent=1)
