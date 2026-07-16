@@ -17,8 +17,10 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     HF_HUB_DISABLE_PROGRESS_BARS=1 \
-    MODE=paper \
-    INDEXER_GRAPHQL_URL=https://indexer.dev.hyperindex.xyz/0638687/v1/graphql
+    MODE=paper
+# Live dispute feed defaults to the keyless Polygon RPC scan (data/disputes.py picks the endpoint;
+# override with POLYGON_RPC_URL). Set INDEXER_GRAPHQL_URL only for your own hosted Envio indexer —
+# the old baked-in dev deploy ended 2026-07 and must NOT be baked here again.
 WORKDIR /app
 
 # slim runtime deps (all manylinux wheels — no build toolchain needed)
