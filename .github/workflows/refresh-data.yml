@@ -1,0 +1,96 @@
+# Scheduled data refresh — the missing loop that kept the dashboard's "dataset" frozen at a manual
+# quarterly cut. Regenerates the released dispute snapshot, retrains the hazard cards, rebuilds the
+# request-time caches (incl. per-category κ), and commits the refreshed artifacts. The running app
+# self-busts its lru_caches via POST /api/admin/refresh (no redeploy needed).
+#
+# Degrades gracefully: the networked steps (export + retrain) only run when their secrets exist;
+# without them the job still rebuilds every OFFLINE cache from the committed parquet, so a fork with
+# no secrets never fails. Set repo secrets to enable the live steps:
+#   INDEXER_GRAPHQL_URL  — a persistent, at-head Envio indexer (see indexer/DEPLOY.md)
+#   HF_TOKEN             — Hugging Face read token (price-context enrichment + base-rate denominators)
+#   RENDER_APP_URL       — deployed app base URL to hit /api/admin/refresh (optional)
+name: refresh-data
+
+on:
+  schedule:
+    - cron: "17 6 * * *"     # daily 06:17 UTC
+  workflow_dispatch:
+    inputs:
+      with_price_context:
+        description: "Re-scan the HF fill tape for pre/post prices + realized jump (slow)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      INDEXER_GRAPHQL_URL: ${{ secrets.INDEXER_GRAPHQL_URL }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      DATA_CACHE_DIR: .data_cache
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Regenerate released dispute snapshot (needs a live indexer)
+        if: ${{ env.INDEXER_GRAPHQL_URL != '' }}
+        run: |
+          PCTX=""
+          if [ "${{ github.event.inputs.with_price_context }}" != "false" ]; then PCTX="--with-price-context"; fi
+          python -m data.export_disputes --graphql-url "$INDEXER_GRAPHQL_URL" $PCTX
+        continue-on-error: true
+
+      - name: Retrain the deployed hazard model
+        if: ${{ env.INDEXER_GRAPHQL_URL != '' }}
+        run: python -m estimators.hazard
+        continue-on-error: true
+
+      - name: "Rebuild request-time caches (base-rates, names, proposer, per-category κ, HF)"
+        run: python -m webapp.backend.precompute --force
+
+      - name: Recompute global κ (sanity print)
+        run: python -m data.calibrate || true
+
+      - name: Sync regenerated artifacts into the committed deploy cache
+        run: |
+          mkdir -p webapp/deploy/cache/webapp
+          # ship the small, non-regenerable-on-a-fresh-host artifacts the Docker image copies in
+          for f in hazard_model.json hazard_model_matched.json hazard_eval_matched.json sigma_prior.json; do
+            [ -f ".data_cache/$f" ] && cp ".data_cache/$f" "webapp/deploy/cache/$f" || true
+          done
+          for f in base_rate_counts.json disputes_by_proposer.json dispute_names.json kappa_by_category.json \
+                   hf_overview.json hf_markets.json dispute_market_context.json; do
+            [ -f ".data_cache/webapp/$f" ] && cp ".data_cache/webapp/$f" "webapp/deploy/cache/webapp/$f" || true
+          done
+
+      - name: Commit refreshed artifacts
+        run: |
+          git config user.name  "polylambda-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add dataset_release webapp/deploy/cache || true
+          if git diff --cached --quiet; then
+            echo "no data changes to commit"
+          else
+            git commit -m "chore(data): scheduled refresh — dispute snapshot + hazard cards + caches"
+            git push
+          fi
+
+      - name: Bust the running app's caches (optional)
+        env:
+          RENDER_APP_URL: ${{ secrets.RENDER_APP_URL }}
+        run: |
+          [ -n "$RENDER_APP_URL" ] && curl -sfS -X POST --max-time 30 "$RENDER_APP_URL/api/admin/refresh" || true
