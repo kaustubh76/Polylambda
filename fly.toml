@@ -10,7 +10,9 @@ primary_region = "iad"
 
 [env]
   MODE = "paper"
-  INDEXER_GRAPHQL_URL = "https://indexer.dev.hyperindex.xyz/0638687/v1/graphql"
+  # Live dispute feed = keyless Polygon RPC eth_getLogs scan (the old Envio dev deploy ended). Leave
+  # INDEXER_GRAPHQL_URL unset to use the RPC path; set it only for your own hosted indexer.
+  POLYGON_RPC_URL = "https://polygon.gateway.tenderly.co"
   AMOY_RPC_URL = "https://polygon-amoy.drpc.org"
   AMOY_USDC_ADDRESS = "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582"
   MARKET_ADDRESS = "0x1dBF7dA731e58C87B7e6644b719b84804F28b496"

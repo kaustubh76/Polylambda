@@ -66,7 +66,7 @@ async def get_ablation(live: bool = False):
         return await _with_timeout(lambda: services.ablation(live=True), LIVE_TIMEOUT_S)
     except asyncio.TimeoutError:
         out = services.ablation(live=False)
-        out["live_error"] = "live replay timed out — showing the published artifact"
+        out["live_error"] = "live replay timed out — showing the pre-computed artifact"
         return out
 
 
@@ -121,6 +121,26 @@ def get_quote_curve(category: str = "politics", price: float = Query(0.62, gt=0.
         return services.quote_curve(category=category, price=price, horizon_days=horizon_days, steps=steps)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"quote-curve failed: {e}")
+
+
+@api.get("/hf/overview")
+async def get_hf_overview(live: bool = False):
+    """The HF dataset backbone overview. `?live=1` recomputes from the HF Hub (guarded) when HF_TOKEN set."""
+    if not live:
+        return services.hf_overview(live=False)
+    try:
+        return await _with_timeout(lambda: services.hf_overview(live=True), LIVE_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        out = services.hf_overview(live=False)
+        out["live_error"] = "live HF query timed out — showing the shipped cache"
+        return out
+
+
+@api.get("/hf/markets")
+def get_hf_markets(q: str | None = None, category: str | None = None, sort: str = "startDate",
+                   desc: bool = True, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)):
+    """Browse recent Polymarket markets from the HF dataset."""
+    return services.hf_markets(q=q, category=category, sort=sort, desc=desc, limit=limit, offset=offset)
 
 
 @api.get("/live/status")
@@ -183,3 +203,12 @@ def post_testnet_resolve(req: ResolveRequest):
 @api.get("/health")
 def get_health():
     return {"ok": True}
+
+
+@api.post("/admin/refresh")
+def post_admin_refresh():
+    """Bust the artifact lru_caches so a scheduled regenerate (data.export_disputes + precompute +
+    retrain) is picked up without a restart. Idempotent; safe to call anytime."""
+    from . import cache
+    cache.refresh()
+    return {"ok": True, "refreshed": True}

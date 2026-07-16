@@ -17,15 +17,19 @@ const armColor = (C: Colors, ARM_COLORS: Record<string, string>, arm: string, i:
 export function Ablation() {
   const { C, ARM_COLORS } = useColors()
   const [live, setLive] = useState(false)
-  const q = useApi(() => api.ablation(live), [live])
+  const [nonce, setNonce] = useState(0)
+  // nonce makes EVERY "run live replay" click refetch — the old [live]-only dep meant the second
+  // click (true→true) was a no-op, so the button appeared dead after the first press.
+  const q = useApi(() => api.ablation(live), [live, nonce])
+  const runLive = () => { setLive(true); setNonce((n) => n + 1) }
   return (
     <Section id="ablation" kicker="the primary edge proof · replay_ablation"
       title="λ* sensitivity — surgical exit vs blanket avoidance"
       subtitle="A powered historical counterfactual over real disputes + matched controls, net of forgone rewards. Publish the whole curve, not one tuned point."
       right={
         <div className="flex items-center gap-2">
-          {q.data?.source && <SourceTag source={q.data.source === 'live' ? 'live' : 'published'} />}
-          <button className="btn !py-1 text-2xs" disabled={q.loading} onClick={() => setLive(true)}>
+          {q.data?.source && <SourceTag source={q.data.source} />}
+          <button className="btn !py-1 text-2xs" disabled={q.loading} onClick={runLive}>
             {q.loading && live ? 'running…' : '↻ run live replay'}
           </button>
         </div>
@@ -62,6 +66,11 @@ export function Ablation() {
                 <span className="ml-auto flex items-center gap-1.5 text-muted"><span className="h-3 w-px bg-warn" />frozen λ*={String(d.meta.lambda_star_frozen)}</span>
               </div>
             </Panel>
+            {live && d.live_error && (
+              <Caveat kind="note">
+                Live replay unavailable on this host — showing the {d.source === 'replay' ? 'committed real replay artifact' : 'published curve'} instead. Reason: <span className="font-mono">{d.live_error}</span>
+              </Caveat>
+            )}
             <Caveat kind="underpowered">{d.caveat} The arms converge at high λ* — a clean sanity check that the exit threshold stops mattering once it never fires.</Caveat>
           </div>
         )

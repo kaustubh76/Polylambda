@@ -47,7 +47,7 @@ export function ScoreMarket() {
   return (
     <Section id="score" kicker="live λ engine · wired to estimate_lambda()"
       title="Score a market"
-      subtitle="Feed a market's point-in-time-safe features to the real estimator — it returns the two λ signals, an Avellaneda–Stoikov quote, and the reward-aware exit verdict. Nothing here is mocked.">
+      subtitle="Feed a market's point-in-time-safe features to the real estimator — it returns the two λ signals, an Avellaneda–Stoikov quote, and the reward-aware exit verdict. Nothing here is mocked. The category base rate and σ prior are grounded in the HF dataset (moose-code/polymarket-onchain-v1).">
       <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
         {/* --- inputs --- */}
         <Panel className="space-y-4 self-start">

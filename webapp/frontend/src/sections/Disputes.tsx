@@ -18,6 +18,8 @@ interface DisputeRow {
   marketName?: string; conditionId: string; category: string; adapter: string; disputeDate: string
   proposedOutcome: string; preDisputePrice: number | null; postDisputePrice: number | null; realizedJumpLogit: number | null
   disputer?: string | null; proposer?: string | null; round?: number | null
+  // HF market context (dispute_market_context.json) — enrichment for the detail view
+  hfResolved?: boolean | null; hfResolvedOutcome?: string | null; hfEndDate?: string | null
 }
 
 const ADAPTER_LABEL = (a: string) => (a?.startsWith('0x') ? 'legacy' : a)
@@ -268,6 +270,16 @@ function DisputeDetail({ row, onClose }: { row: DisputeRow | null; onClose: () =
             <KV k="pre → post price" v={row.preDisputePrice != null ? `${fixed(row.preDisputePrice, 3)} → ${fixed(row.postDisputePrice, 3)}` : '—'} />
             <KV k="realized jump (logit)" v={row.realizedJumpLogit != null ? fixed(row.realizedJumpLogit, 3) : '—'} />
             {row.round != null && <KV k="dispute round" v={row.round} />}
+            {(row.hfResolvedOutcome || row.hfEndDate) && (
+              <KV k="HF resolution" mono={false} v={
+                <span>
+                  {row.hfResolvedOutcome
+                    ? <span style={{ color: outcomeColor(C, row.hfResolvedOutcome) }}>{row.hfResolvedOutcome}</span>
+                    : <span className="text-muted">{row.hfResolved ? 'resolved' : 'open'}</span>}
+                  {row.hfEndDate && <span className="text-muted"> · ends {row.hfEndDate}</span>}
+                </span>
+              } />
+            )}
             <KV k="proposer" v={<AddrCell addr={row.proposer} />} mono={false} />
             <KV k="disputer" v={<AddrCell addr={row.disputer} />} mono={false} />
           </div>

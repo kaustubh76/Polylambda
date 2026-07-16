@@ -84,7 +84,12 @@ function ModelCard({ card, highlight, nullish }: { card: HazardCardT | null; hig
   return (
     <Panel className={highlight ? 'ring-1 ring-sig/25' : ''}>
       <div className="flex items-start justify-between">
-        <div className="text-sm font-medium text-ink">{card.label}</div>
+        <div>
+          <div className="text-sm font-medium text-ink">{card.label}</div>
+          {card.trained_at && (
+            <div className="mt-0.5 text-[10px] text-muted">trained {card.trained_at} · n={int(card.n)}</div>
+          )}
+        </div>
         <span className={`chip ${discr ? 'border-good/40 text-good' : 'border-warn/50 text-warn'}`}>
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: discr ? C.good : C.warn }} />
           {discr ? 'discriminates' : 'coin-flip'}

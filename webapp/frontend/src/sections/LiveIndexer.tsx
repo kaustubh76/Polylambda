@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
 import { api, usePoll, type LiveDispute, type LiveDisputes } from '../api/client'
-import { useLiveStatus } from '../components/LiveStatus'
+import { useLiveStatus, freshnessFromAge } from '../components/LiveStatus'
 import { useColors } from '../components/Theme'
 import type { Colors } from '../lib/theme'
 import { ago, short } from '../lib/format'
@@ -55,24 +55,45 @@ export function LiveIndexer() {
 
   const everConnected = live.up || (feed?.reachable ?? false)
   const connecting = (live.connecting && !feed) || (!everConnected && fails < 2)
-  const up = everConnected && fails < 3                // sticky-live: tolerate transient blips
+  const up = everConnected && fails < 3                // reachable (sticky: tolerate transient blips)
   const latency = live.latency ?? feed?.latency_ms
   const subSecond = latency != null && latency < 1000
   const status = { head_ts: live.headTs, head_id: live.headId, endpoint: live.endpoint, error: live.error }
+  // freshness gates the LIVE badge on the SERVER head age (chain-head age for the keyless-RPC source,
+  // proving we're at tip), not just reachability. For RPC, `head_ts` is the latest DISPUTE (shown
+  // separately) which is allowed to lag when disputes are quiet.
+  const f = freshnessFromAge(live.headAgeSeconds)
+  const headFresh = up && f.state === 'live'
+  const isRpc = live.source === 'rpc'
 
   return (
-    <Section id="live" kicker="fully live · hosted Envio HyperIndex"
+    <Section id="live" kicker={isRpc ? 'keyless Polygon RPC · eth_getLogs' : 'hosted Envio HyperIndex · GraphQL'}
       title="Live dispute stream"
-      subtitle="Straight from the deployed indexer over GraphQL — the OOv2 dispute lifecycle as it lands on-chain, polled every 5s. The released snapshot above is the frozen, HF-enriched cut of exactly this feed."
+      subtitle="OOv2 DisputePrice events straight from Polygon — by default a keyless public-RPC log scan (no indexer, no paid service), or a hosted Envio indexer when one is configured. The LIVE badge reflects CHAIN-HEAD freshness (we're at tip); disputes are sparse, so the latest one can be days old while the feed is live."
       right={
-        <span className={`chip ${up ? 'border-sig/40 text-sig' : connecting ? '' : 'border-warn/50 text-warn'}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${up || connecting ? 'animate-pulse2' : ''}`} style={{ background: up ? C.sig : connecting ? C.muted : C.warn }} />
-          {up ? 'LIVE' : connecting ? 'connecting…' : 'indexer offline'}
+        <span className={`chip ${headFresh ? 'border-sig/40 text-sig' : connecting ? '' : up ? 'border-warn/50 text-warn' : 'border-warn/50 text-warn'}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${headFresh || connecting ? 'animate-pulse2' : ''}`} style={{ background: headFresh ? C.sig : connecting ? C.muted : C.warn }} />
+          {headFresh ? 'LIVE'
+            : connecting ? 'connecting…'
+            : up && f.state === 'syncing' ? `syncing · ${f.behind}`
+            : up && f.state === 'stale' ? `stale · ${f.behind}`
+            : up ? 'reachable'
+            : 'indexer offline'}
         </span>
       }>
       {!connecting && !up && (
         <ErrorBox error={`Indexer unreachable — the live feed is optional; the rest of the dashboard runs off the shipped snapshot. ${status?.error || ''}`}
           onRetry={() => { tickRef.current?.(); live.refresh() }} />
+      )}
+
+      {up && !headFresh && (
+        <div className="mb-4">
+          <Caveat kind="underpowered">
+            The source is reachable but its head is <span className="font-mono">{f.behind}</span> the chain tip
+            {isRpc ? ' — the RPC scan has not reached head yet' : ' — this indexer has stopped advancing'}. The
+            disputes below are real but may not be current.
+          </Caveat>
+        </div>
       )}
 
       {up && (
@@ -82,9 +103,9 @@ export function LiveIndexer() {
             <Stat label="Query latency" value={latency != null ? `${latency.toFixed(0)} ms` : '—'}
               tone={subSecond ? 'profit' : 'warn'} accent={subSecond}
               sub={subSecond ? 'sub-second round-trip' : 'round-trip to the indexer'} />
-            <Stat label="Indexer head" value={ago(status?.head_ts, now)} sub="latest dispute indexed" />
+            <Stat label="Latest dispute" value={ago(status?.head_ts, now)} sub={headFresh ? 'source at chain head' : 'newest OOv2 dispute'} />
             <Panel className="!p-3">
-              <div className="label mb-1">endpoint</div>
+              <div className="label mb-1">source · {isRpc ? 'keyless RPC' : 'Envio GraphQL'}</div>
               <div className="break-all font-mono text-2xs text-ink-2">{prettyEndpoint(status?.endpoint || feed?.endpoint || '')}</div>
               {status?.head_id && (
                 <div className="mt-1.5 flex items-center gap-1.5 text-2xs text-muted">
@@ -93,7 +114,7 @@ export function LiveIndexer() {
                 </div>
               )}
               <div className="mt-2 flex items-center gap-1.5 text-2xs text-muted">
-                <span className="h-1.5 w-1.5 animate-pulse2 rounded-full bg-sig" /> polling every 5s · GraphQL
+                <span className="h-1.5 w-1.5 animate-pulse2 rounded-full bg-sig" /> polling every 5s · {isRpc ? 'eth_getLogs' : 'GraphQL'}
               </div>
             </Panel>
           </div>
@@ -118,9 +139,9 @@ export function LiveIndexer() {
 
       <div className="mt-4">
         <Caveat kind="note">
-          Live reads hit the hosted Envio dev deploy (coverage-capped, non-authoritative) — the released
-          parquet remains the audited source of record. Point <span className="font-mono">INDEXER_GRAPHQL_URL</span> at
-          your own production indexer to swap it.
+          {isRpc
+            ? <>Live reads scan OOv2 <span className="font-mono">DisputePrice</span> logs over a keyless public Polygon RPC — no indexer, no paid service. V2/Legacy conditionIds are label-joined; NegRisk disputes are shown but not cid-labeled (that join needs the NegRisk operator events). The released parquet remains the audited source of record. Set <span className="font-mono">INDEXER_GRAPHQL_URL</span> to use a hosted indexer instead.</>
+            : <>Live reads hit the configured Envio indexer — the released parquet remains the audited source of record.</>}
         </Caveat>
       </div>
     </Section>

@@ -4,6 +4,7 @@ import {
   CartesianGrid, Line, LineChart, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import { api, useAction, type DDPoint, type SessionReq } from '../api/client'
+import { useDebounced } from '../lib/useDebounced'
 import { useInViewOnce } from '../lib/motion'
 import { useColors } from '../components/Theme'
 import { fixed, num, short, signed, usd } from '../lib/format'
@@ -49,7 +50,10 @@ function DisputeDefense() {
   const [showAllExits, setShowAllExits] = useState(false)
   const timer = useRef<number | null>(null)
 
-  useEffect(() => { run(cfg) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // recompute automatically when any control changes (debounced) — the graph tracks the sliders,
+  // not just the Run button. The debounced snapshot also drives the initial mount run.
+  const cfgKey = useDebounced(cfg, 350)
+  useEffect(() => { run(cfgKey) }, [cfgKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // when new data arrives, reset & auto-play the animation
   useEffect(() => {
@@ -221,7 +225,9 @@ function LiveQuoting() {
   const [chartRef, chartIn] = useInViewOnce<HTMLDivElement>()
   const { run, data, error, loading } = useAction(api.session)
   const go = () => run({ scenario: 'live_quoting', n_ticks: n, n_markets: nMarkets, seed, source: realMarkets ? 'data' : 'synthetic', hazard: realMarkets && hazard })
-  useEffect(() => { go() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // re-run automatically (debounced) whenever any control changes; also drives the mount run
+  const inputsKey = useDebounced(`${n}|${nMarkets}|${seed}|${realMarkets}|${hazard}`, 350)
+  useEffect(() => { go() }, [inputsKey]) // eslint-disable-line react-hooks/exhaustive-deps
   const series = (data?.series ?? {}) as Record<string, any[]>
   const quotes = (data?.quotes ?? {}) as Record<string, any[]>
   const cids = Object.keys(series)

@@ -56,7 +56,9 @@ def test_quote_curve_skews_with_inventory():
 
 def test_ablation_published_shape_and_arms():
     out = services.ablation(live=False)
-    assert out["source"] == "published"
+    # serves the committed real replay artifact when present ("replay"), else the hardcoded
+    # constants ("published") — either way the arm/point shape the UI consumes is stable.
+    assert out["source"] in ("replay", "published")
     assert out["arms"], "expected at least the published arms"
     arm0 = out["arms"][0]
     assert {"arm", "arm_label", "points"} <= set(arm0)
@@ -67,7 +69,9 @@ def test_ablation_live_falls_back_honestly_without_indexer(monkeypatch):
     monkeypatch.delenv("INDEXER_GRAPHQL_URL", raising=False)
     monkeypatch.delenv("ENVIO_GRAPHQL_URL", raising=False)
     out = services.ablation(live=True)
-    assert out["source"] == "published"
+    # without an indexer the LIVE replay can't run: it degrades to a real committed replay artifact
+    # ("replay") or the published constants ("published"), and says WHY via live_error.
+    assert out["source"] in ("replay", "published")
     assert "no INDEXER_GRAPHQL_URL" in out.get("live_error", "")
 
 

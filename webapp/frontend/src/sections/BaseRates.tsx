@@ -14,7 +14,7 @@ export function BaseRates() {
   return (
     <Section id="baserates" kicker="the λ_select signal"
       title="Category dispute base rates"
-      subtitle="Disputes ÷ resolved markets per category, with Wilson 95% intervals — the honest per-market dispute prior that drives market selection & sizing."
+      subtitle="Disputes ÷ resolved markets per category, with Wilson 95% intervals — the honest per-market dispute prior that drives market selection & sizing. The resolved-market denominators come from the HF dataset (moose-code/polymarket-onchain-v1); see the HF dataset section below."
       right={q.data && <SourceTag source={q.data.source} />}>
       <Async q={q}>{(d) => {
         const rows = d.rows

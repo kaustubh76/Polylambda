@@ -49,13 +49,33 @@ def dataset_stats() -> dict:
     return _load_json(RELEASE_DIR / "stats.json") or dict(K.DATASET_STATS_FALLBACK)
 
 
+def _with_trained_at(m, path: Path):
+    """Ensure a card carries a `trained_at` date. New artifacts embed it at train time
+    (estimators.hazard.save_hazard_model); older ones fall back to the file's mtime so the UI can
+    always show honest 'trained on <date>' provenance instead of an undated frozen number."""
+    if not m:
+        return m
+    if not m.get("trained_at"):
+        try:
+            from datetime import datetime, timezone
+            m = {**m, "trained_at": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
+                 .strftime("%Y-%m-%d")}
+        except Exception:
+            pass
+    return m
+
+
 @lru_cache(maxsize=1)
 def hazard_models() -> dict:
-    """The three hazard model cards: deployed, matched-fair-controls, and the matched eval (null)."""
+    """The three hazard model cards: deployed, matched-fair-controls, and the matched eval (null).
+    Each is stamped with a `trained_at` date (embedded, or mtime fallback) for UI provenance."""
     return {
-        "deployed": _load_json(DATA_CACHE / "hazard_model.json"),
-        "matched": _load_json(DATA_CACHE / "hazard_model_matched.json"),
-        "matched_eval": _load_json(DATA_CACHE / "hazard_eval_matched.json"),
+        "deployed": _with_trained_at(_load_json(DATA_CACHE / "hazard_model.json"),
+                                     DATA_CACHE / "hazard_model.json"),
+        "matched": _with_trained_at(_load_json(DATA_CACHE / "hazard_model_matched.json"),
+                                    DATA_CACHE / "hazard_model_matched.json"),
+        "matched_eval": _with_trained_at(_load_json(DATA_CACHE / "hazard_eval_matched.json"),
+                                         DATA_CACHE / "hazard_eval_matched.json"),
     }
 
 
@@ -106,6 +126,25 @@ def dispute_names() -> dict:
 
 
 @lru_cache(maxsize=1)
+def hf_overview() -> dict:
+    """HF backbone overview (resolution mix, markets-by-year, category counts, coverage). {} if absent."""
+    return _load_json(WEBAPP_CACHE / "hf_overview.json") or {}
+
+
+@lru_cache(maxsize=1)
+def hf_markets() -> dict:
+    """Recent-markets browser payload from HF. {markets:[...], n} — {} if the cache is absent."""
+    return _load_json(WEBAPP_CACHE / "hf_markets.json") or {}
+
+
+@lru_cache(maxsize=1)
+def dispute_market_context() -> dict:
+    """{conditionId: {category, startDate, endDate, resolved, resolvedOutcome}} HF context for the
+    disputed markets — enriches the disputes explorer. {} if absent."""
+    return _load_json(WEBAPP_CACHE / "dispute_market_context.json") or {}
+
+
+@lru_cache(maxsize=1)
 def disputes_df():
     """The 1,794-row released dispute dataset as a pandas DataFrame (name-enriched)."""
     import pandas as pd
@@ -118,6 +157,23 @@ def disputes_df():
         df["marketName"] = df["conditionId"].map(lambda c: (names.get(c) or {}).get("marketName"))
         df["marketSlug"] = df["conditionId"].map(lambda c: (names.get(c) or {}).get("marketSlug"))
     return df
+
+
+_ARTIFACT_LOADERS = (dataset_stats, hazard_models, sigma_prior, base_rate_counts,
+                     dispute_counts_by_category, disputes_by_proposer, dispute_names, disputes_df,
+                     hf_overview, hf_markets, dispute_market_context)
+
+
+def refresh() -> None:
+    """Bust every @lru_cache artifact loader so a scheduled regenerate (data.export_disputes +
+    precompute + retrain) is picked up WITHOUT a process restart. Called by /api/admin/refresh
+    and safe to call anytime — the next access re-reads from disk."""
+    for fn in _ARTIFACT_LOADERS:
+        try:
+            fn.cache_clear()
+        except Exception:
+            pass
+    load_hazard_model.cache_clear()
 
 
 # ---------------------------------------------------------------------------------------------

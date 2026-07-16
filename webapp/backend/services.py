@@ -5,10 +5,58 @@ function map in webapp/README.md.
 from __future__ import annotations
 
 import math
+import time
 
 from . import cache
 from . import constants as K
 from . import scenario
+
+
+# ---------------------------------------------------------------------------------------------
+# merged dispute view — the frozen released parquet UNIONED with the live indexer feed, so the
+# explorer / analytics / overview reflect the freshest available disputes and self-heal as the
+# indexer catches up (they degrade to just the parquet whenever the indexer is stale/unreachable).
+# ---------------------------------------------------------------------------------------------
+_MERGED_TTL = 15.0  # seconds — the union is cheap but the live fetch shouldn't run per keystroke
+_merged_cache: dict = {"until": 0.0, "df": None}
+
+
+def _merged_disputes_df(include_live: bool = True):
+    import pandas as pd
+
+    base = cache.disputes_df()
+    if not include_live or base.empty:
+        return base
+    now = time.monotonic()
+    if _merged_cache["df"] is not None and _merged_cache["until"] > now:
+        return _merged_cache["df"]
+    df = base
+    try:
+        from . import live
+        rows = live.recent_disputes(limit=200)
+        if rows:
+            live_df = pd.DataFrame(rows)
+            for col in base.columns:               # align live rows to the released schema
+                if col not in live_df.columns:
+                    live_df[col] = None
+            live_df = live_df[list(base.columns) + [c for c in live_df.columns if c not in base.columns]]
+            combined = pd.concat([base, live_df], ignore_index=True, sort=False)
+            if "conditionId" in combined and "disputeTs" in combined:
+                # parquet rows come first → keep="first" prefers the enriched release row over its
+                # unenriched live twin; genuinely-new live disputes survive.
+                combined = combined.drop_duplicates(subset=["conditionId", "disputeTs"], keep="first")
+            df = combined
+    except Exception:
+        df = base
+    _merged_cache.update(until=now + _MERGED_TTL, df=df)
+    return df
+
+
+def _dataset_date_bounds(df) -> tuple[str | None, str | None]:
+    if df is None or df.empty or "disputeDate" not in df.columns:
+        return None, None
+    s = df["disputeDate"].dropna().astype(str)
+    return (s.min(), s.max()) if len(s) else (None, None)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -21,6 +69,11 @@ def overview() -> dict:
     metrics = deployed.get("metrics") or {}
     frozen, frozen_src = cache.frozen_config()
     recon = stats.get("recon") or {}
+    # date bounds computed from the LIVE-merged dataset (not the frozen stats.json literal), so the
+    # headline "latest dispute" reflects the freshest available data instead of a stale hardcoded date.
+    d_min, d_max = _dataset_date_bounds(_merged_disputes_df())
+    d_min = d_min or stats.get("date_min")
+    d_max = d_max or stats.get("date_max")
     tiles = [
         {"label": "OOv2 disputes indexed", "value": stats.get("total_disputes"), "fmt": "int",
          "sub": f"{stats.get('hf_joinable_pct', 100)}% HF-joinable · all adapters"},
@@ -38,7 +91,7 @@ def overview() -> dict:
         "dataset": {"total_disputes": stats.get("total_disputes"),
                     "hf_joinable_pct": stats.get("hf_joinable_pct"),
                     "by_year": stats.get("by_year"), "by_adapter": stats.get("by_adapter"),
-                    "date_min": stats.get("date_min"), "date_max": stats.get("date_max")},
+                    "date_min": d_min, "date_max": d_max},
     }
 
 
@@ -212,7 +265,14 @@ def ablation(live: bool = False) -> dict:
                 except Exception as e:  # noqa: BLE001
                     grid_rows = None
                     live_error = f"live replay failed: {e}"
-    rows = grid_rows if grid_rows else _ablation_full_rows() or [dict(r) for r in K.ABLATION_PUBLISHED]
+    if grid_rows:
+        rows = grid_rows                                  # source already "live"
+    else:
+        full_rows = _ablation_full_rows()
+        if full_rows:
+            rows, source = full_rows, "replay"            # a real committed powered-replay artifact
+        else:
+            rows = [dict(r) for r in K.ABLATION_PUBLISHED]  # last-resort hardcoded 3-arm constants
     for r in rows:
         r["arm_label"] = K.ARM_LABELS.get(r["arm"], r["arm"])
     grid = sorted({r["lambda_star"] for r in rows})
@@ -236,13 +296,29 @@ def ablation(live: bool = False) -> dict:
 
 
 def _ablation_full_rows() -> list[dict] | None:
-    """The richer 4-arm ablation artifact (incl. the hazard arm), precomputed offline where the
-    heavy deps exist and shipped in .data_cache/webapp/ (see precompute.build_ablation_full).
-    Returns None if not present → callers fall back to the published 3-arm constants."""
+    """The richer real ablation artifact, in priority order:
+      1. .data_cache/webapp/ablation_full.json — the precomputed 4-arm (incl. hazard) grid
+         (precompute.build_ablation_full, needs the indexer + heavy deps).
+      2. the newest forwardtest/results/replay_ablation_*.json — a committed real powered-replay
+         result (its `results` list carries {arm, lambda_star, pnl_net_of_rewards, sharpe}).
+    Returns None if neither is present → callers fall back to the published 3-arm constants."""
     try:
         data = cache._load_json(cache.WEBAPP_CACHE / "ablation_full.json")
         if isinstance(data, list) and data:
             return [dict(r) for r in data]
+    except Exception:
+        pass
+    try:
+        results_dir = cache.PROJECT_ROOT / "forwardtest" / "results"
+        files = sorted(results_dir.glob("replay_ablation_*.json"))
+        if files:
+            data = cache._load_json(files[-1])  # newest by name (dated YYYY-MM-DD)
+            rows = data.get("results") if isinstance(data, dict) else None
+            if isinstance(rows, list) and rows:
+                return [{"arm": r["arm"], "lambda_star": r["lambda_star"],
+                         "pnl_net_of_rewards": r.get("pnl_net_of_rewards", r.get("pnl", 0.0)),
+                         "sharpe": r.get("sharpe", 0.0)}
+                        for r in rows if "arm" in r and "lambda_star" in r]
     except Exception:
         pass
     return None
@@ -311,6 +387,7 @@ def hazard() -> dict:
             return None
         met = m.get("metrics", {})
         return {"label": label, "coef": m.get("coef"), "intercept": m.get("intercept"),
+                "trained_at": m.get("trained_at"),
                 "offset": m.get("offset"), "feature_order": m.get("feature_order"),
                 "holdout_auc": met.get("holdout_auc"), "brier": met.get("brier"),
                 "n": met.get("n"), "positives": met.get("positives"),
@@ -331,7 +408,7 @@ def hazard() -> dict:
 def disputes(*, category: str | None = None, adapter: str | None = None, year: int | None = None,
              q: str | None = None, sort: str = "disputeTs", desc: bool = True,
              limit: int = 50, offset: int = 0) -> dict:
-    df = cache.disputes_df()
+    df = _merged_disputes_df()
     if df.empty:
         return {"total": 0, "rows": [], "columns": [], "facets": {}}
     view = df
@@ -354,9 +431,21 @@ def disputes(*, category: str | None = None, adapter: str | None = None, year: i
         view = view.sort_values(sort, ascending=not desc, na_position="last")
     cols = [c for c in ["conditionId", "marketName", "category", "adapter", "disputeDate",
                         "proposedOutcome", "preDisputePrice", "postDisputePrice",
-                        "realizedJumpLogit", "disputer", "proposer", "round"] if c in view.columns]
+                        "realizedJumpLogit", "disputer", "proposer", "round", "source"]
+            if c in view.columns]
     page = view.iloc[offset:offset + limit][cols]
     rows = _df_records(page)
+    # enrich each row with HF market context (resolution outcome, end date) for the detail modal
+    ctx = cache.dispute_market_context()
+    if ctx:
+        for r in rows:
+            hit = ctx.get(r.get("conditionId"))
+            if hit:
+                r["hfResolved"] = hit.get("resolved")
+                r["hfResolvedOutcome"] = hit.get("resolvedOutcome")
+                r["hfEndDate"] = hit.get("endDate")
+                if not r.get("category") and hit.get("category"):
+                    r["category"] = hit.get("category")
     return {"total": int(total), "rows": rows, "columns": cols,
             "facets": _facets(df)}
 
@@ -395,6 +484,54 @@ def _df_records(page) -> list[dict]:
 # ---------------------------------------------------------------------------------------------
 # recon (data integrity) + sigma surface
 # ---------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------
+# HF backbone surfaces (the dataset that powers the whole stack, finally visible in the UI)
+# ---------------------------------------------------------------------------------------------
+def hf_overview(live: bool = False) -> dict:
+    """The HF backbone overview (resolution mix, markets-by-year, category counts, coverage). Served
+    from the shipped precomputed cache; `live=True` recomputes from the HF Hub when HF_TOKEN + network
+    allow (guarded + timed out by the route), else falls back to the cache."""
+    base = cache.hf_overview()
+    out = dict(base) if base else {}
+    out["source"] = "cache"
+    if live:
+        import os
+        if not os.environ.get("HF_TOKEN"):
+            out["live_error"] = "no HF_TOKEN configured — showing the shipped cache"
+            return out
+        try:
+            from webapp.backend.precompute import build_hf_overview
+            build_hf_overview(force=True)
+            cache.hf_overview.cache_clear()
+            fresh = cache.hf_overview()
+            if fresh:
+                out = dict(fresh); out["source"] = "live"
+        except Exception as e:  # noqa: BLE001
+            out["live_error"] = f"live HF query failed: {e}"
+    return out
+
+
+def hf_markets(*, q: str | None = None, category: str | None = None, sort: str = "startDate",
+               desc: bool = True, limit: int = 50, offset: int = 0) -> dict:
+    """Browse recent Polymarket markets from the HF dataset (filter by text/category, sort, paginate)."""
+    data = cache.hf_markets()
+    rows = list(data.get("markets") or [])
+    if category:
+        rows = [r for r in rows if r.get("category") == category]
+    if q:
+        ql = q.lower()
+        rows = [r for r in rows if ql in str(r.get("marketName", "")).lower()
+                or ql in str(r.get("marketSlug", "")).lower()
+                or ql in str(r.get("conditionId", "")).lower()]
+    if sort in ("startDate", "endDate", "category", "marketName", "resolvedOutcome"):
+        rows.sort(key=lambda r: (r.get(sort) is None, r.get(sort) or ""), reverse=bool(desc))
+    total = len(rows)
+    cats = sorted({r.get("category") for r in (data.get("markets") or []) if r.get("category")})
+    page = rows[offset:offset + limit]
+    return {"total": total, "rows": page, "categories": cats, "n_cached": data.get("n", 0),
+            "note": data.get("note", "")}
+
+
 def recon() -> dict:
     stats = cache.dataset_stats()
     r = dict(stats.get("recon") or {})
@@ -440,7 +577,7 @@ def proposers(limit: int = 15) -> dict:
 # ---------------------------------------------------------------------------------------------
 def disputes_analytics(bins: int = 24) -> dict:
     import numpy as np
-    df = cache.disputes_df()
+    df = _merged_disputes_df()
     if df.empty:
         return {"n": 0, "histogram": [], "scatter": [], "by_round": {}, "by_outcome": {}}
     out: dict = {"n": int(len(df))}
@@ -456,7 +593,9 @@ def disputes_analytics(bins: int = 24) -> dict:
     if "preDisputePrice" in df.columns and "postDisputePrice" in df.columns:
         sc = df[["preDisputePrice", "postDisputePrice"]].dropna().astype(float)
         if len(sc) > 600:
-            sc = sc.sample(600, random_state=7)
+            # seed keyed to the row count (not a frozen 7) so the sampled cloud reshuffles whenever
+            # the dataset grows — deterministic per-dataset, but visibly not a static snapshot.
+            sc = sc.sample(600, random_state=len(sc) % (2**31))
         out["scatter"] = [{"pre": round(float(a), 4), "post": round(float(b), 4)}
                           for a, b in sc.itertuples(index=False)]
     if "round" in df.columns:

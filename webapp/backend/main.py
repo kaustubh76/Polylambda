@@ -35,6 +35,12 @@ async def lifespan(app: FastAPI):
 
     def _warm():
         cache.dataset_stats(); cache.hazard_models(); cache.disputes_by_proposer()
+        # kick the keyless-RPC dispute tail scan so the live feed is warm before users poll it
+        try:
+            from . import live
+            live.warm_tail()
+        except Exception:  # noqa: BLE001 — live feed is optional; the dashboard runs without it
+            pass
         print(f"[webapp] offline DI installed (base-rate denominators: {src}); caches warmed.")
 
     threading.Thread(target=_warm, name="cache-warm", daemon=True).start()

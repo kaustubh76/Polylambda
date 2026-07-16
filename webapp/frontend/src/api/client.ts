@@ -48,6 +48,8 @@ export const api = {
   sigma: () => req<Sigma>('/sigma'),
   proposers: (limit = 15) => req<Proposers>(`/proposers?limit=${limit}`),
   disputeAnalytics: (bins = 24) => req<DisputeAnalytics>(`/disputes/analytics?bins=${bins}`),
+  hfOverview: (live = false) => req<HfOverview>(`/hf/overview${live ? '?live=1' : ''}`),
+  hfMarkets: (qs = '') => req<HfMarkets>(`/hf/markets${qs}`),
   quoteCurve: (category: string, price: number, horizon_days: number) =>
     req<QuoteCurve>(`/quote-curve?category=${encodeURIComponent(category)}&price=${price}&horizon_days=${horizon_days}`),
   // polled endpoints: retries: 0 — the poll loop (with its failure backoff) is the retry
@@ -156,9 +158,9 @@ export interface SessionResp {
 }
 
 export interface AblationArm { arm: string; arm_label: string; points: { lambda_star: number; pnl_net_of_rewards: number; sharpe: number }[] }
-export interface Ablation { source: string; meta: Record<string, number | string>; lambda_star_grid: number[]; arms: AblationArm[]; headline: string; caveat: string }
+export interface Ablation { source: string; meta: Record<string, number | string>; lambda_star_grid: number[]; arms: AblationArm[]; headline: string; caveat: string; live_error?: string }
 
-export interface HazardCardT { label: string; coef: number[]; intercept: number; offset: number; feature_order: string[]; holdout_auc: number; brier: number; n: number; positives: number; natural_rate: number; discriminates: boolean }
+export interface HazardCardT { label: string; coef: number[]; intercept: number; offset: number; feature_order: string[]; holdout_auc: number; brier: number; n: number; positives: number; natural_rate: number; discriminates: boolean; trained_at?: string }
 export interface Hazard { deployed: HazardCardT | null; matched: HazardCardT | null; matched_eval: HazardCardT | null; caveat: string; null_finding: string }
 
 export interface Disputes { total: number; rows: Record<string, any>[]; columns: string[]; facets: { category: Record<string, number>; adapter: Record<string, number>; year: Record<string, number> } }
@@ -180,9 +182,19 @@ export interface QuoteCurve {
   mid: number; sigma: number; lambda_jump: number; category: string; horizon_days: number
 }
 
-export interface LiveStatus { reachable: boolean; endpoint: string; latency_ms?: number; head_ts?: number | null; head_id?: string | null; error?: string }
+export interface HfOverview {
+  resolution: { YES: number; NO: number; tie: number; resolved: number; unresolved: number; total: number }
+  markets_by_year: { year: string; n: number }[]
+  by_category: { category: string; n_markets: number; n_resolved: number }[]
+  coverage: { repo: string; total_conditions: number; resolved_conditions: number; total_fills: number; market_date_min: string; market_date_max: string; cutoff_block: number }
+  source?: string; note?: string; live_error?: string
+}
+export interface HfMarketRow { conditionId: string; marketName: string; marketSlug: string; category: string; startDate: string | null; endDate: string | null; resolved: boolean; resolvedOutcome: string | null }
+export interface HfMarkets { total: number; rows: HfMarketRow[]; categories: string[]; n_cached: number; note: string }
+
+export interface LiveStatus { reachable: boolean; endpoint: string; source?: string; latency_ms?: number; head_ts?: number | null; head_id?: string | null; head_age_seconds?: number | null; chain_head_ts?: number | null; error?: string }
 export interface LiveDispute { id: string; round: number | null; disputeTs: number; disputer: string | null; proposedOutcome: string | null; proposer: string | null; conditionId: string | null; marketStatus: string | null; finalOutcome: string | null; outcomeSlotCount: number | null }
-export interface LiveDisputes { reachable: boolean; disputes: LiveDispute[]; latency_ms?: number; endpoint: string; error?: string }
+export interface LiveDisputes { reachable: boolean; disputes: LiveDispute[]; source?: string; latency_ms?: number; endpoint: string; error?: string }
 
 // ---- testnet (Polygon Amoy on-chain market) --------------------------------------------------
 export interface TnMarket {

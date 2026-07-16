@@ -74,12 +74,11 @@ export function Pill({ children, dot, color }: { children: ReactNode; dot?: bool
 
 export function SourceTag({ source }: { source: string }) {
   const { C } = useColors()
-  const live = source === 'live'
-  return (
-    <Pill dot color={live ? C.sig : C.warn}>
-      {live ? 'live-computed' : 'published'}
-    </Pill>
-  )
+  const label = source === 'live' ? 'live-computed'
+    : source === 'replay' ? 'real replay artifact'
+    : 'published'
+  const color = source === 'live' ? C.sig : source === 'replay' ? C.series?.[1] ?? C.sig : C.warn
+  return <Pill dot color={color}>{label}</Pill>
 }
 
 // ---- Caveat / methodology note (honesty-as-a-feature) ----------------------------------------

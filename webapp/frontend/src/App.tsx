@@ -14,9 +14,11 @@ const Disputes = lazy(() => import('./sections/Disputes').then((m) => ({ default
 const LiveIndexer = lazy(() => import('./sections/LiveIndexer').then((m) => ({ default: m.LiveIndexer })))
 const Recon = lazy(() => import('./sections/Recon').then((m) => ({ default: m.Recon })))
 const SigmaSurface = lazy(() => import('./sections/SigmaSurface').then((m) => ({ default: m.SigmaSurface })))
+const HfDataset = lazy(() => import('./sections/HfDataset').then((m) => ({ default: m.HfDataset })))
+const HfMarkets = lazy(() => import('./sections/HfMarkets').then((m) => ({ default: m.HfMarkets })))
 import { WalletProvider, useWallet } from './lib/wallet'
 import { ToastProvider, useToast } from './components/Toast'
-import { LiveStatusProvider, useLiveStatus } from './components/LiveStatus'
+import { LiveStatusProvider, useLiveStatus, freshnessFromAge } from './components/LiveStatus'
 import { ThemeProvider, useTheme } from './components/Theme'
 import { CommandPalette, type Command } from './components/CommandPalette'
 import { CopyButton, PanelSkeleton } from './components/ui'
@@ -35,11 +37,13 @@ const NAV = [
   { id: 'live', label: 'Live indexer' },
   { id: 'recon', label: 'Integrity' },
   { id: 'sigma', label: 'σ surface' },
+  { id: 'hfdata', label: 'HF dataset' },
+  { id: 'hfmarkets', label: 'Markets' },
 ]
 // `g`-then-letter jump keys (shown as hints in the command palette)
 const GOTO_KEYS: Record<string, string> = {
   overview: 'o', trade: 't', baserates: 'b', score: 's', session: 'e', ablation: 'a',
-  hazard: 'h', disputes: 'd', live: 'i', recon: 'r', sigma: 'v',
+  hazard: 'h', disputes: 'd', live: 'i', recon: 'r', sigma: 'v', hfdata: 'f', hfmarkets: 'm',
 }
 
 function useScrollSpy(ids: string[]) {
@@ -90,10 +94,19 @@ function DeferSection({ id, lines = 6, children }: { id: string; lines?: number;
 function LivePill() {
   const s = useLiveStatus()
   if (s.connecting) return null
+  // LIVE is gated on head FRESHNESS (server head_age_seconds — chain-head age for the RPC source),
+  // not just reachability: a reachable-but-stale source reads "Nd behind" (amber), not a green LIVE.
+  const f = s.up ? freshnessFromAge(s.headAgeSeconds) : { state: 'unknown' as const, behind: '' }
+  const live = f.state === 'live'
+  const label = !s.up ? 'indexer down'
+    : live ? <>LIVE{s.latency != null && s.latency < 1000 ? ` · ${s.latency.toFixed(0)}ms` : ''}</>
+    : f.state === 'syncing' ? `syncing · ${f.behind}`
+    : f.state === 'stale' ? `stale · ${f.behind}`
+    : 'indexer'
   return (
-    <a href="#live" aria-live="polite" className={`chip ${s.up ? 'border-sig/40 text-sig' : 'border-warn/50 text-warn'}`} title="hosted Envio HyperIndex">
-      <span className={`h-1.5 w-1.5 rounded-full ${s.up ? 'bg-sig animate-pulse2' : 'bg-warn'}`} />
-      {s.up ? <>LIVE{s.latency != null && s.latency < 1000 ? ` · ${s.latency.toFixed(0)}ms` : ''}</> : 'indexer down'}
+    <a href="#live" aria-live="polite" className={`chip ${live ? 'border-sig/40 text-sig' : 'border-warn/50 text-warn'}`} title="hosted Envio HyperIndex">
+      <span className={`h-1.5 w-1.5 rounded-full ${live ? 'bg-sig animate-pulse2' : 'bg-warn'}`} />
+      {label}
     </a>
   )
 }
@@ -295,6 +308,8 @@ function AppInner() {
         <DeferSection id="live" lines={6}><LiveIndexer /></DeferSection>
         <DeferSection id="recon" lines={5}><Recon /></DeferSection>
         <DeferSection id="sigma" lines={6}><SigmaSurface /></DeferSection>
+        <DeferSection id="hfdata" lines={7}><HfDataset /></DeferSection>
+        <DeferSection id="hfmarkets" lines={8}><HfMarkets /></DeferSection>
       </main>
 
       <footer className="border-t border-line">
@@ -307,7 +322,6 @@ function AppInner() {
           <p>Live trading is jurisdiction-gated and out of scope for v1 — this MVP is paper-mode only, and every simulated figure is stamped <span className="font-mono">simulated: true</span>. The testnet wallet signs on Polygon Amoy — play money, no keys server-side.</p>
           <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-line pt-4 text-ink-2">
             <a className="link-underline hover:text-sig" href="https://github.com/kaustubh76/Polylambda" target="_blank" rel="noreferrer">GitHub ↗</a>
-            <a className="link-underline hover:text-sig" href="https://indexer.dev.hyperindex.xyz/0638687/v1/graphql" target="_blank" rel="noreferrer">Envio indexer (GraphQL) ↗</a>
             <a className="link-underline hover:text-sig" href="https://huggingface.co/datasets/moose-code/polymarket-onchain-v1" target="_blank" rel="noreferrer">HF dataset ↗</a>
             <a className="link-underline hover:text-sig" href="https://amoy.polygonscan.com" target="_blank" rel="noreferrer">Amoy explorer ↗</a>
             <span className="ml-auto text-muted">built for the Polymarket Builders Program</span>

@@ -12,8 +12,11 @@ services:
     envVars:
       - key: MODE
         value: paper
-      - key: INDEXER_GRAPHQL_URL
-        value: https://indexer.dev.hyperindex.xyz/0638687/v1/graphql
+      # Live dispute feed = keyless Polygon RPC eth_getLogs scan (no indexer, no paid service).
+      # The old Envio dev deploy ended; leave INDEXER_GRAPHQL_URL UNSET to use the RPC path. Set it
+      # only if you stand up your own hosted indexer.
+      - key: POLYGON_RPC_URL
+        value: https://polygon.gateway.tenderly.co
       # --- testnet on-chain market (Polygon Amoy) ---
       - key: AMOY_RPC_URL
         value: https://polygon-amoy.drpc.org
