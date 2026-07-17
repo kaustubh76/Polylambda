@@ -217,3 +217,72 @@ no step produces.
 
 ### Status
 **pytest 165 / frontend 29 / indexer 1** green. Committed on `feat/hf-token-and-negrisk-labeling`.
+
+## 10. Part 6 (2026-07-17) — the release extends to now, and the gates found the release was wrong
+
+The plan was "extend to now, adopt only if λ is byte-identical". Three gates ran. **Gate 1 failed — and
+the failure was the finding.** It said the RPC scan did not reproduce the release: 14 in-window keys
+disjoint, `proposer` disagreeing on 85/1780, `proposedOutcome` on 41/1780. The tempting read was "my
+scan is buggy". Chain says otherwise.
+
+### The release was wrong; the RPC is right (verified on-chain, not argued)
+| claim | evidence |
+|---|---|
+| **85 wrong `proposer`** | re-decoded the real `DisputePrice` log at each dispute block: chain agrees with **RPC 12/12**, with the **release 0/12**. `disputer` agrees on **85/85** — so not a topic-order slip: the indexer's *join* mis-keyed `proposer` while reading `disputer` correctly. The RPC reads it from indexed `topics[2]`, which cannot mis-key. |
+| **14 misattributed markets** | the 14 release-only disputes exist on chain **0/14**; their 14 RPC counterparts **14/14**. Same blocks, same timestamps, *different questionId* → the same 14 disputes, attributed to the wrong question and therefore the wrong `conditionId` and the wrong **market**. |
+| **41 wrong `proposedOutcome`** | sign flips (NO→YES ×20, YES→NO ×8); chain agrees with RPC 12/12 vs the release's 10/12. |
+
+**Why the earlier "12/12 validated" (§Q) missed all of it:** that was a 12-row spot check on a lucky
+subset. 85 errors sat in the corpus the whole time. A sample that small cannot find a 5% defect rate —
+only the full diff did.
+
+### My own bugs found in the same pass
+- **`round` was 1-based** against a release schema that defines `0 = first request` → *every* row looked
+  like a reset round (1,794 with round>0 vs the release's 245). Nothing crashes when `round` is wrong.
+- **The test asserted `[1, 2]` — it PINNED the bug** instead of catching it, and passed for two commits.
+  Now `[0, 1]` with the reasoning recorded.
+- **The first adoption plan would have destroyed κ.** It said "copy the RPC parquet over the release";
+  that parquet was exported `with_price_context=False`, so `realizedJumpLogit` is all-null — and 1,149
+  non-null *is* the global-κ n. Confirmed empirically: κ calibration **throws** on it, it doesn't
+  degrade quietly. Fixed by re-exporting **with** price context.
+
+### Reproducibility bugs — two published numbers were single draws, not facts
+- **`recon.eligible` was non-deterministic**: `Market(limit, offset)` paginated with **no `order_by`**,
+  so pages silently overlap/omit. Four runs over the SAME stalled indexer: **23,259 / 27,311 / 30,632 /
+  35,977**. `pass_rate` stayed 1.0 throughout, which is exactly why it hid — the headline looked stable
+  while its denominator wandered 50%. Fixed: `order_by: {id: asc}`.
+- **`holdout_auc` was non-deterministic**: `_holdout_eval` *was* seeded, but a seeded shuffle of a list
+  whose incoming order is arbitrary is still arbitrary — the rows are built off Python set iteration.
+  Three runs on identical data: **0.7153 / 0.7055 / 0.7105**. Fixed by sorting before the shuffle;
+  now byte-stable at **0.70864**.
+- **A flaky test, root-caused not retried**: `test_block_timestamps_checkpoint_survives_a_crash` keyed
+  off a shared `_rpc` call counter, so `live.py`'s background tail-refresh thread (still alive after
+  `tests/test_webapp.py`) burned one of its four allowed calls → "only 3 of 4 checkpointed", depending
+  on file order. Now block-keyed and hermetic. **The stray thread outliving its test is still real.**
+
+### What shipped
+- **1,848 disputes**, `2022-12-30 → 2026-07-16` (was 1,794, stalling at 2026-04-18 — the *actual* fix
+  for "the explorer shows April"). `stats.json` gains **`in_window_disputes: 1794`**.
+- **The guard did its job**: `load_disputes()` still returns exactly **1,794** (v2 723 / negrisk 963 /
+  other 108) from an 1,848-row parquet — `tests/test_disputes.py` passes **unchanged**. The 54
+  post-cutoff rows (negrisk 50 / v2 2 / other 2) are all `hf_joinable=True`: precisely the rows that
+  would have biased the numerator, exactly as §9 predicted.
+- **λ moved only where the old data was proven wrong**, within the bounds quoted before the call:
+  politics **0.00%**, headline unchanged ("entertainment ~25× more dispute-prone than crypto"), worst
+  case tech-ai **−3.70%**. κ global **0.75873 → 0.76047** (n 1149 → 1146).
+- **Hazard retrained**: AUC **0.704 → 0.7086**, positives 1527 → 1522. The 0.704 model predated the
+  NegRisk labeling — it was fitted on the V2-only 723-row numerator, which is why `natural_rate`
+  corrects **0.00272 → 0.00735**. `proposer_reliability` has coef **0.0** (a proven null), so the 85
+  corrections do **not** move the model — an earlier claim of mine that they would was wrong.
+- **Post-cutoff rows carry no price context, by construction**: the HF fill tape ends at the cutoff, so
+  none is derivable. Asserted in the test, not just argued.
+
+### Also discovered
+A **local Envio indexer is running** (`envio-postgres` + `envio-hasura`, up 9d) — "Envio is dead" is
+true only of the *hosted* deploy. It is **stalled at block 85,960,271** vs head 90,389,991 (~4.4M
+blocks / ~3.5 months), having stopped just past the HF cutoff. `run_recon` silently found it, which is
+how the unstable recon numbers got into a fresh export at all. **`recon` is therefore carried forward
+from the last indexer-backed run rather than recomputed** — the card and `constants.py` say so.
+
+### Status
+**pytest 171 / frontend 29** green (typecheck + build clean).

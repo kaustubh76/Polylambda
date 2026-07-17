@@ -70,13 +70,22 @@ ARM_LABELS = {
 
 # --- dataset headline (dataset_release/.../stats.json) — fallback if the file is missing ---------
 DATASET_STATS_FALLBACK = {
-    "total_disputes": 1794, "hf_joinable_pct": 100.0,
-    "by_adapter": {"v2": 723, "negrisk": 963, "legacy": 108},
-    "by_category_joinable": {"other": 832, "politics": 376, "sports": 158, "crypto": 154,
-                             "geopolitics": 110, "tech-ai": 72, "entertainment": 65,
-                             "economics": 17, "null": 10},
-    "by_year": {"2022": 1, "2023": 75, "2024": 394, "2025": 1049, "2026": 275},
-    "date_min": "2022-12-30", "date_max": "2026-04-18",
+    # total_disputes is the SHIPPED count (the layer runs to chain head); in_window_disputes is what
+    # the λ base rates are actually computed on (the HF denominator is frozen at HF_CUTOFF_TS). They
+    # diverge by design — never substitute one for the other.
+    "total_disputes": 1848, "in_window_disputes": 1794, "hf_joinable_pct": 100.0,
+    # The 108→110 rows are keyed by the adapter's RAW ADDRESS, matching the release. They were
+    # previously labelled "legacy" here, which is wrong twice over: real `legacy`
+    # (0x71392e13…) contributes 0 rows, and this adapter is a distinct contract. The release stores
+    # the raw string; renaming it here only hides the mismatch.
+    "by_adapter": {"v2": 725, "negrisk": 1013, "0x157ce2d672854c848c9b79c49a8cc6cc89176a49": 110},
+    "by_category_joinable": {"other": 857, "politics": 394, "sports": 160, "crypto": 154,
+                             "geopolitics": 110, "tech-ai": 73, "entertainment": 66,
+                             "economics": 24, "null": 10},
+    "by_year": {"2022": 1, "2023": 75, "2024": 394, "2025": 1049, "2026": 329},
+    "date_min": "2022-12-30", "date_max": "2026-07-16",
+    # Carried from the last indexer-backed run. NOT recomputed on an RPC-only export: recon needs an
+    # indexer, and the local one is ~4.4M blocks behind head.
     "recon": {"pass_rate": 1.0, "eligible": 28482, "matched": 28482, "no_ground_truth": 125270},
 }
 

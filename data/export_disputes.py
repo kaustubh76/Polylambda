@@ -186,6 +186,11 @@ def _stats(rows: list[dict]) -> dict:
     return {
         "dataset": DATASET_NAME,
         "total_disputes": len(rows),
+        # The λ numerator uses only the rows inside the HF window (data.disputes.load_disputes), because
+        # the denominator is an HF snapshot frozen at HF_CUTOFF_TS. Once the layer is extended past that
+        # head, total_disputes and the λ-eligible count diverge — publish BOTH so a reader of stats.json
+        # can never mistake the shipped total for the number the base rates were computed on.
+        "in_window_disputes": sum(1 for r in rows if (r["disputeTs"] or 0) <= HF_CUTOFF_TS),
         "hf_joinable": joinable,
         "hf_joinable_pct": round(100 * joinable / len(rows), 1) if rows else 0.0,
         "by_adapter": dict(adapter),
@@ -229,6 +234,12 @@ companion dataset fills exactly that gap: every on-chain `DisputePrice` on a Pol
 linked to its Gnosis CTF `conditionId` so it joins the `moose-code` tables directly.
 
 - **{stats['total_disputes']} disputes** across adapters ({by_adapter}), {stats['date_min']} → {stats['date_max']}.
+- **{stats.get('in_window_disputes', stats['total_disputes'])} of them fall inside the `moose-code` snapshot
+  window** (`disputeTs` ≤ block 85,948,287 / 2026-04-24). Rows past that head are flagged
+  `post_hf_cutoff` and carry **no price context** — the fill tape they would be measured against is
+  frozen at the cutoff. **Compute base rates on the in-window rows only**: the denominator (resolved
+  markets) is an HF snapshot, so a market disputed after the head is counted as disputed while never
+  counting as resolved. See `post_hf_cutoff` below.
 - **{stats['hf_joinable']} ({stats['hf_joinable_pct']}%) are HF-joinable** — across **all** adapters. The
   released `conditionId` is the effective `moose-code` join key: for NegRisk (multi-outcome) markets that
   is the **tradeable** conditionId recovered from the NegRiskOperator (see the NegRisk map below), not the
@@ -236,15 +247,23 @@ linked to its Gnosis CTF `conditionId` so it joins the `moose-code` tables direc
   and joins the fill tape directly.
 
 ## Provenance
-Produced by the PolyLambda scoped Envio indexer (`indexer/`, chain 137 / Polygon), which reads:
+Produced by PolyLambda from **Polygon (chain 137) on-chain logs**, via either of two interchangeable
+sources — a direct **keyless RPC scan** of the OOv2 `DisputePrice` logs (`data/disputes.py`, the default
+and how this release is regenerated today), or the scoped **Envio indexer** (`indexer/`) when one is
+running. Both resolve the same facts:
 - `ConditionalTokens.ConditionPreparation` → the authoritative `questionId → conditionId` map (works for
   **every** adapter, including NegRisk — it is read from chain, never derived);
 - `UmaCtfAdapter.QuestionInitialized` (V2 + NegRisk + Legacy) → `(adapter, requestTimestamp) → conditionId`;
 - `OptimisticOracleV2.{{ProposePrice, DisputePrice, Settle}}` → the proposal/dispute/settle events, whose
   `conditionId` is resolved via the lookup above (no keccak derivation — which fails for NegRisk).
 
-Reconciliation: the indexer's resolved `finalOutcome` matches `moose-code` `condition.payoutNumerators`
-at **{recon_line}**.
+The RPC path reaches the same `conditionId` without an indexer: it decodes each `DisputePrice` log,
+derives the UMA `questionId` as `keccak(ancillaryData)`, and — for NegRisk — bridges to the tradeable
+`conditionId` through the NegRiskOperator `QuestionPrepared` event (see the NegRisk map below).
+
+Reconciliation: the resolved `finalOutcome` matches `moose-code` `condition.payoutNumerators`
+at **{recon_line}**. (This figure is carried from the last indexer-backed run — the reconciliation
+check requires an indexer, so it is not recomputed on an RPC-only regeneration.)
 
 ## Schema (`disputes.parquet`)
 | column | type | notes |
@@ -260,7 +279,8 @@ at **{recon_line}**.
 | `round` | int | reset round (0 = first request; bumps on each two-strikes reset) |
 | `disputer` / `proposer` | string | on-chain addresses |
 | `proposedOutcome` | string | the disputed proposal: `YES` / `NO` / `UNRESOLVABLE` / `OTHER` |
-| `preDisputePrice` / `postDisputePrice` / `realizedJumpLogit` | double | optional fill-tape price context (joinable only; null unless exported `--with-price-context`) |
+| `preDisputePrice` / `postDisputePrice` / `realizedJumpLogit` | double | optional fill-tape price context (joinable only; null unless exported `--with-price-context`, and **always null when `post_hf_cutoff`** — the fill tape ends at the cutoff) |
+| `post_hf_cutoff` | bool | `true` iff the dispute happened **after** the `moose-code` snapshot head (block 85,948,287 / 2026-04-24). These rows extend the dispute timeline to the present, but they are **not** base-rate eligible: the resolved-market denominator is frozen at the cutoff, so counting them inflates the rate (they land in `n_markets` but not `n_resolved`). Filter them out for any rate/hazard work; keep them for recency. |
 
 ## Join recipe (DuckDB)
 ```sql

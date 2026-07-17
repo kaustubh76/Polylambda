@@ -23,7 +23,12 @@ def test_overview_tiles(client):
     d = client.get("/api/overview").json()
     assert d["mode"] == "paper"
     assert len(d["tiles"]) == 4
-    assert d["dataset"]["total_disputes"] == 1794
+    # the SHIPPED total (the layer runs to chain head), not the λ-eligible count — they diverge by
+    # design since the base rates are pinned to the frozen HF window. The tile names both.
+    assert d["dataset"]["total_disputes"] == 1848
+    disputes_tile = next(t for t in d["tiles"] if t["label"] == "OOv2 disputes indexed")
+    assert disputes_tile["value"] == 1848
+    assert "1,794 in λ window" in disputes_tile["sub"], "the tile must not imply λ used all 1,848"
     assert "dX" in d["jump_diffusion"]
 
 

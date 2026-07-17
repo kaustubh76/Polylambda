@@ -179,15 +179,6 @@
   "volume": 87971.67,
   "trades": 313
  },
- "0x3794a7abc1be730adbf70384f14431f0950080c33bc4cb1be592fade341ed037": {
-  "category": null,
-  "startDate": null,
-  "endDate": null,
-  "resolved": false,
-  "resolvedOutcome": null,
-  "volume": null,
-  "trades": null
- },
  "0x29a6ab753d518cbbef4398201e791c9bb7d37853ae6acd6c7b0583d549e41ed9": {
   "category": "other",
   "startDate": "2023-04-06",
@@ -3131,6 +3122,15 @@
   "volume": 63687.51,
   "trades": 290
  },
+ "0x23ec6857af1da21b58cc3c28bde7a451694ab56b6fb19902664b29cb5fab3f3f": {
+  "category": "other",
+  "startDate": "2024-10-23",
+  "endDate": "2024-12-31",
+  "resolved": true,
+  "resolvedOutcome": "YES",
+  "volume": 272176.27,
+  "trades": 2713
+ },
  "0x3eb853038ea49f13025119d7980547e2b41cf428023d5148c4f65ec79cf7ceaa": {
   "category": "politics",
   "startDate": "2024-10-17",
@@ -4490,15 +4490,6 @@
   "volume": 84022.6,
   "trades": 2089
  },
- "0xaee3d853036f1c6560223554609afc8552973e01d54573d442edd8b6a2109c94": {
-  "category": "other",
-  "startDate": "2025-03-10",
-  "endDate": "2025-03-20",
-  "resolved": true,
-  "resolvedOutcome": "NO",
-  "volume": 4373.97,
-  "trades": 54
- },
  "0x0cad3fba16c1712de9aab3f155f122ccdb98c9e73765ae93725634f505177cde": {
   "category": "politics",
   "startDate": "2025-01-29",
@@ -5723,6 +5714,15 @@
   "volume": 22096.53,
   "trades": 1048
  },
+ "0xa72608ce1c6ba56d772b784d1e58e2b317436e2e568429973e5588d7a9c43000": {
+  "category": "sports",
+  "startDate": "2025-03-10",
+  "endDate": "2025-03-23",
+  "resolved": true,
+  "resolvedOutcome": "NO",
+  "volume": 84063.97,
+  "trades": 761
+ },
  "0x34295c16ef1e45b468381a9aa35676b0f4cc29e80b36b80fdb1f3163f522b33d": {
   "category": "other",
   "startDate": "2024-12-16",
@@ -6713,14 +6713,14 @@
   "volume": 9163.18,
   "trades": 168
  },
- "0x7da411313a67ba12ad45cbfc595fb9bcae5d31d5520c97d3c7256312cb270ef4": {
+ "0xe5d9b2668461443c9b9aac4bbbbb356acfccf42edb13148c4c9e12c1a0923c23": {
   "category": "crypto",
   "startDate": "2025-05-09",
   "endDate": "2025-05-16",
   "resolved": true,
-  "resolvedOutcome": "YES",
-  "volume": 1240373.63,
-  "trades": 14859
+  "resolvedOutcome": "NO",
+  "volume": 324673.04,
+  "trades": 3286
  },
  "0x2268457aebdbbe35c2c9d996c8cea3a322e261301ee3321a23c4c8d0abac1990": {
   "category": "other",
@@ -6811,15 +6811,6 @@
   "resolvedOutcome": "NO",
   "volume": 3595021.49,
   "trades": 3207
- },
- "0x6382660ae58b644c1181de7cd906b1170db6105023d7a8638df28233229bf773": {
-  "category": "tech-ai",
-  "startDate": "2025-05-12",
-  "endDate": "2025-05-13",
-  "resolved": true,
-  "resolvedOutcome": "YES",
-  "volume": 29294.77,
-  "trades": 495
  },
  "0x558c407b0b7f0a1cf9ecacfc5d36b46c982be82bcb76d1fb38fb8380d4761936": {
   "category": "sports",
@@ -7010,6 +7001,24 @@
   "volume": 577169.97,
   "trades": 4070
  },
+ "0x31eaf3b4bfb0c7107250f8aae9dfaf18a821a6c58fe1b5254a1b77542a4c836c": {
+  "category": "other",
+  "startDate": "2025-08-04",
+  "endDate": "2026-06-30",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 77559.46,
+  "trades": 3827
+ },
+ "0xde15533da479594354a3f1a27b53a90ac1812da4d91fba29fe65aa53f3fdc504": {
+  "category": "other",
+  "startDate": "2025-08-04",
+  "endDate": "2026-06-30",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 47265.03,
+  "trades": 2001
+ },
  "0xff5137265a5541424ce7d67cea3cd1833d8cf745c20f3697d487e4f5656b70cc": {
   "category": "other",
   "startDate": "2025-06-22",
@@ -7036,6 +7045,24 @@
   "resolvedOutcome": "NO",
   "volume": 712135.38,
   "trades": 6594
+ },
+ "0xad64702b11d1dd39c1f60ebb86dbd29d5958b7d23c2c1fc62f5b2d5e3d0b4233": {
+  "category": "other",
+  "startDate": "",
+  "endDate": "",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": null,
+  "trades": null
+ },
+ "0x6a01c1687c781829cc90198cfd3c73f9ce64bca2a8960527868b0ad737e53f89": {
+  "category": "other",
+  "startDate": "2025-08-04",
+  "endDate": "2026-06-30",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 250533.67,
+  "trades": 7061
  },
  "0x4a732ed24abaea466d424e4b3b08f74f8fb5c213d9c07ad8d27df39733e70ca3": {
   "category": "other",
@@ -7181,6 +7208,15 @@
   "volume": null,
   "trades": null
  },
+ "0xd774ae63242990a51033d085d4fd8b33d628842af619325a76440b5f50dfa21b": {
+  "category": "crypto",
+  "startDate": "2025-05-23",
+  "endDate": "2025-05-26",
+  "resolved": true,
+  "resolvedOutcome": "YES",
+  "volume": 403891.96,
+  "trades": 3070
+ },
  "0x82b9d9bf5c861017edfc966a13f796d958cab972ebefc41adbd709f254c60d4b": {
   "category": null,
   "startDate": null,
@@ -7189,15 +7225,6 @@
   "resolvedOutcome": null,
   "volume": null,
   "trades": null
- },
- "0x49b72dc8c17e6c15c5c6c3d8538b1c1c54cc46219fc15729d470ccc19f86fdd3": {
-  "category": "crypto",
-  "startDate": "2025-05-23",
-  "endDate": "2025-05-27",
-  "resolved": true,
-  "resolvedOutcome": "YES",
-  "volume": 169005.93,
-  "trades": 2536
  },
  "0x16d518606b94a35322d8dc851cc699d7d0e7b4408b9c7ae911a1934efc6de02d": {
   "category": "sports",
@@ -7270,15 +7297,6 @@
   "resolvedOutcome": "YES",
   "volume": 98.33,
   "trades": 39
- },
- "0x19e22d98e7a7f46e08247d359fb446193484e8522125b249ec0ac38a10320697": {
-  "category": "tech-ai",
-  "startDate": "2025-05-29",
-  "endDate": "2025-06-30",
-  "resolved": true,
-  "resolvedOutcome": "NO",
-  "volume": 1086804.85,
-  "trades": 15164
  },
  "0xac1b6017f9447f21dfd69829b5d7b084aef5893f7ddd6abdca8d95f40238f398": {
   "category": "tech-ai",
@@ -7388,15 +7406,6 @@
   "volume": 11805.42,
   "trades": 127
  },
- "0x8e1a037aac5403a9f2f3aea7f6f1b15a0a937e1817289ad7e6c0945b0991adb7": {
-  "category": "other",
-  "startDate": "2025-06-02",
-  "endDate": "2025-09-30",
-  "resolved": true,
-  "resolvedOutcome": "YES",
-  "volume": 44120.88,
-  "trades": 429
- },
  "0xc6d4ced14cb9f6e1230cdca122a56ed64c9a9e3f6191f4d1535b988a7e7c0d69": {
   "category": "other",
   "startDate": "",
@@ -7487,15 +7496,6 @@
   "volume": 114838.22,
   "trades": 886
  },
- "0xf8fb63be81a7794cdece9e7716bf60d36b189523d6417694369bb5c6710944a0": {
-  "category": "politics",
-  "startDate": "2025-06-09",
-  "endDate": "2025-06-30",
-  "resolved": true,
-  "resolvedOutcome": "NO",
-  "volume": 174400.8,
-  "trades": 3265
- },
  "0x1d1499830b75c7183ceae50d90fe078ffa43a2a25ad74bdfc5b59841c31273f5": {
   "category": "entertainment",
   "startDate": "2025-06-09",
@@ -7513,6 +7513,15 @@
   "resolvedOutcome": "NO",
   "volume": 9170.81,
   "trades": 402
+ },
+ "0x55e0457a12c4cb3b7dd110d2508e0b5167fafaff90fbf42ffc9766a58cdc6680": {
+  "category": "politics",
+  "startDate": "2025-06-09",
+  "endDate": "2025-06-13",
+  "resolved": true,
+  "resolvedOutcome": "YES",
+  "volume": 787985.08,
+  "trades": 2962
  },
  "0xbbf67626341697e4d77206624bf6a179514d17477d56c967de2ed225ac310f26": {
   "category": "geopolitics",
@@ -7712,15 +7721,6 @@
   "volume": 1314141.67,
   "trades": 4651
  },
- "0x32b61d08c9e5552a7ba2e4c367ef84fbf3a79accbe3e194a1b0c98230ea6318a": {
-  "category": "other",
-  "startDate": "2025-06-25",
-  "endDate": "2025-07-31",
-  "resolved": true,
-  "resolvedOutcome": "YES",
-  "volume": 164460.54,
-  "trades": 3750
- },
  "0x891d4a752d5e8e7a7d707b6f40141975f1e469616c4ff74f8cf02869a0159cfa": {
   "category": "sports",
   "startDate": "2025-06-25",
@@ -7748,14 +7748,14 @@
   "volume": 22664510.31,
   "trades": 81346
  },
- "0x2d653b2987ba4a2ab6858d39aab560651a868b15f41322153caa28fe21dc29d7": {
-  "category": "other",
+ "0xe459d1b598da754c9fd5fc155b6efe3a144aa80abbc7d041fce7d35d903d3c8e": {
+  "category": "crypto",
   "startDate": "2025-06-26",
-  "endDate": "2025-12-31",
-  "resolved": true,
-  "resolvedOutcome": "NO",
-  "volume": 4475979.04,
-  "trades": 28628
+  "endDate": "2026-02-01",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 1341400.68,
+  "trades": 20367
  },
  "0x7ad5abc1fbe868a97ac22faebfbd0063c9faab2d1ad5a1b9efd155acc19b13d9": {
   "category": "other",
@@ -7784,14 +7784,14 @@
   "volume": 1657.96,
   "trades": 250
  },
- "0x8c601a3d990460a92b604488eb97a9d19d9218c39609ad438cbe788a1db653d4": {
+ "0xaf0332b1a97e21ef2af70029b83b2bbdc605e23a2dfdc7186b72a1bc04f309a4": {
   "category": "politics",
   "startDate": "2025-06-27",
   "endDate": "2025-07-04",
   "resolved": true,
-  "resolvedOutcome": "YES",
-  "volume": 8153.53,
-  "trades": 141
+  "resolvedOutcome": "NO",
+  "volume": 218.31,
+  "trades": 35
  },
  "0xc35476f5260f185ed61eb98f0df828fc039b6b2dc0b6608dc75f743988b283f4": {
   "category": "crypto",
@@ -7856,23 +7856,23 @@
   "volume": 2049453.48,
   "trades": 41176
  },
- "0xfb233374e212276f351c8a0f27b058a827017433732ac6188c16ff6845177794": {
+ "0x1603adac948c264550aa5fef5c1a4a867d135cc11d8bbef0ca99d3f65c548654": {
   "category": "sports",
   "startDate": "2025-06-30",
   "endDate": "2025-07-06",
   "resolved": true,
   "resolvedOutcome": "NO",
-  "volume": 208.69,
-  "trades": 20
+  "volume": 752.69,
+  "trades": 35
  },
- "0x9cf449e4692bc62fd6a5672f90dcce1c2d3d52514ccfe14ddefdd31f1e428209": {
+ "0x18a95e83810d1c7c09850a2e6f410d3545047b9497a5cca186b2feee3e9878be": {
   "category": "sports",
   "startDate": "2025-06-30",
   "endDate": "2025-07-06",
   "resolved": true,
-  "resolvedOutcome": "NO",
-  "volume": 551.55,
-  "trades": 31
+  "resolvedOutcome": "YES",
+  "volume": 229.46,
+  "trades": 18
  },
  "0x34b22c066f7ab72cf30aca5f60b7a8562318637253545b0a11a24daf3cb57512": {
   "category": "sports",
@@ -7946,6 +7946,15 @@
   "volume": 243948.25,
   "trades": 6821
  },
+ "0x4fb4b1d5348a7649a261694d2bd2806c9a999077ec3170250ef26532a1b975c1": {
+  "category": null,
+  "startDate": null,
+  "endDate": null,
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": null,
+  "trades": null
+ },
  "0x0e5219af7f980cbd6fd8d4fd4233bfead6f2c0cc8aedfa95b0fdf9268ec4acd2": {
   "category": "politics",
   "startDate": "2025-07-02",
@@ -7963,6 +7972,15 @@
   "resolvedOutcome": "YES",
   "volume": 49391.09,
   "trades": 530
+ },
+ "0x8135dd6aee528b32e4e0727ce7151f63102d121aaa0ddb46c932a256cd16ec56": {
+  "category": "other",
+  "startDate": "",
+  "endDate": "",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": null,
+  "trades": null
  },
  "0x3b2f19935f2a969634a7aca52b69cf653d957ec6243bdfcb97dd830003e90624": {
   "category": "geopolitics",
@@ -8233,6 +8251,15 @@
   "resolvedOutcome": "NO",
   "volume": 3172.57,
   "trades": 23
+ },
+ "0xf0c1e20c4519886c8cc7348522631e5d020d2fe5b4652efbdccad28fb5d9f712": {
+  "category": "other",
+  "startDate": "2025-06-02",
+  "endDate": "2025-09-30",
+  "resolved": true,
+  "resolvedOutcome": "YES",
+  "volume": 156733.06,
+  "trades": 1054
  },
  "0xc5d6e069e3f175059190bb1facdbc6b696d23097a7c80625665c94f4f7e39a97": {
   "category": "other",
@@ -8521,6 +8548,51 @@
   "resolvedOutcome": "NO",
   "volume": 1105.0,
   "trades": 8
+ },
+ "0x8da282ebee37dc3b343c698c671f2abdcd751787bbd4c76eb2f700cac604072e": {
+  "category": "other",
+  "startDate": "",
+  "endDate": "",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": null,
+  "trades": null
+ },
+ "0x6d1257215cb487af1901d26b1ce8b02db5d3bdca138d47129131ffbe88dc8a3b": {
+  "category": "other",
+  "startDate": "",
+  "endDate": "",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": null,
+  "trades": null
+ },
+ "0x5e192a6c82e0f5a09e77d7d5e699919186709740779e88c9acd3c3510e61f094": {
+  "category": "other",
+  "startDate": "",
+  "endDate": "",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": null,
+  "trades": null
+ },
+ "0x35d93e2bee3519ca04d20f450999d1d50ca7ae852b76d8f5c70851d27a320a1b": {
+  "category": "other",
+  "startDate": "",
+  "endDate": "",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": null,
+  "trades": null
+ },
+ "0x2492295395f1613031e4fd26844ca20ea8a925470df692f9e2615d66f770f4dc": {
+  "category": "other",
+  "startDate": "",
+  "endDate": "",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": null,
+  "trades": null
  },
  "0x7590f51f00a87c7bc60cf740f43b1ca4a97c5e9ad583cf4cf94379508d0a067b": {
   "category": "other",
@@ -9332,6 +9404,15 @@
   "volume": 141338.61,
   "trades": 3643
  },
+ "0x0e925ab355d912ed3010f386ee2b62e071823f8fd15660e4eeae92b11e2963f0": {
+  "category": "other",
+  "startDate": "2025-08-15",
+  "endDate": "2026-05-28",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 3845.0,
+  "trades": 424
+ },
  "0x17401e73f3c44b3c03235227335616a09db70dbf6ec1e4dfed3ed70f4bd93625": {
   "category": "politics",
   "startDate": "2025-08-15",
@@ -9781,6 +9862,15 @@
   "resolvedOutcome": "YES",
   "volume": 1495453.63,
   "trades": 5314
+ },
+ "0x8cbfc3f07e0ff4104a48d6f2af4f4648cbf7af085c481abc0634be37bfc05187": {
+  "category": "other",
+  "startDate": "2025-08-27",
+  "endDate": "2026-05-27",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 176900.86,
+  "trades": 1458
  },
  "0xd3a26e8ca4f4dd9a7933e65fb1a36851b4527f7adadf477ca65106714ee26335": {
   "category": "tech-ai",
@@ -11069,6 +11159,33 @@
   "volume": 599098.63,
   "trades": 5393
  },
+ "0xc6aa056493b6f92d1030c22f8158f1de75223ec6306a6a5398970a453ce4d84b": {
+  "category": "other",
+  "startDate": "2025-11-10",
+  "endDate": "2026-06-30",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 9278.88,
+  "trades": 1198
+ },
+ "0xdcbb85388b085905980195fcdd3beadf36e59c4b7f67e8969a5fba467a126dc6": {
+  "category": "other",
+  "startDate": "2025-11-10",
+  "endDate": "2026-06-30",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 9660.25,
+  "trades": 1269
+ },
+ "0xd53f0165a4d2ef8e5a30f00fd24d69042a2047ee520cfd5496cf335dcfdabc62": {
+  "category": "other",
+  "startDate": "",
+  "endDate": "",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": null,
+  "trades": null
+ },
  "0x3aefad3f30e0e8df9107933182bae0fbb92a4bb9a7a69181a170aa49c7941d3e": {
   "category": "other",
   "startDate": "2025-11-07",
@@ -11077,6 +11194,42 @@
   "resolvedOutcome": "YES",
   "volume": 41199.24,
   "trades": 1523
+ },
+ "0xd72622d154dfe65b9c019d6afcfe75a55717e5c502db611f555b101aafbf6ec5": {
+  "category": "economics",
+  "startDate": "2025-11-13",
+  "endDate": "2026-04-29",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 25036191.21,
+  "trades": 113873
+ },
+ "0x0d14f5dc9fb3250ec888b1ac8d9fe9a0ce06f9d3ea60fdf138e8690622fea84c": {
+  "category": "economics",
+  "startDate": "2025-11-13",
+  "endDate": "2026-04-29",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 11691462.76,
+  "trades": 91163
+ },
+ "0x36e8ca24d2a13435f519f15580d42b45cdbe3bc425fb39a7c2733260357af0fa": {
+  "category": "economics",
+  "startDate": "2025-11-13",
+  "endDate": "2026-04-29",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 36623520.78,
+  "trades": 175293
+ },
+ "0xd4d00e5bf8b960cc37c74c1ec19e41e00b0706add203ddcfbb65ad006c5c223a": {
+  "category": "economics",
+  "startDate": "2025-11-13",
+  "endDate": "2026-04-29",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 16094906.89,
+  "trades": 124583
  },
  "0xdea318eedf9bce218d227352cf3736f2ba1fd424953d44d27b480a9b8f379e80": {
   "category": "other",
@@ -11095,6 +11248,15 @@
   "resolvedOutcome": null,
   "volume": 222233.63,
   "trades": 723
+ },
+ "0x066f2341d819cd15d2562bddd08b99584dcce1e546b6a4749643e221fae8ea0b": {
+  "category": "other",
+  "startDate": "2025-11-13",
+  "endDate": "2026-12-31",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 422120.37,
+  "trades": 1720
  },
  "0x50b8b0f741566a420756d975faaf4cc4716229cd5183c3a35b3b20ac2b5050ef": {
   "category": "crypto",
@@ -11582,6 +11744,15 @@
   "volume": 23751.43,
   "trades": 281
  },
+ "0x1e285f49c483634426c54834f840f6bfe780e0039eb0ad31357b936600b7c2d2": {
+  "category": "sports",
+  "startDate": "2025-12-06",
+  "endDate": "2026-06-27",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 7634.54,
+  "trades": 494
+ },
  "0x77b4a1d4cd398a86c18b6bb9b5218917dc9f04b01a3cd4bae1c71ea345f15fa8": {
   "category": "other",
   "startDate": "2025-07-22",
@@ -11717,6 +11888,15 @@
   "volume": 95462.14,
   "trades": 595
  },
+ "0xc18b1b9c7ffca0f781bce2fe53538bb5b752fd41ec4757c9047e1a097ccfff1c": {
+  "category": "politics",
+  "startDate": "2025-12-16",
+  "endDate": "2026-06-07",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 45011.56,
+  "trades": 1489
+ },
  "0xc7dfeffaeb7983fe815d1ac3a7a961f3c60043855cfc76033ed765973fe0742b": {
   "category": "other",
   "startDate": "2025-12-16",
@@ -11744,6 +11924,60 @@
   "volume": 3686.3,
   "trades": 106
  },
+ "0x951fda6a6baf97f16d903534095b84dfb20ea35cdd9a35e6854f18f47d6ec69a": {
+  "category": "economics",
+  "startDate": "2025-12-16",
+  "endDate": "2026-04-29",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 359628.53,
+  "trades": 3019
+ },
+ "0xae6d3d20bc8f742922dc40880cd8a8671c10385a9912fa7cd670fba0643dfe96": {
+  "category": "politics",
+  "startDate": "2025-12-16",
+  "endDate": "2026-04-12",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 7177752.98,
+  "trades": 86790
+ },
+ "0xc4c3dbcc37a957a817599b0bf9fb5bd6b62b19210b0f527fec57cb75c7ed150a": {
+  "category": "politics",
+  "startDate": "2025-12-16",
+  "endDate": "2026-04-12",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 5355086.05,
+  "trades": 64333
+ },
+ "0xef61cec575ac7260343e1f0c11900fee12a1f30b521b649eec7663ec5424242a": {
+  "category": "politics",
+  "startDate": "2025-12-16",
+  "endDate": "2026-04-12",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 120511.98,
+  "trades": 10637
+ },
+ "0x0248586d93eca782dc023e24a8948575ac27db8ba249b28cf0a101e3c4263aa9": {
+  "category": "economics",
+  "startDate": "2025-12-16",
+  "endDate": "2026-04-29",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 101254.64,
+  "trades": 3470
+ },
+ "0x337f46c571cdf4b891a7faed065a053fcf012481189a7dd7ebad20777e05a4a1": {
+  "category": "economics",
+  "startDate": "2025-12-16",
+  "endDate": "2026-04-29",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 253797.6,
+  "trades": 2378
+ },
  "0x790d04324ceda5e7fd3b2e62cf043d45b74a9d88921b6b250212d0c9b8ba1afd": {
   "category": "politics",
   "startDate": "2025-12-16",
@@ -11752,6 +11986,15 @@
   "resolvedOutcome": null,
   "volume": 159020.85,
   "trades": 5175
+ },
+ "0x2cd24d17f5680dc6e7b7d67c712a223ae85550745597e81bd2d2b8d073443951": {
+  "category": "politics",
+  "startDate": "2025-12-16",
+  "endDate": "2026-04-12",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 9591157.6,
+  "trades": 128163
  },
  "0xf72cfb54825af35a13b714a412a7f4e4cb58ecafbe82f08fecf4bceda6bd0128": {
   "category": "other",
@@ -11888,6 +12131,69 @@
   "volume": 19713.29,
   "trades": 509
  },
+ "0x7c795144bf0351e82c85f844de81f29f482aaefc3b544eddeb8b7932887649e4": {
+  "category": "politics",
+  "startDate": "2025-12-23",
+  "endDate": "2026-05-31",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 393496.73,
+  "trades": 3780
+ },
+ "0xa5b21a5fba9c9da91f62cedca9d28747816a514050140708a2300cdecef87f78": {
+  "category": "politics",
+  "startDate": "2025-12-23",
+  "endDate": "2026-05-31",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 174263.14,
+  "trades": 3368
+ },
+ "0x33b9298257eac39553c008b882ac333d2538bd493689d6710d3986d890580033": {
+  "category": "politics",
+  "startDate": "2025-12-23",
+  "endDate": "2026-05-31",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 92830.75,
+  "trades": 3513
+ },
+ "0xc00920db6f5e84821a61bd31578499bbc9bd125949572b589b7a9e4b0f13bad3": {
+  "category": "politics",
+  "startDate": "2025-12-23",
+  "endDate": "2026-05-31",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 215110.91,
+  "trades": 8416
+ },
+ "0xb611b3a7173f69e412b55561ed265d849e36693c248ff620d0e981c5b3f2e325": {
+  "category": "politics",
+  "startDate": "2025-12-23",
+  "endDate": "2026-05-31",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 566284.37,
+  "trades": 7082
+ },
+ "0x77b1512402d2b2590f65d22f4fb1d2ce29f3fd2d6516429928f430ddfc2215b3": {
+  "category": "politics",
+  "startDate": "2025-12-23",
+  "endDate": "2026-05-31",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 114622.64,
+  "trades": 3163
+ },
+ "0xeae8d09170bc56ee8ba9676b4a2f6d1a45c69084172ee7cc8a022197c2db191a": {
+  "category": "politics",
+  "startDate": "2025-12-23",
+  "endDate": "2026-05-31",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 154817.09,
+  "trades": 3566
+ },
  "0xffc0189960c524394b35f954ee93df699abed11c51d35cede55cb70a9a078750": {
   "category": "other",
   "startDate": "",
@@ -11987,6 +12293,24 @@
   "volume": 903339.47,
   "trades": 5212
  },
+ "0x5a4a06d086c9b4dae7bb5037cf8610dc50a045b7eedc056d2d3435dbfd684bed": {
+  "category": "tech-ai",
+  "startDate": "2025-12-25",
+  "endDate": "2027-12-31",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 228743.19,
+  "trades": 5026
+ },
+ "0xbad86ba21807056824d037b1f9a6051aa235a29722b2f3694409f97ca6c20328": {
+  "category": "tech-ai",
+  "startDate": "2025-12-25",
+  "endDate": "2027-12-31",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 17878.64,
+  "trades": 1094
+ },
  "0xf005ddced69842c3943edea3b8fb24187240ac93becdc1532c5b9db34f9dd2c8": {
   "category": "other",
   "startDate": "2025-04-17",
@@ -12013,6 +12337,24 @@
   "resolvedOutcome": "YES",
   "volume": 21839.41,
   "trades": 303
+ },
+ "0xdf88e78e59e5d854aeb115c92516972420d25815540d8b1418f03db92f0b3a5b": {
+  "category": "other",
+  "startDate": "2025-12-26",
+  "endDate": "2026-06-30",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 35372.25,
+  "trades": 2759
+ },
+ "0x9a8d6ca2d11883eaa923e66ad37e3f490a4171e28003c37d07f9b1040a7cb531": {
+  "category": "other",
+  "startDate": "2025-12-26",
+  "endDate": "2026-06-30",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 156440.65,
+  "trades": 5840
  },
  "0x19ed971cf8bb47105a348fd2e8b567aae3e2386d27e6a7a8188190eae0b70f7d": {
   "category": "tech-ai",
@@ -12131,15 +12473,6 @@
   "volume": 1000497.7,
   "trades": 6723
  },
- "0x0759b35c73d8e9dc291115f1572fbb3dec2daa9ca09410ee771a4ba251f384cc": {
-  "category": "crypto",
-  "startDate": "2026-01-01",
-  "endDate": "2026-01-08",
-  "resolved": true,
-  "resolvedOutcome": "NO",
-  "volume": 20266.22,
-  "trades": 471
- },
  "0x524a318eb105f5869a591cd1eb782c277e6f7317e79821a1fb41615e4bb68a90": {
   "category": "politics",
   "startDate": "2025-02-25",
@@ -12157,6 +12490,24 @@
   "resolvedOutcome": "NO",
   "volume": 1445.62,
   "trades": 88
+ },
+ "0xe81351003837800d495a43eab50a2739701dab05142cccb901fbf4ee339fd4fd": {
+  "category": "other",
+  "startDate": "2026-01-02",
+  "endDate": "2026-06-07",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 36266.74,
+  "trades": 2951
+ },
+ "0xb599d781347109dfc846c1ae5d6dd8afab6271a4ab0c792ae1c4e865a55772a1": {
+  "category": "other",
+  "startDate": "2026-01-02",
+  "endDate": "2026-06-07",
+  "resolved": false,
+  "resolvedOutcome": null,
+  "volume": 29906.25,
+  "trades": 2967
  },
  "0xdd0387f7805a4a7d90d9c84410bd8a7c77b00809e130c3f52cb9e28e49bc78a5": {
   "category": "other",

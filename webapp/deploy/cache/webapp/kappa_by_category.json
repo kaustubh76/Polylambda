@@ -1,48 +1,48 @@
 {
  "global": {
-  "kappa": 0.75873,
-  "n": 1149
+  "kappa": 0.76047,
+  "n": 1146
  },
  "categories": {
-  "tech-ai": {
-   "kappa": 0.59754,
-   "kappa_raw": 0.47665,
-   "n": 40
-  },
-  "economics": {
-   "kappa": 0.6843,
-   "kappa_raw": 0.49823,
-   "n": 12
-  },
-  "geopolitics": {
-   "kappa": 0.67708,
-   "kappa_raw": 0.64646,
-   "n": 80
-  },
-  "sports": {
-   "kappa": 0.55489,
-   "kappa_raw": 0.48769,
-   "n": 91
-  },
-  "politics": {
-   "kappa": 0.68316,
-   "kappa_raw": 0.67518,
-   "n": 284
-  },
   "other": {
-   "kappa": 0.91618,
-   "kappa_raw": 0.92532,
-   "n": 517
+   "kappa": 0.91485,
+   "kappa_raw": 0.92379,
+   "n": 518
   },
   "entertainment": {
-   "kappa": 0.56567,
-   "kappa_raw": 0.43696,
+   "kappa": 0.54288,
+   "kappa_raw": 0.39781,
    "n": 45
   },
-  "crypto": {
-   "kappa": 0.75999,
-   "kappa_raw": 0.76046,
+  "politics": {
+   "kappa": 0.69977,
+   "kappa_raw": 0.69332,
+   "n": 282
+  },
+  "sports": {
+   "kappa": 0.52533,
+   "kappa_raw": 0.44781,
+   "n": 91
+  },
+  "economics": {
+   "kappa": 0.69164,
+   "kappa_raw": 0.51957,
+   "n": 12
+  },
+  "tech-ai": {
+   "kappa": 0.61977,
+   "kappa_raw": 0.51153,
+   "n": 39
+  },
+  "geopolitics": {
+   "kappa": 0.66965,
+   "kappa_raw": 0.6356,
    "n": 80
+  },
+  "crypto": {
+   "kappa": 0.77612,
+   "kappa_raw": 0.78206,
+   "n": 79
   }
  }
 }

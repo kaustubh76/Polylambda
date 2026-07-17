@@ -243,14 +243,26 @@ def test_hazard_cards_carry_trained_at():
 
 
 # --- P: the two-source WINDOW invariant (λ numerator ÷ HF denominator) -------------------------
-def test_hf_cutoff_ts_bounds_the_shipped_layer():
+def test_hf_cutoff_ts_marks_every_row_past_the_head():
     """HF_CUTOFF_TS is the block time of HF_CUTOFF_BLOCK (2026-04-24T07:43:38Z, read from chain).
-    The shipped layer must sit inside it — if this fails, the release leaked past the HF snapshot."""
+
+    This used to assert `disputeTs.max() <= HF_CUTOFF_TS` — "the release never leaked past the HF
+    snapshot". That was a PROXY: it held only because the layer happened to stop at the cutoff, and it
+    conflated "the release is bounded" with "the numerator is bounded". The release now extends to
+    chain head ON PURPOSE (so the explorer isn't 3 months stale), so the proxy is obsolete. The real
+    invariant is the one the λ join actually needs: every row past the head is MARKED, so the guard in
+    load_disputes() can exclude it. Enforce that instead of freezing the release in time."""
     import pandas as pd
     from data.disputes import HF_CUTOFF_TS, RELEASE_PARQUET
     df = pd.read_parquet(RELEASE_PARQUET)
     assert HF_CUTOFF_TS == 1777016618
-    assert int(df.disputeTs.max()) <= HF_CUTOFF_TS
+    past = df[df.disputeTs > HF_CUTOFF_TS]
+    inside = df[df.disputeTs <= HF_CUTOFF_TS]
+    assert bool(past.post_hf_cutoff.all()), "a dispute past the HF head is not marked post_hf_cutoff"
+    assert not bool(inside.post_hf_cutoff.any()), "an in-window dispute is wrongly marked post_hf_cutoff"
+    # price context is derived from the HF fill tape, which ENDS at the cutoff — post-cutoff rows
+    # cannot have it, and a non-null there would mean context was computed against a truncated tape.
+    assert past.realizedJumpLogit.isna().all(), "post-cutoff row has price context; the tape is frozen"
 
 
 def test_numerator_ignores_post_cutoff_disputes(monkeypatch, tmp_path):
@@ -288,7 +300,12 @@ def test_hazard_reads_are_window_bounded():
 # --- Q: RPC-sourced export (the dataset is maintainable without Envio) -------------------------
 def test_load_disputes_rpc_derives_round_and_shape(monkeypatch):
     """`round` is the one release field an OO log cannot give. A dispute resets the question and
-    re-requests, so the n-th dispute on a questionId IS round n. Two disputes on one question → 1,2."""
+    re-requests, so the n-th dispute on a questionId IS round n — ZERO-BASED, matching the released
+    schema ("0 = first request; bumps on each two-strikes reset"). Two disputes on one question → 0,1.
+
+    This assertion previously read [1, 2], which pinned an off-by-one instead of catching it: a 1-based
+    counter marks EVERY row a reset round (a full export produced 1,794 rows with round>0 against the
+    release's 245). Nothing crashes when `round` is wrong — only a diff against the release finds it."""
     from data import disputes as D
     a1 = _make_dispute_log(next(iter(D.DERIVABLE)), "0x" + "11" * 20, "0x" + "22" * 20,
                            10**18, 80_000_100, ancillary=b"same-question")
@@ -318,8 +335,8 @@ def test_load_disputes_rpc_derives_round_and_shape(monkeypatch):
     by_q = {}
     for r in rows:
         by_q.setdefault(r["questionId"], []).append(r["round"])
-    assert sorted(next(v for v in by_q.values() if len(v) == 2)) == [1, 2]   # two-strikes
-    assert all(len(v) == 1 and v == [1] for v in by_q.values() if len(v) == 1)
+    assert sorted(next(v for v in by_q.values() if len(v) == 2)) == [0, 1]   # two-strikes, 0-based
+    assert all(len(v) == 1 and v == [0] for v in by_q.values() if len(v) == 1)
     # disputeTs is the TRUE block time, not the OO request time (1_700_000_000 in the stub)
     assert {r["disputeTs"] for r in rows} == set(ts_of.values())
     # drop-in shape for export_disputes.build_rows

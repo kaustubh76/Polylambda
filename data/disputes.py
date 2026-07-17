@@ -82,9 +82,13 @@ HF_CUTOFF_TS = int(os.environ.get("HF_CUTOFF_TS", "1777016618"))
 CHUNK = 500_000
 CACHE = os.path.join(os.environ.get("DATA_CACHE_DIR", ".data_cache"), "disputes.json")
 
-# The git-tracked released dispute layer: the COMPLETE, 100%-HF-joinable set across ALL adapters
-# (V2 723 + NegRisk 963 + other 108 = 1,794), keyed by the HF-EFFECTIVE conditionId (NegRisk already
-# mapped to its tradeable cid). This is the offline default numerator source for load_disputes().
+# The git-tracked released dispute layer: the COMPLETE, 100%-HF-joinable set across ALL adapters,
+# keyed by the HF-EFFECTIVE conditionId (NegRisk already mapped to its tradeable cid). This is the
+# offline default numerator source for load_disputes().
+#   1,848 rows total, running to chain head — of which 1,794 are INSIDE the HF window
+#   (V2 723 + NegRisk 963 + other 108) and 54 are past it, marked post_hf_cutoff.
+# load_disputes() serves only the 1,794: the λ denominator is an HF snapshot frozen at HF_CUTOFF_TS,
+# so the numerator must be bounded to match. The extra 54 exist for the explorer's recency.
 RELEASE_PARQUET = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
     "dataset_release", "polymarket-oov2-disputes-v1", "disputes.parquet")
@@ -415,7 +419,8 @@ def load_disputes_rpc(start_block: int = START_BLOCK, end_block: int | None = No
         (cached), which is exactly what the dataset card promises — and what the indexer path only
         managed via an optional cache that nothing built in CI.
       * round — the two-strikes counter. A dispute resets the question and re-requests, so the n-th
-        dispute on a questionId (ordered by time) IS round n. Derived here, 1-based.
+        dispute on a questionId (ordered by time) IS round n. Derived here, ZERO-based to match the
+        released schema (0 = first request).
     """
     end_block = end_block if end_block is not None else chain_head_block()
     adapters_topic = [_pad(a) for a in list(DERIVABLE) + [NEGRISK]]
@@ -450,11 +455,14 @@ def load_disputes_rpc(start_block: int = START_BLOCK, end_block: int | None = No
     for r in raw:
         r["disputeTs"] = ts.get(r["block"], r["requestTimestamp"])
 
-    # round = the n-th dispute on the same question, oldest first (the two-strikes semantic)
+    # round = the n-th dispute on the same question, oldest first (the two-strikes semantic).
+    # ZERO-BASED, matching the released schema ("0 = first request; bumps on each two-strikes reset").
+    # A 1-based counter here silently makes EVERY row a reset round — caught by diffing against the
+    # release, which has 245 in-window rows with round>0, not 1,794.
     seen: dict[str, int] = {}
     for r in sorted(raw, key=lambda x: (x["questionId"], x["disputeTs"], x["disputeId"])):
-        seen[r["questionId"]] = seen.get(r["questionId"], 0) + 1
-        r["round"] = seen[r["questionId"]]
+        r["round"] = seen.get(r["questionId"], 0)
+        seen[r["questionId"]] = r["round"] + 1
 
     rows = [r for r in raw if r["conditionId"]]        # unresolvable NegRisk → dropped, never phantom
     if log and len(rows) != len(raw):

@@ -12003,6 +12003,6 @@
  ],
  "n": 1000,
  "has_volume": true,
- "built_at": "2026-07-16",
+ "built_at": "2026-07-17",
  "note": "Top markets by traded volume \u222a most recently created, from the HF dataset (market_data \u22c8 condition \u22c8 orderbook). Volume is USDC across both outcome legs; resolution is the on-chain payout argmax."
 }

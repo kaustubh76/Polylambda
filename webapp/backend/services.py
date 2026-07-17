@@ -74,10 +74,18 @@ def overview() -> dict:
     d_min, d_max = _dataset_date_bounds(_merged_disputes_df())
     d_min = d_min or stats.get("date_min")
     d_max = d_max or stats.get("date_max")
+    # The tile shows the SHIPPED total (the layer now runs to chain head), but the base rates are
+    # computed only on the rows inside the frozen HF window — so name that number here rather than let
+    # a reader assume the headline count is what λ was fitted on. They diverge by design.
+    in_window = stats.get("in_window_disputes")
+    dispute_sub = f"{stats.get('hf_joinable_pct', 100)}% HF-joinable · all adapters"
+    if in_window and in_window != stats.get("total_disputes"):
+        dispute_sub = f"{in_window:,} in λ window · " + dispute_sub
     tiles = [
         {"label": "OOv2 disputes indexed", "value": stats.get("total_disputes"), "fmt": "int",
-         "sub": f"{stats.get('hf_joinable_pct', 100)}% HF-joinable · all adapters"},
-        {"label": "Hazard held-out AUC", "value": round(metrics.get("holdout_auc", 0.704), 3),
+         "sub": dispute_sub},
+        # fallback tracks the deployed .data_cache/hazard_model.json (retrain: python -m estimators.hazard)
+        {"label": "Hazard held-out AUC", "value": round(metrics.get("holdout_auc", 0.709), 3),
          "fmt": "num", "sub": "size-only model · calibration-limited"},
         {"label": "Frozen λ*", "value": frozen.get("lambda_star", 0.002), "fmt": "num4",
          "sub": "exit threshold (config/model.yaml)"},
