@@ -341,6 +341,12 @@ RPC_BLOCK_TS_CACHE = os.path.join(os.environ.get("DATA_CACHE_DIR", ".data_cache"
 
 
 _BLOCK_TS_CHECKPOINT = 100
+# Self-imposed pacing for the block-timestamp batch (~5 req/s by default). The keyless pool is
+# effectively ONE endpoint — publicnode 403s and polygon-rpc 401s outright, so RPC_URLS' "failover" is
+# decorative and tenderly alone must absorb ~1.8k calls. Unthrottled, it starts 401-ing partway
+# through; backoff can't fix a sustained limit, only a burst. Applied HERE (the batch hot path) and not
+# in _rpc, so the live feed's status probe stays instant. Set RPC_BATCH_DELAY_S=0 to disable.
+_RPC_BATCH_DELAY_S = float(os.environ.get("RPC_BATCH_DELAY_S", "0.2"))
 
 
 def _block_timestamps_cached(blocks: list[int], *, log=None) -> dict[int, int]:
@@ -374,13 +380,18 @@ def _block_timestamps_cached(blocks: list[int], *, log=None) -> dict[int, int]:
     todo = [b for b in blocks if str(b) not in cache]
     if log and todo:
         log(f"  block timestamps: {len(todo)} to fetch ({len(blocks) - len(todo)} cached)")
+    import time as _t
     try:
         for i, b in enumerate(todo, 1):
+            t0 = _t.monotonic()
             cache[str(b)] = int(_rpc("eth_getBlockByNumber", [hex(b), False])["timestamp"], 16)
             if i % _BLOCK_TS_CHECKPOINT == 0:
                 _flush()
                 if log:
                     log(f"  block timestamps {i}/{len(todo)} (checkpointed)")
+            # pace ourselves: sleep only for the time the call did NOT already take
+            if _RPC_BATCH_DELAY_S:
+                _t.sleep(max(0.0, _RPC_BATCH_DELAY_S - (_t.monotonic() - t0)))
     finally:
         if todo:
             _flush()                                    # keep partial progress even if we blew up
