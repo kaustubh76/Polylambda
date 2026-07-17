@@ -282,7 +282,15 @@ Done-Checks:
 - [x] disputes **1,794 → 1,847** (+53 past the old block-85.96M sync point); most recent **2026-07-01**; 1,570 unique disputed markets
 - [x] focused recon (disputed V2/Legacy in the HF window): **538/538 match HF payout, pass_rate 1.0000, 0 mismatches**
 - [~] full 1.25M-market recon: NOT run against the row-capped public endpoint — needs the hosted admin secret or a local re-sync
-- [ ] post-cutoff disputes are NOT HF-joinable (labels only) — re-export to the release only if wanted (would add `hf_joinable=false` rows)
+- [ ] ~~post-cutoff disputes are NOT HF-joinable (labels only) — re-export to the release only if wanted (would add `hf_joinable=false` rows)~~
+      **FALSE — corrected 2026-07-17.** `hf_joinable` is SPATIAL ("is this conditionId in HF"), never
+      temporal: a market prepared before the HF head but disputed after it is `hf_joinable=True`. Measured
+      on the 12 boundary markets: **12/12 hf_joinable**, 12/12 in `n_markets` but only **7/12** in
+      `n_resolved` → appending them is numerator **+12** / denominator **+7**, a selection bias that
+      inflates the rate (7 of the 12 are politics — the headline category). This false line is exactly
+      what made "just append the post-cutoff disputes" look safe. The λ numerator is now bounded by
+      `HF_CUTOFF_TS` in `data.disputes.load_disputes` (+ the hazard reads), so extending the released
+      layer is safe by construction; post-cutoff disputes reach the EXPLORER via the live merge only.
 Gate status: DONE — the hosted indexer is live, synced to chain head, and the disputed-set recon is 1.0.
        Deploy config is isolated on `envio`; `main` untouched (still keyless-RPC).
 Next first action: (optional) `python -m data.export_disputes --graphql-url <hosted-endpoint>` to fold the

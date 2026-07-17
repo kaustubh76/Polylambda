@@ -58,7 +58,9 @@ Local: `python -m webapp.backend.main` + `cd webapp/frontend && npm run dev`. Ch
 ## 5. Progress log
 - 2026-07-15: root-cause investigation complete (3 explore agents + live probe), plan approved, notes written. Execution started.
 - 2026-07-15: **all workstreams landed.** A1–A6 (reactive paper engine, working+honest edge-proof re-run, freshness-gated LIVE badge, model-card provenance), B1–B4 (live-merge in `services._merged_disputes_df`, computed `date_max`, `head_age_seconds`, `cache.refresh()` + `POST /api/admin/refresh`), C1–C3 (`refresh-data.yml`, `indexer/DEPLOY.md`, `scripts/indexer_health.py`, replay artifact wired via `_ablation_full_rows`), D1 (`kappa_by_category.json` + per-category `e_loss`/`jump_drift`). Verified end-to-end: `date_max`/explorer now show **2026-07-01** (was April, self-heals to head), ablation source=`replay` (4 real arms), LIVE badge reads "stale · 14d behind", `score` e_loss differs by category. Tests: **149 pytest / 26 frontend / 1 indexer green**; frontend typecheck + prod build clean.
-- **Remaining (external ops, not code):** stand up a persistent at-head Envio indexer per `indexer/DEPLOY.md` and set `INDEXER_GRAPHQL_URL` to it — then the LIVE badge, disputes merge, and `?live=1` ablation all light up automatically. The dev deploy is still 14d stale (`advancing=false`).
+- ~~**Remaining (external ops):** stand up a persistent at-head Envio indexer…~~ **SUPERSEDED by §6** —
+  the Envio free tier ended, so the live plane was pivoted to a keyless Polygon RPC scan. No indexer is
+  required any more; see §6–§8.
 
 ## 6. Part 2 (2026-07-16) — Envio free tier ended → keyless RPC live feed + HF in the UI
 

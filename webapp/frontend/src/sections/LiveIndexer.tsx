@@ -140,7 +140,7 @@ export function LiveIndexer() {
       <div className="mt-4">
         <Caveat kind="note">
           {isRpc
-            ? <>Live reads scan OOv2 <span className="font-mono">DisputePrice</span> logs over a keyless public Polygon RPC — no indexer, no paid service. V2/Legacy conditionIds are label-joined; NegRisk disputes are shown but not cid-labeled (that join needs the NegRisk operator events). The released parquet remains the audited source of record. Set <span className="font-mono">INDEXER_GRAPHQL_URL</span> to use a hosted indexer instead.</>
+            ? <>Live reads scan OOv2 <span className="font-mono">DisputePrice</span> logs over a keyless public Polygon RPC — no indexer, no paid service. V2/Legacy conditionIds derive from the ancillary data; NegRisk ones are recovered on-chain via the NegRisk operator's <span className="font-mono">QuestionPrepared</span> event, so those markets resolve to real names too. Markets created after the HF snapshot have no name yet — HF has no record of them. The released parquet remains the audited source of record. Set <span className="font-mono">INDEXER_GRAPHQL_URL</span> to use a hosted indexer instead.</>
             : <>Live reads hit the configured Envio indexer — the released parquet remains the audited source of record.</>}
         </Caveat>
       </div>
