@@ -19,6 +19,11 @@
    "kappa_raw": 0.64646,
    "n": 80
   },
+  "crypto": {
+   "kappa": 0.75999,
+   "kappa_raw": 0.76046,
+   "n": 80
+  },
   "sports": {
    "kappa": 0.55489,
    "kappa_raw": 0.48769,
@@ -38,11 +43,6 @@
    "kappa": 0.56567,
    "kappa_raw": 0.43696,
    "n": 45
-  },
-  "crypto": {
-   "kappa": 0.75999,
-   "kappa_raw": 0.76046,
-   "n": 80
   }
  }
 }
