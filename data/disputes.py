@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import urllib.request
 
 from eth_abi import decode as abi_decode
@@ -330,7 +331,13 @@ def recent_disputes_rpc(*, lookback_blocks: int = 4_500_000, target: int = 50,
     return rows
 
 
-BLOCK_TS_CACHE = os.path.join(os.environ.get("DATA_CACHE_DIR", ".data_cache"), "block_ts.json")
+# {blockNumber: timestamp} for the RPC export. DISTINCT from BLOCK_TS_CACHE (defined further down),
+# which is {txHash: timestamp} for the indexer path — this constant was originally *also* named
+# BLOCK_TS_CACHE, so the later definition silently shadowed it and both this reader and its writer
+# resolved to dispute_block_ts.json: the export would have overwritten a {txHash: ts} cache with
+# {block: ts} entries under the same key space, corrupting it with no error. Different data, different
+# key, different file — keep the names distinct. See test_block_ts_cache_paths_are_distinct.
+RPC_BLOCK_TS_CACHE = os.path.join(os.environ.get("DATA_CACHE_DIR", ".data_cache"), "rpc_block_ts.json")
 
 
 _BLOCK_TS_CHECKPOINT = 100
@@ -347,19 +354,22 @@ def _block_timestamps_cached(blocks: list[int], *, log=None) -> dict[int, int]:
     """
     cache: dict = {}
     try:
-        if os.path.exists(BLOCK_TS_CACHE):
-            with open(BLOCK_TS_CACHE) as f:
+        if os.path.exists(RPC_BLOCK_TS_CACHE):
+            with open(RPC_BLOCK_TS_CACHE) as f:
                 cache = json.load(f)
     except Exception:  # noqa: BLE001 — a corrupt cache costs time, not correctness
         cache = {}
 
     def _flush() -> None:
         try:
-            os.makedirs(os.path.dirname(BLOCK_TS_CACHE) or ".", exist_ok=True)
-            with open(BLOCK_TS_CACHE, "w") as f:
+            os.makedirs(os.path.dirname(RPC_BLOCK_TS_CACHE) or ".", exist_ok=True)
+            with open(RPC_BLOCK_TS_CACHE, "w") as f:
                 json.dump(cache, f)
-        except Exception:  # noqa: BLE001 — caching is an optimization, never a requirement
-            pass
+        except Exception as e:  # noqa: BLE001 — caching is an optimization, never a requirement...
+            # ...but it must not fail SILENTLY: a swallowed write error here is what let this function
+            # spend ~1.7k RPC calls, log "checkpointed", and persist nothing at all.
+            print(f"[disputes] WARNING: block-ts checkpoint write failed "
+                  f"({type(e).__name__}: {e}) -> {RPC_BLOCK_TS_CACHE}", file=sys.stderr)
 
     todo = [b for b in blocks if str(b) not in cache]
     if log and todo:

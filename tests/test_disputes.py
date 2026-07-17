@@ -395,7 +395,7 @@ def test_block_timestamps_checkpoint_survives_a_crash(monkeypatch, tmp_path):
     import data.disputes as dz
 
     cache_file = tmp_path / "block_ts.json"
-    monkeypatch.setattr(dz, "BLOCK_TS_CACHE", str(cache_file))
+    monkeypatch.setattr(dz, "RPC_BLOCK_TS_CACHE", str(cache_file))
     monkeypatch.setattr(dz, "_BLOCK_TS_CHECKPOINT", 2)
     seen = {"n": 0}
 
@@ -417,3 +417,18 @@ def test_block_timestamps_checkpoint_survives_a_crash(monkeypatch, tmp_path):
     monkeypatch.setattr(dz, "_rpc", lambda m, p, timeout=60: {"timestamp": hex(1_700_000_999)})
     out = dz._block_timestamps_cached([1, 2, 3, 4, 5, 6], log=None)
     assert len(out) == 6 and seen["n"] == 0          # 4 from cache; the 2 new ones via the new stub
+
+
+def test_block_ts_cache_paths_are_distinct():
+    """Two DIFFERENT caches live in data/disputes.py:
+        BLOCK_TS_CACHE      {txHash: ts}  — the indexer path (dispute_block_ts.json)
+        RPC_BLOCK_TS_CACHE  {block:  ts}  — the RPC export   (rpc_block_ts.json)
+    They were briefly BOTH named BLOCK_TS_CACHE, so the later definition shadowed the earlier one and
+    the export read/wrote the indexer's cache — overwriting {txHash: ts} entries with {block: ts} under
+    the same key space, with no error. Different data, different key type, different file: assert it,
+    because a name collision like that is invisible at runtime."""
+    import data.disputes as dz
+
+    assert dz.BLOCK_TS_CACHE != dz.RPC_BLOCK_TS_CACHE
+    assert dz.BLOCK_TS_CACHE.endswith("dispute_block_ts.json")
+    assert dz.RPC_BLOCK_TS_CACHE.endswith("rpc_block_ts.json")

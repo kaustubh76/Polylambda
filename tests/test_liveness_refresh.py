@@ -310,7 +310,7 @@ def test_load_disputes_rpc_derives_round_and_shape(monkeypatch):
         raise AssertionError(method)
 
     monkeypatch.setattr(D, "_rpc", fake_rpc)
-    monkeypatch.setattr(D, "BLOCK_TS_CACHE", "/nonexistent/block_ts.json")
+    monkeypatch.setattr(D, "RPC_BLOCK_TS_CACHE", "/nonexistent/rpc_block_ts.json")
     monkeypatch.setattr(D, "_mark_hf_joinable", lambda rows, log=None: [r.update(hf_joinable=True) for r in rows])
     rows = D.load_disputes_rpc(80_000_000, 80_001_000, window=1_000_000, log=None)
 
