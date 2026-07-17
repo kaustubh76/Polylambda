@@ -283,3 +283,55 @@ def test_hazard_reads_are_window_bounded():
     from estimators.hazard import _hf_window_sql
     sql = _hf_window_sql()
     assert "hf_joinable" in sql and "disputeTs <=" in sql
+
+
+# --- Q: RPC-sourced export (the dataset is maintainable without Envio) -------------------------
+def test_load_disputes_rpc_derives_round_and_shape(monkeypatch):
+    """`round` is the one release field an OO log cannot give. A dispute resets the question and
+    re-requests, so the n-th dispute on a questionId IS round n. Two disputes on one question → 1,2."""
+    from data import disputes as D
+    a1 = _make_dispute_log(next(iter(D.DERIVABLE)), "0x" + "11" * 20, "0x" + "22" * 20,
+                           10**18, 80_000_100, ancillary=b"same-question")
+    a2 = _make_dispute_log(next(iter(D.DERIVABLE)), "0x" + "11" * 20, "0x" + "33" * 20,
+                           0, 80_000_200, ancillary=b"same-question")
+    b1 = _make_dispute_log(next(iter(D.DERIVABLE)), "0x" + "44" * 20, "0x" + "55" * 20,
+                           10**18, 80_000_300, ancillary=b"other-question")
+    logs = [a1, a2, b1]
+    ts_of = {80_000_100: 1_700_000_100, 80_000_200: 1_700_000_200, 80_000_300: 1_700_000_300}
+
+    def fake_rpc(method, params, timeout=60):
+        if method == "eth_blockNumber":
+            return hex(80_001_000)
+        if method == "eth_getLogs":
+            lo, hi = int(params[0]["fromBlock"], 16), int(params[0]["toBlock"], 16)
+            return [l for l in logs if lo <= int(l["blockNumber"], 16) <= hi]
+        if method == "eth_getBlockByNumber":
+            return {"timestamp": hex(ts_of[int(params[0], 16)])}
+        raise AssertionError(method)
+
+    monkeypatch.setattr(D, "_rpc", fake_rpc)
+    monkeypatch.setattr(D, "BLOCK_TS_CACHE", "/nonexistent/block_ts.json")
+    monkeypatch.setattr(D, "_mark_hf_joinable", lambda rows, log=None: [r.update(hf_joinable=True) for r in rows])
+    rows = D.load_disputes_rpc(80_000_000, 80_001_000, window=1_000_000, log=None)
+
+    assert len(rows) == 3
+    by_q = {}
+    for r in rows:
+        by_q.setdefault(r["questionId"], []).append(r["round"])
+    assert sorted(next(v for v in by_q.values() if len(v) == 2)) == [1, 2]   # two-strikes
+    assert all(len(v) == 1 and v == [1] for v in by_q.values() if len(v) == 1)
+    # disputeTs is the TRUE block time, not the OO request time (1_700_000_000 in the stub)
+    assert {r["disputeTs"] for r in rows} == set(ts_of.values())
+    # drop-in shape for export_disputes.build_rows
+    for k in ("conditionId", "questionId", "adapter", "disputer", "proposer", "proposedOutcome",
+              "requestTimestamp", "round", "tradeableConditionId", "hf_joinable", "disputeId"):
+        assert k in rows[0], f"missing {k}"
+
+
+def test_post_hf_cutoff_marker_matches_the_window():
+    """The marker must agree with the guard in data.disputes.load_disputes."""
+    from data.disputes import HF_CUTOFF_TS
+    mark = lambda ts: bool(ts and int(ts) > HF_CUTOFF_TS)
+    assert mark(HF_CUTOFF_TS - 1) is False
+    assert mark(HF_CUTOFF_TS) is False          # inclusive bound, same as `disputeTs <= HF_CUTOFF_TS`
+    assert mark(HF_CUTOFF_TS + 1) is True

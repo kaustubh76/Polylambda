@@ -222,7 +222,10 @@ def test_export_build_rows_resolves_endpoint_and_flags_hosted(monkeypatch):
     from data.disputes import HOSTED_GRAPHQL_URL
 
     logs, seen = [], {}
-    monkeypatch.setattr(ex, "resolve_indexer", lambda u=None: (HOSTED_GRAPHQL_URL, ""))
+    # HOSTED_GRAPHQL_URL is opt-in now (empty by default), so configure one to exercise the
+    # coverage-capped warning path.
+    monkeypatch.setattr(ex, "HOSTED_GRAPHQL_URL", "http://hosted:9/v1/graphql")
+    monkeypatch.setattr(ex, "resolve_indexer", lambda u=None: (ex.HOSTED_GRAPHQL_URL, ""))
 
     def fake_loader(url, *, secret=None, log=None, **kw):
         seen.update(url=url, secret=secret)
@@ -234,13 +237,30 @@ def test_export_build_rows_resolves_endpoint_and_flags_hosted(monkeypatch):
     monkeypatch.setattr(ex, "load_disputes_from_indexer", fake_loader)
     monkeypatch.setattr(ex, "_categories_for", lambda cids: {"0xc": "politics"})
     rows = ex.build_rows(None, log=logs.append)
-    assert seen == {"url": HOSTED_GRAPHQL_URL, "secret": ""}  # resolved url + no-secret threaded through
+    assert seen == {"url": ex.HOSTED_GRAPHQL_URL, "secret": ""}  # resolved url + no-secret threaded through
     assert any("COVERAGE-CAPPED" in line for line in logs)    # a hosted export is flagged un-authoritative
     assert rows[0]["category"] == "politics"
+    assert rows[0]["post_hf_cutoff"] is False                 # 2023 dispute — inside the HF window
 
+    # No indexer reachable → fall back to the keyless RPC scan rather than refusing to export. The
+    # hosted Envio deploy is gone, so raising here would make the release unmaintainable.
     monkeypatch.setattr(ex, "resolve_indexer", lambda u=None: (None, None))
-    with pytest.raises(RuntimeError):                         # nothing reachable → refuse to export
-        ex.build_rows(None, log=None)
+    called = {}
+
+    def fake_rpc_loader(**kw):
+        called["yes"] = True
+        return [{"conditionId": "0xc", "tradeableConditionId": "0xc", "questionId": "0xq",
+                 "adapter": "negrisk", "hf_joinable": True, "disputeTs": 1700000000,
+                 "requestTimestamp": 1700000000, "round": 1, "disputer": "0xd",
+                 "proposer": "0xp", "proposedOutcome": "NO", "disputeId": "0xh-1"}]
+
+    monkeypatch.setattr("data.disputes.load_disputes_rpc", fake_rpc_loader)
+    rows = ex.build_rows(None, log=None)
+    assert called.get("yes") and rows[0]["adapter"] == "negrisk"
+
+    # ...but an explicit source="indexer" must still refuse rather than silently switch sources
+    with pytest.raises(RuntimeError):
+        ex.build_rows(None, source="indexer", log=None)
 
 
 # --- load_disputes: the released parquet is the default numerator source ---

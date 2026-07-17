@@ -46,12 +46,14 @@ jobs:
       - name: Install deps
         run: pip install -r requirements.txt
 
-      - name: Regenerate released dispute snapshot (needs a live indexer)
-        if: ${{ env.INDEXER_GRAPHQL_URL != '' }}
+      # No indexer needed any more: --source auto uses one if reachable, else scans OOv2 logs straight
+      # from Polygon over the keyless RPC. Rows past the HF head are marked post_hf_cutoff=true and are
+      # excluded from the λ numerator by data.disputes.load_disputes (they'd bias it +1/+0).
+      - name: Regenerate released dispute snapshot (keyless RPC; no indexer required)
         run: |
           PCTX=""
           if [ "${{ github.event.inputs.with_price_context }}" != "false" ]; then PCTX="--with-price-context"; fi
-          python -m data.export_disputes --graphql-url "$INDEXER_GRAPHQL_URL" $PCTX
+          python -m data.export_disputes --source auto $PCTX
         continue-on-error: true
 
       # NOT gated on the indexer: train_and_cache(matched=False) -> build_training_rows() reads ONLY the

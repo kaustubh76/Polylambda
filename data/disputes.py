@@ -189,6 +189,35 @@ def _get_oov2_logs_resilient(frm: int, to: int, adapters_topic, *, timeout: int 
             _get_oov2_logs_resilient(mid + 1, to, adapters_topic, timeout=timeout, log=log)
 
 
+def _decode_dispute_log(lg: dict) -> dict | None:
+    """One OOv2 DisputePrice log → the fields an OO log can actually yield. None for non-Polymarket
+    requesters. Shared by the live tail (recent_disputes_rpc) and the export (load_disputes_rpc).
+
+    topics = [topic0, requester(adapter), proposer, disputer]; data = (identifier, timestamp,
+    ancillaryData, proposedPrice). `questionId` is keccak(ancillaryData) — verified on-chain against
+    the adapter's own QuestionInitialized.topic1, for NegRisk as well as V2/Legacy.
+    """
+    adapter = "0x" + lg["topics"][1][-40:]
+    _identifier, oo_ts, ancillary, price = abi_decode(
+        ["bytes32", "uint256", "bytes", "int256"], bytes.fromhex(lg["data"][2:]))
+    if adapter in DERIVABLE:
+        cid, label = derive_condition_id(adapter, ancillary), DERIVABLE[adapter]
+    elif adapter == NEGRISK:
+        cid, label = None, "negrisk"          # resolved via the Operator lookup by the caller
+    else:
+        return None                            # a non-Polymarket OO requester
+    return {
+        "conditionId": cid, "adapter": label,
+        "questionId": "0x" + keccak(ancillary).hex(),
+        "requestTimestamp": int(oo_ts),
+        "proposedOutcome": _outcome_from_price(int(price)),
+        "proposer": "0x" + lg["topics"][2][-40:],
+        "disputer": "0x" + lg["topics"][3][-40:],
+        "block": int(lg["blockNumber"], 16),
+        "disputeId": f'{lg.get("transactionHash", "")}-{int(lg.get("logIndex", "0x0"), 16)}',
+    }
+
+
 def _outcome_from_price(price: int) -> str | None:
     """OO proposedPrice (int256, 1e18-scaled) → YES / NO / UNRESOLVABLE. None if off-grid."""
     if price >= 10**18:
@@ -223,28 +252,18 @@ def recent_disputes_rpc(*, lookback_blocks: int = 4_500_000, target: int = 50,
         lo = max(floor, hi - int(window) + 1)
         logs = _get_oov2_logs_resilient(lo, hi, adapters_topic, log=log)
         for lg in logs:
-            adapter = "0x" + lg["topics"][1][-40:]
-            proposer = "0x" + lg["topics"][2][-40:]
-            disputer = "0x" + lg["topics"][3][-40:]
-            _identifier, oo_ts, ancillary, price = abi_decode(
-                ["bytes32", "uint256", "bytes", "int256"], bytes.fromhex(lg["data"][2:]))
-            qid = None
-            if adapter in DERIVABLE:
-                cid, adapter_label = derive_condition_id(adapter, ancillary), DERIVABLE[adapter]
-            elif adapter == NEGRISK:
-                # conditionId isn't derivable for NegRisk, but the QUESTION id is — keep it for the
-                # batched Operator lookup below (see negrisk_map.resolve_negrisk_cids).
-                cid, adapter_label = None, "negrisk"
-                qid = "0x" + keccak(ancillary).hex()
-            else:
+            d = _decode_dispute_log(lg)
+            if d is None:
                 continue
-            blk = int(lg["blockNumber"], 16)
             rows.append({
-                "id": f'{lg.get("transactionHash", "")}-{int(lg.get("logIndex", "0x0"), 16)}',
-                "round": None, "disputeTs": blk, "_block": blk, "_qid": qid,
-                "disputer": disputer, "proposer": proposer,
-                "proposedOutcome": _outcome_from_price(int(price)),
-                "conditionId": cid, "adapter": adapter_label,
+                "id": d["disputeId"], "round": None,
+                "disputeTs": d["block"], "_block": d["block"],
+                # NegRisk conditionIds aren't derivable from the ancillary, but the QUESTION id is —
+                # keep it for the batched Operator lookup below (negrisk_map.resolve_negrisk_cids).
+                "_qid": d["questionId"] if d["adapter"] == "negrisk" else None,
+                "disputer": d["disputer"], "proposer": d["proposer"],
+                "proposedOutcome": d["proposedOutcome"],
+                "conditionId": d["conditionId"], "adapter": d["adapter"],
                 "marketStatus": None, "finalOutcome": None, "outcomeSlotCount": None,
             })
         hi = lo - 1
@@ -270,6 +289,117 @@ def recent_disputes_rpc(*, lookback_blocks: int = 4_500_000, target: int = 50,
     for r in rows:
         r.pop("_qid", None)
     return rows
+
+
+BLOCK_TS_CACHE = os.path.join(os.environ.get("DATA_CACHE_DIR", ".data_cache"), "block_ts.json")
+
+
+def _block_timestamps_cached(blocks: list[int], *, log=None) -> dict[int, int]:
+    """{block: timestamp} with a persistent cache. A full export needs ~1.8k block lookups (one RPC
+    call each — disputes are rare, so there is no batch endpoint); block times are immutable, so a
+    re-export only pays for genuinely new blocks."""
+    cache: dict = {}
+    try:
+        if os.path.exists(BLOCK_TS_CACHE):
+            with open(BLOCK_TS_CACHE) as f:
+                cache = json.load(f)
+    except Exception:  # noqa: BLE001
+        cache = {}
+    todo = [b for b in blocks if str(b) not in cache]
+    for i, b in enumerate(todo):
+        cache[str(b)] = int(_rpc("eth_getBlockByNumber", [hex(b), False])["timestamp"], 16)
+        if log and i and i % 200 == 0:
+            log(f"  block timestamps {i}/{len(todo)}")
+    if todo:
+        try:
+            os.makedirs(os.path.dirname(BLOCK_TS_CACHE), exist_ok=True)
+            with open(BLOCK_TS_CACHE, "w") as f:
+                json.dump(cache, f)
+        except Exception:  # noqa: BLE001
+            pass
+    return {b: cache[str(b)] for b in blocks if str(b) in cache}
+
+
+def load_disputes_rpc(start_block: int = START_BLOCK, end_block: int | None = None, *,
+                      window: int = 900_000, log=print) -> list[dict]:
+    """The full dispute layer straight from Polygon — the indexer-free source for the release export.
+
+    Returns rows in the SAME shape `load_disputes_from_indexer` yields (conditionId, disputeId,
+    disputeTs, requestTimestamp, adapter, disputer, proposer, proposedOutcome, round, questionId,
+    tradeableConditionId, hf_joinable), so `export_disputes.build_rows` is source-agnostic.
+
+    Three things the OO log can't give directly, and how they're recovered:
+      * NegRisk conditionId — not derivable from the ancillary (sequential NegRiskIdLib ids); recovered
+        on-chain via the Operator's QuestionPrepared (negrisk_map.resolve_negrisk_cids), validated
+        963/963 against the released layer.
+      * disputeTs — the OO `timestamp` field is the REQUEST time, which can precede the dispute tx by
+        hours and would split pre/post fills wrongly. We use the true block time of the dispute log
+        (cached), which is exactly what the dataset card promises — and what the indexer path only
+        managed via an optional cache that nothing built in CI.
+      * round — the two-strikes counter. A dispute resets the question and re-requests, so the n-th
+        dispute on a questionId (ordered by time) IS round n. Derived here, 1-based.
+    """
+    end_block = end_block if end_block is not None else chain_head_block()
+    adapters_topic = [_pad(a) for a in list(DERIVABLE) + [NEGRISK]]
+    raw: list[dict] = []
+    frm = start_block
+    while frm <= end_block:
+        to = min(frm + window, end_block)
+        for lg in _get_oov2_logs_resilient(frm, to, adapters_topic, log=log):
+            d = _decode_dispute_log(lg)
+            if d is not None:
+                raw.append(d)
+        if log:
+            log(f"  [{frm}..{to}] disputes={len(raw)}")
+        frm = to + 1
+
+    # NegRisk: recover the tradeable conditionId (one batched Operator lookup)
+    try:
+        from .negrisk_map import resolve_negrisk_cids
+        need = [r["questionId"] for r in raw if r["adapter"] == "negrisk"]
+        labels = resolve_negrisk_cids(need, log=log) if need else {}
+    except Exception as e:  # noqa: BLE001
+        labels = {}
+        if log:
+            log(f"  negrisk label lookup failed ({str(e)[:60]}); those rows stay unjoinable")
+    for r in raw:
+        if r["adapter"] == "negrisk":
+            r["conditionId"] = labels.get(r["questionId"])
+        r["tradeableConditionId"] = r["conditionId"]   # already the effective HF key on this path
+
+    # TRUE dispute block time (not the OO request time)
+    ts = _block_timestamps_cached(sorted({r["block"] for r in raw}), log=log)
+    for r in raw:
+        r["disputeTs"] = ts.get(r["block"], r["requestTimestamp"])
+
+    # round = the n-th dispute on the same question, oldest first (the two-strikes semantic)
+    seen: dict[str, int] = {}
+    for r in sorted(raw, key=lambda x: (x["questionId"], x["disputeTs"], x["disputeId"])):
+        seen[r["questionId"]] = seen.get(r["questionId"], 0) + 1
+        r["round"] = seen[r["questionId"]]
+
+    rows = [r for r in raw if r["conditionId"]]        # unresolvable NegRisk → dropped, never phantom
+    if log and len(rows) != len(raw):
+        log(f"  dropped {len(raw) - len(rows)} NegRisk disputes whose conditionId could not be recovered")
+    _mark_hf_joinable(rows, log=log)
+    for r in rows:
+        r.pop("block", None)
+    rows.sort(key=lambda r: r["disputeTs"])
+    return rows
+
+
+def _mark_hf_joinable(rows: list[dict], *, log=None) -> None:
+    """Set `hf_joinable` = the effective conditionId exists in HF's `condition` table (in place)."""
+    cids = list({(r.get("tradeableConditionId") or r["conditionId"]) for r in rows})
+    joined: set[str] = set()
+    cpath = table_path("condition")
+    for i in range(0, len(cids), 5000):
+        inl = ",".join(f"'{c}'" for c in cids[i:i + 5000])
+        joined |= {x[0] for x in query(f"SELECT id FROM '{cpath}' WHERE id IN ({inl})")}
+    for r in rows:
+        r["hf_joinable"] = (r.get("tradeableConditionId") or r["conditionId"]) in joined
+    if log:
+        log(f"  hf_joinable: {sum(1 for r in rows if r['hf_joinable'])}/{len(rows)}")
 
 
 def build_dispute_cache(*, refetch: bool = False, log=print) -> dict:
