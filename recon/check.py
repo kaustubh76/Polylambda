@@ -52,6 +52,13 @@ def _fetch_indexed_markets(graphql_url: str, *, page: int = 5000, secret: str | 
 
     Uses the Hasura admin secret (env HASURA_ADMIN_SECRET, default 'testing') and pages via
     limit/offset so the full 70k+ Market set is returned, not a single truncated page.
+
+    ORDER BY IS LOAD-BEARING, NOT COSMETIC. limit/offset over an unordered relation has no stable row
+    order, so successive pages silently overlap and omit rows — the pull returns a different subset
+    every run. Measured before the fix: four consecutive recon runs over the SAME stalled indexer
+    reported eligible = 23,259 / 27,311 / 30,632 / 35,977. pass_rate stayed 1.0 (the rows that came
+    back did match), which is exactly why this hid: the headline claim looked stable while its
+    denominator wandered by 50%. `stats.json`'s published recon.eligible was one draw from that.
     """
     import json
     import os
@@ -64,7 +71,7 @@ def _fetch_indexed_markets(graphql_url: str, *, page: int = 5000, secret: str | 
     out: list[dict] = []
     offset = 0
     while True:
-        q = ("query { Market(limit: %d, offset: %d) "
+        q = ("query { Market(limit: %d, offset: %d, order_by: {id: asc}) "
              "{ id status finalOutcome oracle resolvedAt } }" % (page, offset))
         req = urllib.request.Request(graphql_url, data=json.dumps({"query": q}).encode(), headers=headers)
         payload = None

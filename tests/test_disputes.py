@@ -397,26 +397,37 @@ def test_block_timestamps_checkpoint_survives_a_crash(monkeypatch, tmp_path):
     cache_file = tmp_path / "block_ts.json"
     monkeypatch.setattr(dz, "RPC_BLOCK_TS_CACHE", str(cache_file))
     monkeypatch.setattr(dz, "_BLOCK_TS_CHECKPOINT", 2)
-    seen = {"n": 0}
 
-    def boom_after_4(method, params, timeout=60):
-        seen["n"] += 1
-        if seen["n"] > 4:
+    # Key the stub off the REQUESTED BLOCK, never a shared call counter. A counter makes this test
+    # hostage to any other caller of dz._rpc in the same process: webapp/backend/live.py starts a
+    # background tail refresh, and when tests/test_webapp.py ran first that thread was still alive and
+    # calling the patched _rpc — burning one of the four allowed calls, so only 3 got checkpointed and
+    # this test failed intermittently depending on file order. Block-keyed = deterministic regardless.
+    def boom_above_4(method, params, timeout=60):
+        b = int(params[0], 16)
+        if b > 4:
             raise RuntimeError("HTTP Error 401: Unauthorized")
-        return {"timestamp": hex(1_700_000_000 + seen["n"])}
+        return {"timestamp": hex(1_700_000_000 + b)}
 
-    monkeypatch.setattr(dz, "_rpc", boom_after_4)
+    monkeypatch.setattr(dz, "_rpc", boom_above_4)
     with pytest.raises(RuntimeError):
         dz._block_timestamps_cached([1, 2, 3, 4, 5, 6], log=None)
     import json as _j
     saved = _j.loads(cache_file.read_text())
     assert len(saved) == 4, f"partial progress lost: only {len(saved)} of 4 checkpointed"
+    assert set(saved) == {"1", "2", "3", "4"}        # the ones that SUCCEEDED, not merely four of them
 
-    # the resumed run reuses them and only fetches what's left
-    seen["n"] = 0
-    monkeypatch.setattr(dz, "_rpc", lambda m, p, timeout=60: {"timestamp": hex(1_700_000_999)})
+    # the resumed run reuses them and only re-fetches what's genuinely missing (5, 6)
+    fetched: list[int] = []
+
+    def only_new(method, params, timeout=60):
+        fetched.append(int(params[0], 16))
+        return {"timestamp": hex(1_700_000_999)}
+
+    monkeypatch.setattr(dz, "_rpc", only_new)
     out = dz._block_timestamps_cached([1, 2, 3, 4, 5, 6], log=None)
-    assert len(out) == 6 and seen["n"] == 0          # 4 from cache; the 2 new ones via the new stub
+    assert len(out) == 6
+    assert sorted(fetched) == [5, 6], f"resume refetched cached blocks: {sorted(fetched)}"
 
 
 def test_block_ts_cache_paths_are_distinct():

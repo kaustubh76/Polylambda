@@ -414,12 +414,22 @@ def train_and_cache(*, matched: bool = False, graphql_url: str | None = None,
 
 def _holdout_eval(rows, offset: float, *, seed: int = 0) -> dict:
     """Stratified 70/30 hold-out: train on 70%, score the untouched 30% at natural calibration.
-    Held-out Brier + AUC — discrimination (AUC) is the honest metric for a rare event."""
+    Held-out Brier + AUC — discrimination (AUC) is the honest metric for a rare event.
+
+    The sort before the shuffle is what makes this REPRODUCIBLE. `seed` alone does not: a seeded
+    shuffle of a list whose incoming order is arbitrary is still arbitrary, and these rows are built
+    off Python set iteration (data.disputes.dispute_counts_by_category does `list({...})`), which
+    varies per process. Symptom: three runs on IDENTICAL data returned held-out AUC 0.7153 / 0.7055 /
+    0.7105 — so the published headline was one draw from a ~1pt spread, not a fact. Order first, then
+    shuffle, and the seed finally means something."""
     import numpy as np
     from sklearn.metrics import brier_score_loss, roc_auc_score
 
-    pos = [r for r in rows if r["disputed"] == 1]
-    neg = [r for r in rows if r["disputed"] == 0]
+    def _key(r):     # rows carry no id — the feature tuple is the stable identity we have
+        return tuple(float(r[f]) for f in SAFE_FEATURES)
+
+    pos = sorted((r for r in rows if r["disputed"] == 1), key=_key)
+    neg = sorted((r for r in rows if r["disputed"] == 0), key=_key)
     rng = np.random.RandomState(seed)
     rng.shuffle(pos); rng.shuffle(neg)
     cp, cn = int(len(pos) * 0.7), int(len(neg) * 0.7)
