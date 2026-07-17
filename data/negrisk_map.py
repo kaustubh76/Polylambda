@@ -124,6 +124,89 @@ def build_negrisk_map(start_block: int = MAP_START_BLOCK, end_block: int = MAP_E
     return out
 
 
+# ---------------------------------------------------------------------------------------------
+# LIVE labeling — resolve a NegRisk OO dispute to its tradeable conditionId from pure RPC, with no
+# 36MB negrisk_map.json (which is NOT shipped to the deploy image). Powers the live dispute stream.
+# ---------------------------------------------------------------------------------------------
+LIVE_LABELS_CACHE = os.path.join(os.environ.get("DATA_CACHE_DIR", ".data_cache"),
+                                 "negrisk_live_labels.json")
+
+
+def uma_question_id(ancillary: bytes) -> str:
+    """umaQuestionId = keccak256(the OO request's ancillaryData).
+
+    VERIFIED on-chain for NegRisk (not just V2): the adapter's QuestionInitialized topic1 (questionID)
+    equals keccak(its own ancillaryData) — so a DisputePrice log alone yields the questionId for free.
+    NB this is the QUESTION id; the NegRisk *conditionId* is still NOT derivable from it (sequential
+    NegRiskIdLib ids) — that bridge is the Operator lookup in resolve_negrisk_cids().
+    """
+    return "0x" + keccak(ancillary).hex()
+
+
+def resolve_negrisk_cids(uma_question_ids, *, log=None) -> dict[str, str]:
+    """{umaQuestionId: tradeableConditionId} via ONE batched NegRiskOperator QuestionPrepared lookup.
+
+    This is what makes NegRisk disputes label-joinable on the pure-RPC path (they used to be "counted
+    but unlabeled" — ~96% of the live feed showing no market). The chain, verified end-to-end:
+
+        umaQuestionId = keccak(ancillary)                     (free, from the DisputePrice log)
+        -> QuestionPrepared(topic3 = umaQuestionId)           (indexed → one batched getLogs)
+        -> questionId_d91e (topic2) -> derive_negrisk_cid()   -> tradeable conditionId
+
+    Validated: 963/963 released NegRisk disputes reproduce their exact release conditionId, and on live
+    disputes 14/14 resolved ids are present in the HF `condition` table. topic3 is indexed, so a single
+    wide-range query over the Operator's whole life answers the whole batch (~1s), and results are
+    immutable → cached. Needs NO negrisk_map.json (36MB), so it works on the slim deploy image.
+    """
+    wanted = sorted({q for q in uma_question_ids if q})
+    if not wanted:
+        return {}
+    cached: dict = {}
+    if os.path.exists(LIVE_LABELS_CACHE):
+        try:
+            with open(LIVE_LABELS_CACHE) as f:
+                cached = json.load(f)
+        except Exception:  # noqa: BLE001 — a corrupt cache must not break the live feed
+            cached = {}
+    todo = [q for q in wanted if q not in cached]
+    if todo:
+        try:
+            from .disputes import chain_head_block
+            head = chain_head_block()
+            logs = _batched_qprep(todo, MAP_START_BLOCK, head, log=log)
+            found = {lg["topics"][3]: derive_negrisk_cid(lg["topics"][2]) for lg in logs}
+            for q in todo:
+                cached[q] = found.get(q)       # None → remembered as unresolvable, not retried forever
+            if log:
+                log(f"  negrisk labels: resolved {len(found)}/{len(todo)}")
+            try:
+                os.makedirs(os.path.dirname(LIVE_LABELS_CACHE), exist_ok=True)
+                with open(LIVE_LABELS_CACHE, "w") as f:
+                    json.dump(cached, f)
+            except Exception:  # noqa: BLE001 — caching is an optimization, not a requirement
+                pass
+        except Exception as e:  # noqa: BLE001 — labeling is enrichment; never break the feed
+            if log:
+                log(f"  negrisk label batch failed: {str(e)[:80]}")
+    return {q: cached[q] for q in wanted if cached.get(q)}
+
+
+def _batched_qprep(qids: list[str], frm: int, to: int, *, timeout: int = 60, log=None) -> list:
+    """QuestionPrepared logs for a batch of umaQuestionIds (topic3 OR-filter), halving the block range
+    on a transient/oversized-range RPC error. Mirrors _get_logs_resilient."""
+    try:
+        return _rpc("eth_getLogs", [{"address": OPERATOR, "topics": [QPREP_TOPIC0, None, None, qids],
+                                     "fromBlock": hex(frm), "toBlock": hex(to)}], timeout=timeout)
+    except Exception:
+        if to - frm <= 500_000:
+            raise
+        mid = (frm + to) // 2
+        if log:
+            log(f"    split qprep [{frm}..{to}]")
+        return _batched_qprep(qids, frm, mid, timeout=timeout, log=log) + \
+            _batched_qprep(qids, mid + 1, to, timeout=timeout, log=log)
+
+
 def load_negrisk_map() -> dict[str, dict]:
     """Cached { umaQuestionId : {questionId_d91e, tradeableConditionId, prepBlock} }.
 

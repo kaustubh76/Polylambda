@@ -96,3 +96,79 @@ repo's pre-existing keyless-RPC method and surfaced the HF backbone in the UI.
 All green: **pytest 151 / frontend 26 / indexer 1**, frontend typecheck + prod build clean. HF is a frozen
 ~April snapshot (provenance-stamped); the RPC feed covers everything newer. Refresh job (`refresh-data.yml`)
 rebuilds the HF caches too.
+
+## 7. Part 3 (2026-07-17) — the HF token: made to load, then spent
+
+An HF token was added to `.env` as **`HF_ACCESS_TOKEN`**. It was doing nothing, for two reasons:
+1. **Name mismatch** — all code read `HF_TOKEN`; `HF_ACCESS_TOKEN` appeared in zero files.
+2. **`.env` never reached the CLI** — the only `load_dotenv` was a side-effect import in
+   `webapp/backend/chain.py`, so `python -m webapp.backend.precompute` (where the heavy HF scans live)
+   never saw it.
+
+### G — token plumbing (`data/hf.py`)
+`hf_token()` / `has_hf_token()` accept **either** name (read at call time, blank-safe); `load_dotenv` moved
+into `data/hf.py` — the one module every HF entrypoint (webapp *and* CLI) imports, so precompute/
+export_disputes/calibrate now authenticate with no exporting. Real process env still wins. `CREATE SECRET`
+now escapes quotes (was a raw f-string). `.env.example` documents both names; `HF_TOKEN` added as a
+`sync: false` secret to `render.yaml` / `fly.toml`.
+
+### H — what the token unlocked (all verified against the Hub)
+- **Real fills-by-year** (`_hf_fills_by_year`, ~10-20s): 2022 3,161 · 2023 328,176 · 2024 57,578,938 ·
+  2025 241,199,667 · 2026 873,548,669 → **sums to exactly 1,172,658,611**, the number that was previously a
+  hardcoded constant (now the fallback). ⚠️ **Trap:** `order_filled` IS local but only as the *disputed
+  slice* (2024: 2.5M vs 57.6M) — must force `prefer_cache=False` or you silently publish slice counts as
+  full-tape counts.
+- **Real per-market volume** (`_hf_volume_cte`): `orderbook.id` (tokenId) → `market_data.id` → `condition`,
+  summing both legs (`market_data.outcomeIndex` is NULL → no YES/NO split). `hf_markets.json` is now
+  **top-600-by-volume ∪ 400-recent** (1,000 rows, 392KB) — top market **"Will Donald Trump win the 2024 US
+  Presidential Election" $1.64B / 5.1M trades**. `dispute_market_context.json`: **1,409/1,527 disputed
+  markets with volume** (1,409 = the replay's `n_disputes_with_fills` — a clean cross-check), max $177M.
+  Both degrade to volume-less output without a token.
+- **`?live=1` re-gated** — it used to call a full multi-table rebuild; the Docker image ships **no parquet
+  at all** (`Dockerfile:33` copies only JSON), so on a 512MB host that was a guaranteed timeout/OOM. Now
+  requires token **and** local parquet, else returns the cache + an honest reason in **0.00s**.
+- **UI**: volume/trades columns (sortable, volume-default) in `HfMarkets`, real fill-tape chart + `built_at`
+  provenance in `HfDataset`, market volume in the dispute detail modal, `compact`/`usdCompact` helpers in
+  `lib/format.ts`.
+
+### Status
+**pytest 156 / frontend 26 / indexer 1** green; typecheck + prod build clean; keyless-RPC live feed
+re-verified unaffected (chain head age ~1s). Secrets never printed or committed.
+
+## 8. Part 4 (2026-07-17) — NegRisk live disputes are now LABELED (the last big gap)
+
+Parts 2–3 left the live feed showing a bare "—" for ~96% of disputes: NegRisk dominates recent activity
+and the RPC path left `conditionId=None`, so those rows couldn't join to names, categories or HF volume.
+Closed by recovering the label **on-chain**, with no 36MB `negrisk_map.json` (not shipped to the image).
+
+### The correction that unlocked it
+I had reasoned (and the repo's own docstring asserts) that NegRisk "isn't label-joinable from an OO log".
+That is true of the **conditionId** (sequential NegRiskIdLib ids) — but **NOT of the questionId**.
+Verified on-chain: `QuestionInitialized.topic1 == keccak(its own ancillaryData)` **for NegRisk too**. So:
+
+```
+umaQuestionId = keccak(DisputePrice.ancillaryData)        # FREE — no RPC
+  -> NegRiskOperator QuestionPrepared(topic3 = umaQid)    # topic3 indexed -> ONE batched getLogs
+  -> questionId_d91e (topic2) -> derive_negrisk_cid()     # -> tradeable conditionId
+```
+
+**Evidence:** 963/963 released NegRisk disputes reproduce their exact release conditionId; on live
+disputes **14/14** distinct qids resolved and **14/14 are present in the HF `condition` table**.
+A first (discarded) design searched for the block via `requestTimestamp` — that works (the adapter
+requests the price in the same block, delta 0s) but cost ~6.3s/dispute and missed reset questions
+(`QuestionReset` carries no timestamp). The keccak route is **~1.1s for the whole batch** and complete.
+
+### Result
+`recent_disputes_rpc` → **20/20 labeled** (was 0/19 NegRisk); cold scan 72.8s → **16.8s**. Labels are
+immutable → cached (`negrisk_live_labels.json`). `live._enrich_live_names()` then attaches real
+marketName/category via a targeted `market_data` lookup (0.4s local / 13.3s Hub, background + cached),
+so the stream and explorer now read *"Will Waymo operate in 11 cities on June 30 2026?"*,
+*"Will Roberto Sánchez Palomino win the 2026 Peruvian presidential election"* — with real categories, so
+the explorer's category facet works on live rows. Markets created **after** the HF April snapshot still
+show no name (HF simply has no record yet) — an honest degradation, not a bug.
+
+Also observed: a **new dispute landed 2026-07-16**, i.e. the feed is genuinely live, not frozen at July 1.
+
+### Status
+**pytest 159 / frontend 26 / indexer 1** green; typecheck + prod build clean. Label + name caches seeded
+into `webapp/deploy/cache/` so a cold container starts warm.

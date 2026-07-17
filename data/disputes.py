@@ -201,10 +201,11 @@ def recent_disputes_rpc(*, lookback_blocks: int = 4_500_000, target: int = 50,
     Scans DisputePrice logs BACKWARD from the chain head in `window`-block steps (resilient bisection
     on RPC range errors) until `target` disputes are collected or `lookback_blocks` is exhausted.
     Returns rows in webapp `live.live_disputes` shape (newest first), with proposer (topic2) and the
-    proposed outcome decoded. V2/Legacy conditionIds derive locally from the ancillaryData; NegRisk
-    conditionIds are NOT a function of the OO ancillary (sequential NegRiskIdLib ids), so — exactly as
-    the released/RPC path documents — NegRisk disputes are COUNTED but carry conditionId=None here (the
-    label-join needs the NegRiskOperator events / indexer, not available from an OO log alone).
+    proposed outcome decoded. V2/Legacy conditionIds derive locally from the ancillaryData. NegRisk
+    conditionIds are NOT a function of the OO ancillary (sequential NegRiskIdLib ids), so they are
+    recovered on-chain via `negrisk_map.resolve_negrisk_cids` (requestTimestamp → QuestionInitialized →
+    QuestionPrepared → derive) — pure RPC, no 36MB map, results cached. A NegRisk dispute that can't be
+    resolved simply stays conditionId=None rather than getting a phantom id.
 
     Heavy (a multi-window scan); callers MUST cache it off the request path (see webapp/backend/live.py)."""
     head = chain_head_block()
@@ -219,18 +220,22 @@ def recent_disputes_rpc(*, lookback_blocks: int = 4_500_000, target: int = 50,
             adapter = "0x" + lg["topics"][1][-40:]
             proposer = "0x" + lg["topics"][2][-40:]
             disputer = "0x" + lg["topics"][3][-40:]
-            _identifier, _oo_ts, ancillary, price = abi_decode(
+            _identifier, oo_ts, ancillary, price = abi_decode(
                 ["bytes32", "uint256", "bytes", "int256"], bytes.fromhex(lg["data"][2:]))
+            qid = None
             if adapter in DERIVABLE:
                 cid, adapter_label = derive_condition_id(adapter, ancillary), DERIVABLE[adapter]
             elif adapter == NEGRISK:
-                cid, adapter_label = None, "negrisk"   # counted, not label-joinable from an OO log
+                # conditionId isn't derivable for NegRisk, but the QUESTION id is — keep it for the
+                # batched Operator lookup below (see negrisk_map.resolve_negrisk_cids).
+                cid, adapter_label = None, "negrisk"
+                qid = "0x" + keccak(ancillary).hex()
             else:
                 continue
             blk = int(lg["blockNumber"], 16)
             rows.append({
                 "id": f'{lg.get("transactionHash", "")}-{int(lg.get("logIndex", "0x0"), 16)}',
-                "round": None, "disputeTs": blk, "_block": blk,
+                "round": None, "disputeTs": blk, "_block": blk, "_qid": qid,
                 "disputer": disputer, "proposer": proposer,
                 "proposedOutcome": _outcome_from_price(int(price)),
                 "conditionId": cid, "adapter": adapter_label,
@@ -243,7 +248,22 @@ def recent_disputes_rpc(*, lookback_blocks: int = 4_500_000, target: int = 50,
         r["disputeTs"] = ts.get(r["_block"], 0)
         r.pop("_block", None)
     rows.sort(key=lambda r: r["disputeTs"], reverse=True)
-    return rows[:target]
+    rows = rows[:target]
+    # label the NegRisk rows (the dominant adapter in recent disputes) via ONE batched Operator lookup.
+    # Best-effort: a failure leaves conditionId=None rather than blocking the feed.
+    try:
+        from .negrisk_map import resolve_negrisk_cids
+        need = [r["_qid"] for r in rows if r["_qid"] and not r["conditionId"]]
+        if need:
+            labels = resolve_negrisk_cids(need, log=log)
+            for r in rows:
+                if r["_qid"] and not r["conditionId"]:
+                    r["conditionId"] = labels.get(r["_qid"])
+    except Exception:  # noqa: BLE001 — labeling is enrichment; the feed must still return
+        pass
+    for r in rows:
+        r.pop("_qid", None)
+    return rows
 
 
 def build_dispute_cache(*, refetch: bool = False, log=print) -> dict:

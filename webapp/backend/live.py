@@ -114,6 +114,53 @@ _tail: dict = {"until": 0.0, "rows": [], "refreshing": False, "built_at": None, 
 _tail_lock = threading.Lock()
 
 
+def _enrich_live_names(rows: list[dict]) -> None:
+    """Attach marketName/category to live dispute rows via a targeted HF market_data lookup, in place.
+
+    Live disputes are brand-new markets, so they are NOT in the shipped dispute_market_context (built
+    from the April release) — without this they'd show a bare conditionId forever. The lookup is keyed
+    by conditionId (an `IN` over market_data: ~0.4s against the local parquet, ~13s against the Hub),
+    runs only in the background tail thread, and is cached because the mapping is immutable. Degrades
+    silently to no names when neither a local parquet nor an HF token is available.
+    """
+    from pathlib import Path
+    cids = sorted({r["conditionId"] for r in rows if r.get("conditionId")})
+    if not cids:
+        return
+    from .cache import DATA_CACHE, WEBAPP_CACHE
+    path = WEBAPP_CACHE / "live_market_names.json"
+    cached: dict = {}
+    try:
+        if path.exists():
+            cached = json.loads(path.read_text())
+    except Exception:  # noqa: BLE001
+        cached = {}
+    todo = [c for c in cids if c not in cached]
+    if todo:
+        try:
+            from data.hf import has_hf_token, query, table_path
+            from data.metadata import category_case_sql
+            if not (has_hf_token() or (DATA_CACHE / "market_data").is_dir()):
+                return                                   # no source for names on this host
+            inl = ",".join(f"'{c}'" for c in todo)
+            got = query(f"""SELECT condition, any_value(marketName), any_value({category_case_sql()})
+                            FROM '{table_path('market_data')}'
+                            WHERE condition IN ({inl}) GROUP BY condition""")
+            for cid, name, cat in got:
+                cached[cid] = {"marketName": name or None, "category": cat}
+            for c in todo:                               # remember misses so we don't re-query forever
+                cached.setdefault(c, {"marketName": None, "category": None})
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(cached))
+        except Exception:  # noqa: BLE001 — enrichment is optional; the feed must still work
+            return
+    for r in rows:
+        hit = cached.get(r.get("conditionId") or "")
+        if hit:
+            r["marketName"] = hit.get("marketName")
+            r["category"] = hit.get("category")
+
+
 def _refresh_tail_async() -> None:
     """Kick a background scan of the OOv2 dispute tail if the cache is stale and no scan is running."""
     now = time.monotonic()
@@ -126,6 +173,7 @@ def _refresh_tail_async() -> None:
         try:
             from data.disputes import recent_disputes_rpc
             rows = recent_disputes_rpc(lookback_blocks=_TAIL_LOOKBACK, target=_TAIL_TARGET)
+            _enrich_live_names(rows)          # market names for the freshly-labeled NegRisk cids
             with _tail_lock:
                 _tail.update(rows=rows, until=time.monotonic() + _TAIL_TTL,
                              built_at=int(time.time()), error=None)
@@ -216,8 +264,8 @@ def recent_disputes(*, limit: int = 200, since_ts: int | None = None) -> list[di
         ts = d.get("disputeTs")
         date = datetime.fromtimestamp(int(ts), timezone.utc).strftime("%Y-%m-%d") if ts else None
         rows.append({
-            "conditionId": d.get("conditionId"), "marketName": None,
-            "category": None, "adapter": d.get("adapter"), "disputeDate": date, "disputeTs": ts,
+            "conditionId": d.get("conditionId"), "marketName": d.get("marketName"),
+            "category": d.get("category"), "adapter": d.get("adapter"), "disputeDate": date, "disputeTs": ts,
             "proposedOutcome": d.get("proposedOutcome"),
             "preDisputePrice": None, "postDisputePrice": None, "realizedJumpLogit": None,
             "disputer": d.get("disputer"), "proposer": d.get("proposer"),
