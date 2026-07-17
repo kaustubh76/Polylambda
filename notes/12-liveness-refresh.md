@@ -174,3 +174,46 @@ Also observed: a **new dispute landed 2026-07-16**, i.e. the feed is genuinely l
 ### Status
 **pytest 159 / frontend 26 / indexer 1** green; typecheck + prod build clean. Label + name caches seeded
 into `webapp/deploy/cache/` so a cold container starts warm.
+
+## 9. Part 5 (2026-07-17) — the λ window guard + finishing the batch pivot
+
+### The correction that drove this
+I twice told the user the λ numerator was already safe because `load_disputes()` does `WHERE
+hf_joinable`. **Wrong.** `hf_joinable` is **spatial** ("does this conditionId exist in HF") and never
+consults `disputeTs`. A market prepared before the HF head but disputed after it is `hf_joinable=True`.
+Measured on the shipped layer's 12 boundary markets: **12/12 hf_joinable · 12/12 in `n_markets` · only
+7/12 in `n_resolved`** → appending post-cutoff disputes is **numerator +12 / denominator +7**, a
+selection bias (a market disputed after the snapshot was probably still unresolved when HF froze), not a
+"more complete" measurement. 7 of the 12 are **politics** — the headline category.
+
+**Guard (P):** `load_disputes()` — the numerator's only choke point — and the three hazard reads now
+bound `disputeTs <= HF_CUTOFF_TS`. Proven a **no-op today**: base-rate rows, headline, κ and hazard
+positives (1527) byte-identical before/after. It only bites once the layer extends past the head.
+
+**`HF_CUTOFF_TS = 1777016618` = 2026-04-24T07:43:38Z** — the on-chain block time of `HF_CUTOFF_BLOCK`
+85,948,287. This settles a three-way doc contradiction: `dataset_release/README` (04-24) was right,
+`DATASET.md` (04-09) was wrong, and the parquet (max 04-18) **never leaked** — the doc did.
+
+**A "fix" I declined:** an audit claimed `hazard.py`'s `preDisputePrice … else 0.5` fabricates data into
+the `disputed=1` class. Verified false — `price` is not in `SAFE_FEATURES` and `build_training_rows`
+never reads it; it is carried only for the LIVE builder, where 0.5 → logit 0 → `jump_drift` exactly 0
+("no directional claim"). Dropping those 174 rows would have shrunk the training set for nothing.
+
+### Q — the release export no longer needs Envio
+`export_disputes` was indexer-only (`resolve_indexer` → raise), so the dead deploy made the dataset
+unmaintainable. `data.disputes.load_disputes_rpc()` returns the indexer's row shape from a pure RPC scan;
+`build_rows(source="auto"|"indexer"|"rpc")` falls back to it. **Validated 12/12 exact
+(conditionId, disputeTs) matches** vs the shipped release, with adapter/questionId/proposer/
+proposedOutcome/hf_joinable agreeing. Derived: `round` (n-th dispute per questionId = the two-strikes
+semantic) and true `disputeTs` block times (fixing a latent bug where a re-enabled export would have
+written `disputeTs == requestTimestamp`). New `post_hf_cutoff` column makes the window legible in-data.
+
+### R — verified pivot breakage repaired
+`.env.example` pointed at the dead deploy (a fresh clone paid an 8s timeout per poll **and lost the RPC
+feed**); `HOSTED_GRAPHQL_URL` defaulted to it (`resolve_indexer` 15–45s → **0.44s**); refresh-data.yml
+gated the hazard retrain on `INDEXER_GRAPHQL_URL` though training makes **zero** indexer calls (so the
+deployed model never retrained while base rates refreshed nightly); and the sync step cp'd two artifacts
+no step produces.
+
+### Status
+**pytest 165 / frontend 29 / indexer 1** green. Committed on `feat/hf-token-and-negrisk-labeling`.
