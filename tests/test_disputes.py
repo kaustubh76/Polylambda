@@ -146,6 +146,9 @@ def test_recon_no_ground_truth_bucket(monkeypatch):
 def test_resolve_indexer_probe_order_and_hosted_secret(monkeypatch):
     import data.disputes as dz
 
+    # HOSTED_GRAPHQL_URL is now opt-in (no baked default — the old hosted dev deploy is gone), so
+    # configure one to exercise the probe ORDER + its no-admin-secret quirk.
+    monkeypatch.setattr(dz, "HOSTED_GRAPHQL_URL", "http://hosted:9/v1/graphql")
     seen = []
 
     def gql_only_hosted_up(q, *, url=None, secret=None, timeout=60):
@@ -159,6 +162,23 @@ def test_resolve_indexer_probe_order_and_hosted_secret(monkeypatch):
     assert (url, secret) == (dz.HOSTED_GRAPHQL_URL, "")    # hosted rejects the admin-secret header
     assert [u for u, _ in seen] == ["http://explicit:9/v1/graphql", dz.GRAPHQL_URL,
                                     dz.HOSTED_GRAPHQL_URL]  # explicit → local → hosted
+
+
+def test_resolve_indexer_skips_unset_hosted(monkeypatch):
+    """With HOSTED_GRAPHQL_URL unset (the default now), it must NOT be probed at all — the old baked
+    dev-deploy default made every call burn a 15s timeout on a corpse."""
+    import data.disputes as dz
+
+    monkeypatch.setattr(dz, "HOSTED_GRAPHQL_URL", "")
+    seen = []
+
+    def gql(q, *, url=None, secret=None, timeout=60):
+        seen.append(url)
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(dz, "_gql", gql)
+    assert dz.resolve_indexer() == (None, None)
+    assert seen == [dz.GRAPHQL_URL]        # local only — no empty/dead hosted probe
 
     # an answering explicit endpoint wins immediately (no further probes)
     seen.clear()

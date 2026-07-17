@@ -240,3 +240,46 @@ def test_hazard_cards_carry_trained_at():
     dep = h.get("deployed")
     if dep:  # artifact present on this host
         assert dep.get("trained_at")  # mtime fallback guarantees a date
+
+
+# --- P: the two-source WINDOW invariant (λ numerator ÷ HF denominator) -------------------------
+def test_hf_cutoff_ts_bounds_the_shipped_layer():
+    """HF_CUTOFF_TS is the block time of HF_CUTOFF_BLOCK (2026-04-24T07:43:38Z, read from chain).
+    The shipped layer must sit inside it — if this fails, the release leaked past the HF snapshot."""
+    import pandas as pd
+    from data.disputes import HF_CUTOFF_TS, RELEASE_PARQUET
+    df = pd.read_parquet(RELEASE_PARQUET)
+    assert HF_CUTOFF_TS == 1777016618
+    assert int(df.disputeTs.max()) <= HF_CUTOFF_TS
+
+
+def test_numerator_ignores_post_cutoff_disputes(monkeypatch, tmp_path):
+    """THE guard. `hf_joinable` is spatial, not temporal: a market that exists in HF but is disputed
+    AFTER the HF snapshot is hf_joinable=True, yet it is (probably) absent from the frozen n_resolved
+    denominator — so counting it is numerator +1 / denominator +0, a silent inflation. Synthesise
+    exactly that row and prove the numerator refuses it."""
+    import pandas as pd
+    from data import disputes as D
+    df = pd.read_parquet(D.RELEASE_PARQUET)
+    base_n = len(D.load_disputes())
+
+    evil = df.iloc[[0]].copy()                       # a real, hf_joinable row...
+    evil["conditionId"] = "0x" + "ff" * 32           # ...as a distinct market...
+    evil["disputeTs"] = D.HF_CUTOFF_TS + 86_400      # ...disputed a day AFTER the HF snapshot
+    evil["disputeDate"] = "2026-04-25"
+    assert bool(evil.iloc[0]["hf_joinable"]) is True  # the spatial gate would happily admit it
+    pq = tmp_path / "extended.parquet"
+    pd.concat([df, evil], ignore_index=True).to_parquet(pq)
+
+    monkeypatch.setattr(D, "RELEASE_PARQUET", str(pq))
+    after = D.load_disputes()
+    assert len(after) == base_n, "post-cutoff dispute leaked into the λ numerator"
+    assert not any(r["conditionId"] == "0x" + "ff" * 32 for r in after)
+
+
+def test_hazard_reads_are_window_bounded():
+    """hazard reads the release parquet directly; post-cutoff positives would carry an HF-derived
+    market_size of ~0 (the fill tape ends at the same cutoff) — phantom zero-liquidity positives."""
+    from estimators.hazard import _hf_window_sql
+    sql = _hf_window_sql()
+    assert "hf_joinable" in sql and "disputeTs <=" in sql

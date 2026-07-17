@@ -64,6 +64,10 @@ RPC_URLS = [RPC_URL] + [u for u in (
     "https://polygon-bor-rpc.publicnode.com", "https://polygon-rpc.com") if u != RPC_URL]
 START_BLOCK = int(os.environ.get("DISPUTE_START_BLOCK", "33000000"))   # ~early 2022
 HF_CUTOFF_BLOCK = int(os.environ.get("HF_CUTOFF_BLOCK", "85948287"))   # dataset head; markets past it aren't in HF
+# The HF head as a TIMESTAMP: the block time of HF_CUTOFF_BLOCK, read from chain (2026-04-24 07:43:38Z).
+# This is the authoritative cutoff date — DATASET.md's "2026-04-09" is wrong; dataset_release/README's
+# 2026-04-24 is right. Hardcoded (not fetched) so this module stays import-pure and offline.
+HF_CUTOFF_TS = int(os.environ.get("HF_CUTOFF_TS", "1777016618"))
 CHUNK = 500_000
 CACHE = os.path.join(os.environ.get("DATA_CACHE_DIR", ".data_cache"), "disputes.json")
 
@@ -81,8 +85,10 @@ HASURA_SECRET = os.environ.get("HASURA_ADMIN_SECRET", "testing")
 # Envio's hosted HyperIndex deploy — the fallback when the local Docker indexer is down. It rejects
 # the admin-secret header (send none) and is row-capped at 1000 with aggregates off, so callers that
 # need the full universe must treat a hosted hit as coverage-capped, not authoritative.
-HOSTED_GRAPHQL_URL = os.environ.get(
-    "HOSTED_GRAPHQL_URL", "https://indexer.dev.hyperindex.xyz/0638687/v1/graphql")
+# Opt-in ONLY — no baked default. The old hosted dev deploy (indexer.dev.hyperindex.xyz/0638687) is
+# GONE (free tier ended); keeping it as a default just made resolve_indexer() burn a 15s timeout
+# probing a corpse on every call. Set this to your own indexer if you run one.
+HOSTED_GRAPHQL_URL = os.environ.get("HOSTED_GRAPHQL_URL", "")
 # Market.oracle (lowercased) -> adapter label. Reuses the RPC-path adapter set (V2/Legacy) + NegRisk.
 ADAPTER_OF = {**DERIVABLE, NEGRISK: "negrisk"}
 
@@ -320,7 +326,8 @@ def resolve_indexer(graphql_url: str | None = None):
     if graphql_url:
         candidates.append((graphql_url, None))
     candidates.append((GRAPHQL_URL, None))
-    candidates.append((HOSTED_GRAPHQL_URL, ""))
+    if HOSTED_GRAPHQL_URL:          # opt-in only — no dead default to probe
+        candidates.append((HOSTED_GRAPHQL_URL, ""))
     for url, secret in candidates:
         try:
             _gql("{ ResolutionRequest(limit: 1) { id } }", url=url, secret=secret, timeout=15)
@@ -489,7 +496,22 @@ def load_disputes_from_indexer(graphql_url: str | None = None, *, secret: str | 
 
 
 def load_disputes() -> list[dict]:
-    """[{conditionId, disputeTs, adapter, disputer}] for HF-joinable disputes.
+    """[{conditionId, disputeTs, adapter, disputer}] for HF-joinable disputes WITHIN the HF window.
+
+    WINDOW INVARIANT (load-bearing — this is the λ NUMERATOR's only choke point).
+    The base rate is a two-source join: this numerator ÷ an HF-derived denominator
+    (data.base_rates.category_counts_hf) whose resolution status was frozen when the HF snapshot was
+    taken at HF_CUTOFF_BLOCK. `hf_joinable` alone does NOT keep the two aligned: it is a SPATIAL
+    predicate ("does this conditionId exist in HF"), never temporal — a market prepared before the
+    cutoff but disputed after it is hf_joinable=True. Such a market was probably still unresolved when
+    HF froze, so it lands in n_markets but NOT n_resolved: appending it is numerator +1 / denominator
+    +0, a selection bias that silently inflates the rate (measured: 12 boundary markets → +12 numerator
+    / +7 denominator, 7 of them politics — the category carrying the headline claim).
+    So we bound `disputeTs` by HF_CUTOFF_TS too, keeping both sides on the same window BY CONSTRUCTION
+    however far the released layer is later extended. Today this filters nothing (the shipped layer's
+    max disputeTs is ~6 days inside the cutoff) — it is a guard, not a behavior change.
+    Post-cutoff disputes are still served to the EXPLORER via the live merge
+    (webapp/backend/services._merged_disputes_df), which deliberately never feeds this path.
 
     Default (DATA_SOURCE=hf): the git-tracked released dispute layer (RELEASE_PARQUET) — the
     COMPLETE, 100%-joinable set across all adapters (V2 723 + NegRisk 963 + other 108 = 1,794),
@@ -514,7 +536,8 @@ def load_disputes() -> list[dict]:
     if os.path.exists(RELEASE_PARQUET):
         try:
             rows = query(f"SELECT conditionId, disputeTs, adapter, disputer "
-                         f"FROM '{RELEASE_PARQUET}' WHERE hf_joinable")
+                         f"FROM '{RELEASE_PARQUET}' "
+                         f"WHERE hf_joinable AND disputeTs <= {HF_CUTOFF_TS}")
             if rows:
                 return [{"conditionId": c, "disputeTs": int(ts or 0), "adapter": a, "disputer": d}
                         for c, ts, a, d in rows]
