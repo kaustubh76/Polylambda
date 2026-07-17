@@ -50,10 +50,20 @@ from .hf import query, table_path
 OOV2 = "0xeE3Afe347D5C74317041E2618C49534dAf887c24"
 DISPUTE_TOPIC0 = "0x" + keccak(text="DisputePrice(address,address,address,bytes32,uint256,bytes,int256)").hex()
 
-# adapters whose conditionId derives from keccak(ancillary) — VALIDATED against HF
+# Adapters whose conditionId derives as keccak(adapter ++ keccak(ancillary) ++ 2) — VALIDATED against
+# HF. The VALUE is the label written to the released `adapter` column, so it must match what the
+# indexer path produces (`ADAPTER_OF.get(oracle) or oracle`) or a re-export silently rewrites history.
 DERIVABLE = {
     "0x6a9d222616c90fca5754cd1333cfd9b7fb6a4f74": "v2",
-    "0x71392e133063cc0d16f40e1f9b60227404bc03f7": "legacy",
+    "0x71392e133063cc0d16f40e1f9b60227404bc03f7": "legacy",   # 0 rows in the current release
+    # A third UMA CTF adapter, live 2025-07-05 → 2026-01-29, carrying 108 released disputes across
+    # politics/crypto/sports/… It is NOT in indexer/config.yaml, so the indexer never mapped it to a
+    # friendly name and the release stores the RAW ADDRESS in `adapter` — hence the odd-looking label
+    # here: renaming it would silently rewrite those 108 rows on the next export. Naming it is a
+    # separate, deliberate change. Validated against the shipped release: 108/108 hf_joinable and
+    # 108/108 satisfy conditionId == keccak(adapter ++ questionId ++ 2), i.e. it derives exactly like
+    # V2 (its OO `requester` IS its Market.oracle). Omitting it made the RPC export drop all 108.
+    "0x157ce2d672854c848c9b79c49a8cc6cc89176a49": "0x157ce2d672854c848c9b79c49a8cc6cc89176a49",
 }
 NEGRISK = "0x2f5e3684cb1f318ec51b00edba38d79ac2c0aa9d"  # counted-only in the RPC keccak fallback; label-joined via negrisk_map in the indexer/release paths
 
@@ -97,20 +107,49 @@ def _pad(addr: str) -> str:
     return "0x" + "0" * 24 + addr.lower().replace("0x", "")
 
 
+# Transient signatures worth pausing for. Keyless public RPCs throttle PROGRESSIVELY under a batch job
+# (a full export is ~60 log queries + ~1.8k block lookups), so all three endpoints can be rate-limited
+# at the same moment — failover alone then raises and kills a 20-minute job. Backoff turns that into a
+# pause. A genuine JSON-RPC error (e.g. "range too large") is NOT transient: it must surface fast so
+# the caller's range-bisection can react.
+_RPC_TRANSIENT = ("401", "429", "403", "500", "502", "503", "504", "Unauthorized", "Too Many",
+                  "timed out", "Connection", "reset", "Remote end closed")
+_RPC_ATTEMPTS = int(os.environ.get("RPC_ATTEMPTS", "4"))
+
+
+def _rpc_once(url: str, body: bytes, timeout: int):
+    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 (operator-supplied endpoints)
+        out = json.loads(r.read())
+    if "error" in out:
+        raise RuntimeError(out["error"])                    # JSON-RPC error (e.g. range too large)
+    return out["result"]
+
+
 def _rpc(method: str, params: list, timeout: int = 60):
+    """JSON-RPC with endpoint failover AND bounded retry/backoff on transient throttling.
+
+    Order: try every endpoint once; if they all failed transiently, sleep (exponential + jitter) and go
+    round again. Non-transient errors (JSON-RPC application errors) raise immediately on the last
+    endpoint so `_get_oov2_logs_resilient` can bisect the block range instead of sleeping pointlessly.
+    """
+    import random
+    import time as _t
+
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
     last_err: Exception | None = None
-    for url in RPC_URLS:                                   # endpoint failover (keyless publics)
-        try:
-            req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                out = json.loads(r.read())
-            if "error" in out:
-                raise RuntimeError(out["error"])           # a JSON-RPC error (e.g. range too large)
-            return out["result"]
-        except Exception as e:  # noqa: BLE001 — try the next endpoint, remember the last failure
-            last_err = e
-            continue
+    for attempt in range(_RPC_ATTEMPTS):
+        transient_only = True
+        for url in RPC_URLS:                               # endpoint failover (keyless publics)
+            try:
+                return _rpc_once(url, body, timeout)
+            except Exception as e:  # noqa: BLE001 — try the next endpoint, remember the last failure
+                last_err = e
+                if not any(t in str(e) for t in _RPC_TRANSIENT):
+                    transient_only = False
+        if not transient_only or attempt == _RPC_ATTEMPTS - 1:
+            break                                          # a real error, or out of attempts
+        _t.sleep(min(2 ** attempt, 8) + random.random())   # every endpoint throttled → pause, retry
     raise last_err if last_err else RuntimeError("no RPC endpoint available")
 
 
@@ -294,29 +333,47 @@ def recent_disputes_rpc(*, lookback_blocks: int = 4_500_000, target: int = 50,
 BLOCK_TS_CACHE = os.path.join(os.environ.get("DATA_CACHE_DIR", ".data_cache"), "block_ts.json")
 
 
+_BLOCK_TS_CHECKPOINT = 100
+
+
 def _block_timestamps_cached(blocks: list[int], *, log=None) -> dict[int, int]:
-    """{block: timestamp} with a persistent cache. A full export needs ~1.8k block lookups (one RPC
-    call each — disputes are rare, so there is no batch endpoint); block times are immutable, so a
-    re-export only pays for genuinely new blocks."""
+    """{block: timestamp} with a persistent, CHECKPOINTED cache.
+
+    A full export needs ~1.8k lookups (one `eth_getBlockByNumber` each — disputes are sparse, so there
+    is no batch endpoint). Block times are immutable, so the cache is append-only and a re-export pays
+    only for genuinely new blocks. It is flushed every _BLOCK_TS_CHECKPOINT entries AND on failure:
+    writing only at the end (as this did) meant one throttled call near the finish discarded ~1,700
+    successful lookups and forced a full restart — which is exactly how the first real export died.
+    """
     cache: dict = {}
     try:
         if os.path.exists(BLOCK_TS_CACHE):
             with open(BLOCK_TS_CACHE) as f:
                 cache = json.load(f)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — a corrupt cache costs time, not correctness
         cache = {}
-    todo = [b for b in blocks if str(b) not in cache]
-    for i, b in enumerate(todo):
-        cache[str(b)] = int(_rpc("eth_getBlockByNumber", [hex(b), False])["timestamp"], 16)
-        if log and i and i % 200 == 0:
-            log(f"  block timestamps {i}/{len(todo)}")
-    if todo:
+
+    def _flush() -> None:
         try:
-            os.makedirs(os.path.dirname(BLOCK_TS_CACHE), exist_ok=True)
+            os.makedirs(os.path.dirname(BLOCK_TS_CACHE) or ".", exist_ok=True)
             with open(BLOCK_TS_CACHE, "w") as f:
                 json.dump(cache, f)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — caching is an optimization, never a requirement
             pass
+
+    todo = [b for b in blocks if str(b) not in cache]
+    if log and todo:
+        log(f"  block timestamps: {len(todo)} to fetch ({len(blocks) - len(todo)} cached)")
+    try:
+        for i, b in enumerate(todo, 1):
+            cache[str(b)] = int(_rpc("eth_getBlockByNumber", [hex(b), False])["timestamp"], 16)
+            if i % _BLOCK_TS_CHECKPOINT == 0:
+                _flush()
+                if log:
+                    log(f"  block timestamps {i}/{len(todo)} (checkpointed)")
+    finally:
+        if todo:
+            _flush()                                    # keep partial progress even if we blew up
     return {b: cache[str(b)] for b in blocks if str(b) in cache}
 
 

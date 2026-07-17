@@ -311,3 +311,109 @@ def test_load_disputes_source_precedence(monkeypatch, tmp_path):
         {"conditionId": "0xb", "disputeTs": 9, "adapter": "legacy", "disputer": "0xe"}]})
     assert dz.load_disputes() == [{"conditionId": "0xb", "disputeTs": 9, "adapter": "legacy",
                                    "disputer": "0xe"}]
+
+
+# --- U: adapter coverage — a missing adapter silently truncates the export ---------------------
+def test_derivable_covers_every_adapter_the_release_uses():
+    """The RPC export filters OO logs by `topics[1] IN DERIVABLE|NEGRISK`, so an adapter missing from
+    that set is invisible — a re-export would silently DROP its disputes rather than fail. This caught
+    0x157ce2d6… (108 real rows) before it reached a published artifact. If a new adapter ever appears
+    on-chain, fail loudly here instead."""
+    pytest.importorskip("pandas")
+    import pandas as pd
+    from data.disputes import DERIVABLE, NEGRISK, RELEASE_PARQUET
+
+    df = pd.read_parquet(RELEASE_PARQUET)
+    used = set(df.adapter.dropna().unique())
+    known = set(DERIVABLE.values()) | {"negrisk"}
+    missing = used - known
+    assert not missing, (
+        f"adapters in the release that the RPC scan cannot see: {missing} — add them to DERIVABLE "
+        f"(after validating their conditionId derivation) or the next export drops those rows")
+
+
+def test_new_adapter_derives_condition_id_like_v2():
+    """0x157ce2d6… earns its DERIVABLE entry: its released (questionId -> conditionId) pairs must
+    reproduce under keccak(adapter ++ questionId ++ 2), the same rule as V2/Legacy."""
+    pytest.importorskip("pandas")
+    import pandas as pd
+    from eth_utils import keccak
+    from data.disputes import RELEASE_PARQUET
+
+    adpt = "0x157ce2d672854c848c9b79c49a8cc6cc89176a49"
+    df = pd.read_parquet(RELEASE_PARQUET)
+    rows = df[df.adapter == adpt]
+    if rows.empty:
+        pytest.skip("adapter not present in this release cut")
+    a = bytes.fromhex(adpt[2:])
+    ok = sum(1 for r in rows.itertuples()
+             if r.questionId and "0x" + keccak(a + bytes.fromhex(r.questionId[2:])
+                                               + (2).to_bytes(32, "big")).hex() == r.conditionId)
+    assert ok == len(rows), f"only {ok}/{len(rows)} derive — it is NOT a keccak-derivable adapter"
+
+
+# --- V: the batch scan must survive keyless-RPC throttling -------------------------------------
+def test_rpc_retries_transient_throttle_then_succeeds(monkeypatch):
+    """All endpoints 401 (progressive throttling under a batch job) → back off and retry, don't die.
+    The first real export crashed exactly here, ~1.7k lookups in."""
+    import data.disputes as dz
+
+    calls = {"n": 0}
+
+    def flaky(url, body, timeout):
+        calls["n"] += 1
+        if calls["n"] <= len(dz.RPC_URLS) * 2:        # every endpoint throttled for 2 full rounds
+            raise RuntimeError("HTTP Error 401: Unauthorized")
+        return "0x64"
+
+    monkeypatch.setattr(dz, "_rpc_once", flaky)
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    assert dz._rpc("eth_blockNumber", []) == "0x64"
+    assert calls["n"] > len(dz.RPC_URLS)              # proves it went round again rather than raising
+
+
+def test_rpc_does_not_retry_application_errors(monkeypatch):
+    """A JSON-RPC error ('range too large') is NOT transient — it must surface immediately so the
+    caller's range-bisection reacts, instead of sleeping through pointless retries."""
+    import data.disputes as dz
+
+    calls = {"n": 0}
+
+    def hard(url, body, timeout):
+        calls["n"] += 1
+        raise RuntimeError({"code": -32005, "message": "query returned more than 10000 results"})
+
+    monkeypatch.setattr(dz, "_rpc_once", hard)
+    monkeypatch.setattr("time.sleep", lambda s: pytest.fail("must not back off on an app error"))
+    with pytest.raises(RuntimeError):
+        dz._rpc("eth_getLogs", [{}])
+    assert calls["n"] == len(dz.RPC_URLS)             # one pass over the endpoints, no retry round
+
+
+def test_block_timestamps_checkpoint_survives_a_crash(monkeypatch, tmp_path):
+    """A throttle near the end must not discard the earlier lookups — the cache is flushed en route."""
+    import data.disputes as dz
+
+    cache_file = tmp_path / "block_ts.json"
+    monkeypatch.setattr(dz, "BLOCK_TS_CACHE", str(cache_file))
+    monkeypatch.setattr(dz, "_BLOCK_TS_CHECKPOINT", 2)
+    seen = {"n": 0}
+
+    def boom_after_4(method, params, timeout=60):
+        seen["n"] += 1
+        if seen["n"] > 4:
+            raise RuntimeError("HTTP Error 401: Unauthorized")
+        return {"timestamp": hex(1_700_000_000 + seen["n"])}
+
+    monkeypatch.setattr(dz, "_rpc", boom_after_4)
+    with pytest.raises(RuntimeError):
+        dz._block_timestamps_cached([1, 2, 3, 4, 5, 6], log=None)
+    import json as _j
+    saved = _j.loads(cache_file.read_text())
+    assert len(saved) == 4, f"partial progress lost: only {len(saved)} of 4 checkpointed"
+
+    # the resumed run reuses them and only fetches what's left
+    seen["n"] = 0
+    monkeypatch.setattr(dz, "_rpc", lambda m, p, timeout=60: {"timestamp": hex(1_700_000_999)})
+    out = dz._block_timestamps_cached([1, 2, 3, 4, 5, 6], log=None)
+    assert len(out) == 6 and seen["n"] == 0          # 4 from cache; the 2 new ones via the new stub
