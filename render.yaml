@@ -28,3 +28,7 @@ services:
       # Without it, reads + user-signed trades still work; only the engine controls go "offline".
       - key: ENGINE_PRIVATE_KEY
         sync: false
+      # HF read token — optional. The HF panels serve shipped precomputed JSON, so the app runs fine
+      # without it; set it in the dashboard to authenticate any Hub read (the image ships no parquets).
+      - key: HF_TOKEN
+        sync: false

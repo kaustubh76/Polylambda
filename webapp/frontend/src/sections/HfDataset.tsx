@@ -2,7 +2,7 @@ import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer,
 import { api, useApi } from '../api/client'
 import { useInViewOnce } from '../lib/motion'
 import { useColors } from '../components/Theme'
-import { int } from '../lib/format'
+import { compact, int } from '../lib/format'
 import { Async, Caveat, Panel, Section, SourceTag, Stat } from '../components/ui'
 
 // The HF dataset backbone (moose-code/polymarket-onchain-v1) that powers the whole stack — finally
@@ -25,8 +25,12 @@ export function HfDataset() {
           { name: 'unresolved', value: res.unresolved, color: C.muted },
         ].filter((s) => s.value > 0)
         const years = d.markets_by_year
+        const fills = d.fills_by_year ?? []
         const cats = d.by_category
         const maxCat = Math.max(...cats.map((c) => c.n_markets), 1)
+        const topFillYear = fills.length ? fills.reduce((a, b) => (b.n > a.n ? b : a)) : null
+        const fillShare = topFillYear && d.coverage.total_fills
+          ? (topFillYear.n / d.coverage.total_fills) * 100 : null
         return (
           <div className="space-y-4">
             {/* coverage tiles */}
@@ -34,7 +38,10 @@ export function HfDataset() {
               <Stat label="Markets (conditions)" value={d.coverage.total_conditions} format={(n) => int(n)} sub="on-chain conditions" />
               <Stat label="Resolved" value={d.coverage.resolved_conditions} format={(n) => int(n)}
                 sub={`${((res.resolved / res.total) * 100).toFixed(1)}% of all markets`} tone="profit" />
-              <Stat label="Fills indexed" value={d.coverage.total_fills} format={(n) => int(n)} sub="CLOB OrderFilled events" accent />
+              <Stat label="Fills indexed" value={d.coverage.total_fills} format={(n) => compact(n, 2)} accent
+                sub={d.coverage.fills_source === 'computed'
+                  ? `${int(d.coverage.total_fills)} · counted from the tape`
+                  : 'CLOB OrderFilled events (documented total)'} />
               <Stat label="Coverage" value={`${d.coverage.market_date_min ?? '—'} → ${d.coverage.market_date_max ?? '—'}`}
                 sub={`HF head @ block ${int(d.coverage.cutoff_block)}`} />
             </div>
@@ -64,22 +71,32 @@ export function HfDataset() {
                 </div>
               </Panel>
 
-              {/* markets created per year */}
+              {/* fill tape per year — the 1.17B-row CLOB tape, counted (not asserted) */}
               <Panel>
-                <div className="mb-2 label text-sig">markets created · by year</div>
+                <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                  <div className="label text-sig">CLOB fill tape · by year</div>
+                  {fillShare != null && topFillYear && (
+                    <span className="num text-2xs text-muted">{topFillYear.year} is {fillShare.toFixed(0)}% of the whole tape</span>
+                  )}
+                </div>
                 <div className="h-[240px] w-full" ref={barRef}>
                   <ResponsiveContainer>
-                    <BarChart data={years} margin={{ left: 2, right: 8, top: 8, bottom: 4 }}>
+                    <BarChart data={fills.length ? fills : years} margin={{ left: 2, right: 8, top: 8, bottom: 4 }}>
                       <CartesianGrid stroke={C.line} vertical={false} />
                       <XAxis dataKey="year" stroke={C.axis} tick={{ fill: C.muted, fontSize: 11 }} tickLine={false} />
-                      <YAxis stroke={C.axis} tick={{ fill: C.muted, fontSize: 10 }} tickLine={false} width={44} tickFormatter={(v) => int(v)} />
+                      <YAxis stroke={C.axis} tick={{ fill: C.muted, fontSize: 10 }} tickLine={false} width={44} tickFormatter={(v) => compact(v, 0)} />
                       <Tooltip cursor={{ fill: C.elevated }} content={({ active, payload, label }: any) => active && payload?.length ? (
-                        <div className="panel p-2 text-xs num"><span className="text-muted">{label}</span> · <span className="text-sig">{int(payload[0].value)}</span> markets</div>
+                        <div className="panel p-2 text-xs num"><span className="text-muted">{label}</span> · <span className="text-sig">{int(payload[0].value)}</span> {fills.length ? 'fills' : 'markets'}</div>
                       ) : null} />
                       <Bar dataKey="n" fill={C.sig} radius={[2, 2, 0, 0]} isAnimationActive={barIn} animationDuration={700} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
+                <p className="mt-1 text-2xs text-muted">
+                  {fills.length
+                    ? 'Counted across the full order_filled tape on the Hub — the volume backbone the σ prior and replay are built from.'
+                    : 'Markets created per year (fill-tape counts need an HF token).'}
+                </p>
               </Panel>
             </div>
 
@@ -102,7 +119,9 @@ export function HfDataset() {
 
             <Caveat kind="note">
               Source: <a className="link-underline hover:text-sig" href={`https://huggingface.co/datasets/${d.coverage.repo}`} target="_blank" rel="noreferrer">{d.coverage.repo} ↗</a>.
-              {' '}{d.note} The dataset is a snapshot to ~block {int(d.coverage.cutoff_block)}; anything newer comes from the live RPC dispute feed above.
+              {' '}{d.note} The dataset is a frozen snapshot to ~block {int(d.coverage.cutoff_block)}
+              {d.built_at && <> · these figures were computed <span className="font-mono">{d.built_at}</span></>};
+              anything newer comes from the live RPC dispute feed above.
             </Caveat>
           </div>
         )

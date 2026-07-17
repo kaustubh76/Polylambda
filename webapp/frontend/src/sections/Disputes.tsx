@@ -8,7 +8,7 @@ import { readQueryParam, writeQuery } from '../lib/urlState'
 import { useToast } from '../components/Toast'
 import { useColors } from '../components/Theme'
 import type { Colors } from '../lib/theme'
-import { fixed, int, short } from '../lib/format'
+import { fixed, int, short, usdCompact } from '../lib/format'
 import { Async, CopyButton, KV, Modal, Panel, Section } from '../components/ui'
 
 const CSV_COLS = ['conditionId', 'marketName', 'category', 'adapter', 'disputeDate', 'proposedOutcome',
@@ -20,6 +20,7 @@ interface DisputeRow {
   disputer?: string | null; proposer?: string | null; round?: number | null
   // HF market context (dispute_market_context.json) — enrichment for the detail view
   hfResolved?: boolean | null; hfResolvedOutcome?: string | null; hfEndDate?: string | null
+  hfVolume?: number | null; hfTrades?: number | null
 }
 
 const ADAPTER_LABEL = (a: string) => (a?.startsWith('0x') ? 'legacy' : a)
@@ -270,6 +271,14 @@ function DisputeDetail({ row, onClose }: { row: DisputeRow | null; onClose: () =
             <KV k="pre → post price" v={row.preDisputePrice != null ? `${fixed(row.preDisputePrice, 3)} → ${fixed(row.postDisputePrice, 3)}` : '—'} />
             <KV k="realized jump (logit)" v={row.realizedJumpLogit != null ? fixed(row.realizedJumpLogit, 3) : '—'} />
             {row.round != null && <KV k="dispute round" v={row.round} />}
+            {row.hfVolume != null && (
+              <KV k="market volume (HF)" v={
+                <span>
+                  <span className="text-sig">{usdCompact(row.hfVolume)}</span>
+                  {row.hfTrades != null && <span className="text-muted"> · {int(row.hfTrades)} trades</span>}
+                </span>
+              } mono={false} />
+            )}
             {(row.hfResolvedOutcome || row.hfEndDate) && (
               <KV k="HF resolution" mono={false} v={
                 <span>

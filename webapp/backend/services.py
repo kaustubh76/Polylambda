@@ -444,6 +444,8 @@ def disputes(*, category: str | None = None, adapter: str | None = None, year: i
                 r["hfResolved"] = hit.get("resolved")
                 r["hfResolvedOutcome"] = hit.get("resolvedOutcome")
                 r["hfEndDate"] = hit.get("endDate")
+                r["hfVolume"] = hit.get("volume")
+                r["hfTrades"] = hit.get("trades")
                 if not r.get("category") and hit.get("category"):
                     r["category"] = hit.get("category")
     return {"total": int(total), "rows": rows, "columns": cols,
@@ -488,32 +490,53 @@ def _df_records(page) -> list[dict]:
 # HF backbone surfaces (the dataset that powers the whole stack, finally visible in the UI)
 # ---------------------------------------------------------------------------------------------
 def hf_overview(live: bool = False) -> dict:
-    """The HF backbone overview (resolution mix, markets-by-year, category counts, coverage). Served
-    from the shipped precomputed cache; `live=True` recomputes from the HF Hub when HF_TOKEN + network
-    allow (guarded + timed out by the route), else falls back to the cache."""
+    """The HF backbone overview (resolution mix, fills-by-year, category counts, coverage).
+
+    Served from the shipped precomputed cache. `live=True` rebuilds from HF — but ONLY where that is
+    actually affordable: a rebuild scans condition + market_data + the fill tape, and the deploy image
+    ships NO parquet (Dockerfile copies only the JSON caches), so on a slim host every table would be a
+    remote Hub scan that blows the request deadline. So we require a token AND the local parquet cache,
+    and otherwise say so honestly instead of hanging.
+    """
     base = cache.hf_overview()
     out = dict(base) if base else {}
     out["source"] = "cache"
-    if live:
-        import os
-        if not os.environ.get("HF_TOKEN"):
-            out["live_error"] = "no HF_TOKEN configured — showing the shipped cache"
-            return out
-        try:
-            from webapp.backend.precompute import build_hf_overview
-            build_hf_overview(force=True)
-            cache.hf_overview.cache_clear()
-            fresh = cache.hf_overview()
-            if fresh:
-                out = dict(fresh); out["source"] = "live"
-        except Exception as e:  # noqa: BLE001
-            out["live_error"] = f"live HF query failed: {e}"
+    if not live:
+        return out
+    from data.hf import has_hf_token
+    if not has_hf_token():
+        out["live_error"] = "no HF token configured (set HF_TOKEN or HF_ACCESS_TOKEN) — showing the shipped cache"
+        return out
+    if not _hf_local_parquet_ready():
+        out["live_error"] = ("live HF rebuild needs the local parquet cache (this host ships only the "
+                             "precomputed JSON) — the shipped snapshot is authoritative")
+        return out
+    try:
+        from webapp.backend.precompute import build_hf_overview
+        build_hf_overview(force=True)
+        cache.hf_overview.cache_clear()
+        fresh = cache.hf_overview()
+        if fresh:
+            out = dict(fresh); out["source"] = "live"
+    except Exception as e:  # noqa: BLE001
+        out["live_error"] = f"live HF query failed: {e}"
     return out
 
 
-def hf_markets(*, q: str | None = None, category: str | None = None, sort: str = "startDate",
+def _hf_local_parquet_ready() -> bool:
+    """True when the heavy HF tables are materialized locally (dev/CI) — i.e. a live rebuild won't turn
+    into a multi-hundred-MB remote scan on a 512MB host."""
+    return all((cache.DATA_CACHE / t).is_dir() for t in ("condition", "market_data"))
+
+
+_HF_SORT_TEXT = ("startDate", "endDate", "category", "marketName", "resolvedOutcome")
+_HF_SORT_NUM = ("volume", "trades")
+
+
+def hf_markets(*, q: str | None = None, category: str | None = None, sort: str = "volume",
                desc: bool = True, limit: int = 50, offset: int = 0) -> dict:
-    """Browse recent Polymarket markets from the HF dataset (filter by text/category, sort, paginate)."""
+    """Browse the HF market universe (top-by-volume ∪ most-recent), filter by text/category, sort, page.
+    Defaults to volume-ranked — the biggest markets first."""
     data = cache.hf_markets()
     rows = list(data.get("markets") or [])
     if category:
@@ -523,12 +546,17 @@ def hf_markets(*, q: str | None = None, category: str | None = None, sort: str =
         rows = [r for r in rows if ql in str(r.get("marketName", "")).lower()
                 or ql in str(r.get("marketSlug", "")).lower()
                 or ql in str(r.get("conditionId", "")).lower()]
-    if sort in ("startDate", "endDate", "category", "marketName", "resolvedOutcome"):
+    if sort in _HF_SORT_NUM:      # numeric sort; missing volume always sinks to the bottom
+        rows.sort(key=lambda r: (r.get(sort) is None, r.get(sort) or 0.0), reverse=bool(desc))
+        if desc:                  # keep None last under reverse=True
+            rows.sort(key=lambda r: r.get(sort) is None)
+    elif sort in _HF_SORT_TEXT:
         rows.sort(key=lambda r: (r.get(sort) is None, r.get(sort) or ""), reverse=bool(desc))
     total = len(rows)
     cats = sorted({r.get("category") for r in (data.get("markets") or []) if r.get("category")})
     page = rows[offset:offset + limit]
     return {"total": total, "rows": page, "categories": cats, "n_cached": data.get("n", 0),
+            "has_volume": bool(data.get("has_volume")), "built_at": data.get("built_at"),
             "note": data.get("note", "")}
 
 
