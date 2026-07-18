@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { req } from '../api/client'
+import { api, req } from '../api/client'
 
 // The retry policy exists for host cold starts (gateway 502/503/504 before uvicorn binds):
 // one-shot GETs heal through the window, POSTs (engine-signed txns) and 4xx never retry.
@@ -66,5 +66,26 @@ describe('req retry policy', () => {
     fetchMock.mockResolvedValue(bad(502))
     await expect(req('/live/status', undefined, { retries: 0 })).rejects.toThrow('502')
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('disputeAnalytics scoping', () => {
+  // the anatomy graphs re-fetch scoped to the explorer's category/adapter filter — the query string
+  // must carry them so the backend returns the subset (complaint #5: the graphs must respond to input)
+  it('builds an unscoped URL when no filter is set', async () => {
+    fetchMock.mockResolvedValue(ok({ n: 0 }))
+    await api.disputeAnalytics()
+    const url = fetchMock.mock.calls[0][0] as string
+    expect(url).toContain('/disputes/analytics?bins=24')
+    expect(url).not.toContain('category=')
+    expect(url).not.toContain('adapter=')
+  })
+
+  it('appends category and adapter (URI-encoded) when scoped', async () => {
+    fetchMock.mockResolvedValue(ok({ n: 1 }))
+    await api.disputeAnalytics(24, 'politics', 'v2')
+    const url = fetchMock.mock.calls[0][0] as string
+    expect(url).toContain('category=politics')
+    expect(url).toContain('adapter=v2')
   })
 })

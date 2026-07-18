@@ -43,6 +43,26 @@ def test_disputes_analytics_shape():
             assert {"x0", "x1", "n"} <= set(pt)
 
 
+def test_disputes_analytics_scopes_to_category():
+    """The anatomy graphs must respond to the explorer's category filter (complaint #5: 'never
+    changes'). A scoped call returns a strict subset of the full set and echoes the scope; an unknown
+    category degrades to n=0 without crashing."""
+    full = services.disputes_analytics(bins=8)
+    if not full["n"]:
+        import pytest
+        pytest.skip("no disputes available in this environment")
+    # pick a real category present in the data
+    pol = services.disputes_analytics(bins=8, category="politics")
+    assert pol["category"] == "politics"
+    assert 0 < pol["n"] <= full["n"]          # a real subset, never larger than the whole
+    assert isinstance(pol.get("by_outcome", {}), dict)
+    # the filter genuinely NARROWS (not a no-op): an unknown category → graceful empty, never the whole
+    # set and never an exception. (We avoid asserting pol < full, which would encode a data-distribution
+    # assumption — a single-category dataset is a legitimate corpus, not a bug.)
+    empty = services.disputes_analytics(bins=8, category="__nope__")
+    assert empty["n"] == 0 and empty["histogram"] == [] and empty["category"] == "__nope__"
+
+
 def test_quote_curve_skews_with_inventory():
     out = services.quote_curve(category="politics", price=0.62, steps=5)
     assert set(out) >= {"points", "mid", "sigma", "lambda_jump"}

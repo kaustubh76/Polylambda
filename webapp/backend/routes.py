@@ -110,8 +110,10 @@ def get_proposers(limit: int = Query(15, ge=1, le=50)):
 
 
 @api.get("/disputes/analytics")
-def get_disputes_analytics(bins: int = Query(24, ge=6, le=60)):
-    return services.disputes_analytics(bins=bins)
+def get_disputes_analytics(bins: int = Query(24, ge=6, le=60),
+                           category: str | None = Query(None),
+                           adapter: str | None = Query(None)):
+    return services.disputes_analytics(bins=bins, category=category, adapter=adapter)
 
 
 @api.get("/quote-curve")
