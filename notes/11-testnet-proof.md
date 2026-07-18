@@ -66,7 +66,10 @@ ablation` — all 200 with live payloads. Notables:
 - `/api/testnet/status` → `chain_id 80002`, `engine_ready: true`, market `0x1dBF…8b496`.
 - `/api/testnet/events` → the paged-`eth_getLogs` activity feed returned the *fresh* `QuotePosted`
   at block 41953344 (the feed survives market aging).
-- `/api/live/status` → hosted Envio HyperIndex reachable, ~58 ms latency.
+- `/api/live/status` → reachable, ~58 ms latency. **(As captured on 2026-07-11 this was still the
+  hosted Envio HyperIndex. That endpoint has since been retired: post-pivot the feed reports
+  `source=rpc` — keyless Polygon RPC. Re-running this sweep today returns `source=rpc`, not Envio;
+  everything else below reproduces unchanged.)**
 - `/api/recon` → `pass_rate 1.0, eligible 28,482, matched 28,482` (matches `stats.json`).
 - SPA `GET /` serves the built dashboard (`PolyLambda — dispute-aware market making`).
 

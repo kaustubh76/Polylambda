@@ -10,7 +10,11 @@ functions + fixtures, the CLOB live shapes are fixture-tested (real network is S
 adapters are seeded/deterministic. `conftest.py` just makes the repo root the pytest rootdir. This is what
 lets the suite be a fast, reliable gate.
 
-## Python suite — 18 files, 141 test functions
+## Python suite — 19 files, 172 tests collected
+
+> This table is hand-maintained and has silently drifted several times (44 → 101 → 123 → 141 → 172, with
+> the docs lagging each time). **Verify, don't trust:**
+> `.venv/bin/python -m pytest --collect-only -q | tail -1` — 172 as of 2026-07-17.
 
 | File | # | Covers |
 |------|---|--------|
@@ -28,7 +32,8 @@ lets the suite be a fast, reliable gate.
 | `test_replay_hazard.py` | 4 | the B_hazard arm vs arm B |
 | `test_data_fills.py` | 4 | `deriveFill` SQL vs the TS `indexer/src/lib.ts` parity oracle |
 | `test_data_layer.py` | 8 | pure data-layer logic + the rewired estimators |
-| `test_disputes.py` | 12 | no-Docker dispute logic (keccak derivation, joins) |
+| `test_liveness_refresh.py` | 23 | the post-pivot behaviour: parquet⊕live merge dedupe, RPC freshness gate, per-category calibration |
+| `test_disputes.py` | 20 | no-Docker dispute logic (keccak derivation, joins, adapter coverage, HF-window guard) |
 | `test_negrisk_map.py` | 4 | NegRisk map derivation + canary |
 | `test_webapp.py` | 10 | FastAPI endpoints |
 | `test_webapp_services.py` | 8 | the service layer (engine bridge) |

@@ -71,7 +71,12 @@ imported.
   ~9k-block chunks so the feed survives log-window caps; uses drpc because official `rpc-amoy` rejects log
   ranges).
 - `services.py` — the engine bridge (`score_market()` imports the real estimators/pricing/loop).
-- `live.py` — hosted Envio HyperIndex GraphQL client (3s TTL cache; degrades to "offline").
+- `live.py` — the live OOv2 dispute feed, **source-agnostic**: Envio GraphQL *only if*
+  `INDEXER_GRAPHQL_URL`/`HOSTED_GRAPHQL_URL` is set **and** reachable **and** fresh → **keyless Polygon
+  RPC (the default)** → offline. There is no baked-in endpoint (the old free dev deploy ended), so an
+  unset env goes straight to RPC. Liveness is gated on the **chain head**, not the latest dispute
+  (sparse disputes = LIVE-but-quiet, reported honestly). 3s status micro-cache; the heavy RPC tail scan
+  runs on a background daemon thread behind a long TTL so it never blocks a request.
 - `precompute.py` — builds `.data_cache/webapp/*.json` cache artifacts.
 
 ### Frontend (`webapp/frontend/`, React + Vite + TS + Tailwind + framer-motion + viem)
@@ -79,7 +84,8 @@ imported.
   header LivePill (indexer latency), PendingIndicator (in-flight tx), AccountMenu (connect / switch Amoy),
   ⌘K palette.
 - `src/sections/` — `Hero`, **`LiveTestnet`** (the on-chain trading UI), `BaseRates`, `ScoreMarket`,
-  `PaperSession`, `Ablation`, `HazardCard`, `Disputes`, **`LiveIndexer`** (Envio feed), `Recon`,
+  `PaperSession`, `Ablation`, `HazardCard`, `Disputes`, **`LiveIndexer`** (the live dispute feed —
+  keyless-RPC-sourced by default; the copy is source-aware), `Recon`,
   `SigmaSurface`.
 - `src/lib/wallet.tsx` — viem + injected-provider context (public reads + user-signed writes).
 - `src/lib/testnet.ts` — Amoy constants, test-USDC, faucet URLs, the user-side `MARKET_ABI`
@@ -116,8 +122,13 @@ Both targets use the **same Docker image** (2-stage: node:20 builds the SPA → 
 port 8000; health check `GET /api/health`).
 
 - **`fly.toml`** — app `polylambda`, region `iad`, `internal_port=8000`. `[env]`: `MODE=paper`,
-  `INDEXER_GRAPHQL_URL`, `AMOY_RPC_URL=https://polygon-amoy.drpc.org`, `AMOY_USDC_ADDRESS`,
-  `MARKET_ADDRESS=0x1dBF…8b496`. `ENGINE_PRIVATE_KEY` via `fly secrets set`.
+  `POLYGON_RPC_URL` (tenderly — the live dispute plane), `AMOY_RPC_URL=https://polygon-amoy.drpc.org`,
+  `AMOY_USDC_ADDRESS`, `MARKET_ADDRESS=0x1dBF…8b496`. `ENGINE_PRIVATE_KEY` via `fly secrets set`.
 - **`render.yaml`** — Render Blueprint, same non-secret env + `ENGINE_PRIVATE_KEY` with `sync:false`.
   Without the key: reads + user-signed trades still work; only engine controls (re-quote/dispute/resolve)
   go offline.
+
+> **`INDEXER_GRAPHQL_URL` is deliberately NOT set** in `fly.toml`, `render.yaml`, or the `Dockerfile`
+> (commit `c7359e9` — "stop baking the dead Envio URL into the image env"). Unset means the live feed
+> goes straight to keyless RPC. A **stale** indexer URL is worse than an empty one: it costs a reachability
+> probe before falling back. Don't re-bake one.

@@ -164,11 +164,18 @@ first-class (a NegRisk phantom conditionId is `no_ground_truth`, counted as cove
 
 ---
 
-## `indexer/` — Envio HyperIndex (TypeScript/ReScript) — the dispute-label producer
+## `indexer/` — Envio HyperIndex (TypeScript/ReScript) — LEGACY / OPTIONAL
+
+> **Not the label producer any more.** The shipped
+> `dataset_release/polymarket-oov2-disputes-v1/disputes.parquet` is now produced from **keyless RPC**
+> (`data.disputes.load_disputes_rpc` → `data/export_disputes.py --source auto`), and the RPC rows were
+> validated exact against the indexer rows. `indexer/README.md:52` puts it plainly: *"If you just need
+> dispute labels, don't run the indexer at all."* Nothing on the default path requires it; it survives
+> as an optional second implementation, plus the only source for `estimators.hazard --matched` and the
+> live-ablation / live-recon panels (which degrade honestly to the published artifacts).
 
 Indexes the Polymarket resolution lifecycle on Polygon (chain 137) → Postgres + Hasura GraphQL. **CLOB
-fills are NOT indexed here** (those come from HF via `data/fills.py`). Its output is the
-`dataset_release/polymarket-oov2-disputes-v1/disputes.parquet` shipped in-repo; most users never run it.
+fills are NOT indexed here** (those come from HF via `data/fills.py`).
 - `config.yaml` — contracts `ConditionalTokens`, `UmaCtfAdapter` (V2+NegRisk+Legacy), `OptimisticOracleV2` (ProposePrice/DisputePrice/Settle); keyless RPC; `start_block: 28000000`.
 - `schema.graphql` — entities `Market`, `ResolutionRequest` (two-strikes), `Dispute`, plus join indices `QuestionIndex`, `RequestIndex`.
 - `src/EventHandlers.ts` — the lifecycle handlers. `src/lib.ts` — `deriveConditionId` (:14, TS twin of `data.disputes.derive_condition_id`), `deriveFill` (:41, parity-tested against `data/fills.py`).

@@ -68,7 +68,7 @@ Needs `ENGINE_PRIVATE_KEY` (from step 1), `AMOY_RPC_URL`, optionally `AMOY_GAS_G
 
 ```
 pytest -q                 # the full offline Python suite (no network, no DuckDB)
-cd indexer && npm test    # Envio indexer vitest (lib parity + handlers)
+cd indexer && npm test    # legacy/optional Envio indexer: vitest (lib parity) + node --test (lifecycle)
 cd webapp/frontend && npm test   # frontend Vitest (export/format/testnet/urlState + smoke)
 ```
 
