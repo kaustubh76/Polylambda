@@ -112,6 +112,13 @@ def _envio_disputes(limit: int, since_ts: int | None) -> list[dict] | None:
 # ---------------------------------------------------------------------------------------------
 _tail: dict = {"until": 0.0, "rows": [], "refreshing": False, "built_at": None, "error": None}
 _tail_lock = threading.Lock()
+# Lifecycle control for the background scan. Without this the daemon thread is fire-and-forget: it
+# outlives the process/test that spawned it and, because it calls data.disputes._rpc, races any test
+# that monkeypatches _rpc afterwards (the root cause of a flaky checkpoint test). stop_tail() sets the
+# event (skip future spawns) and joins the in-flight thread; the app lifespan calls it on shutdown, so
+# a TestClient context no longer leaves a live RPC thread behind.
+_tail_stop = threading.Event()
+_tail_threads: set[threading.Thread] = set()
 
 
 def _enrich_live_names(rows: list[dict]) -> None:
@@ -165,8 +172,8 @@ def _refresh_tail_async() -> None:
     """Kick a background scan of the OOv2 dispute tail if the cache is stale and no scan is running."""
     now = time.monotonic()
     with _tail_lock:
-        if _tail["refreshing"] or _tail["until"] > now:
-            return
+        if _tail_stop.is_set() or _tail["refreshing"] or _tail["until"] > now:
+            return                            # shutting down, a scan is running, or the cache is fresh
         _tail["refreshing"] = True
 
     def work():
@@ -183,8 +190,25 @@ def _refresh_tail_async() -> None:
         finally:
             with _tail_lock:
                 _tail["refreshing"] = False
+            _tail_threads.discard(threading.current_thread())
 
-    threading.Thread(target=work, daemon=True).start()
+    t = threading.Thread(target=work, name="rpc-tail-scan", daemon=True)
+    _tail_threads.add(t)
+    t.start()
+
+
+def stop_tail(timeout: float = 5.0) -> None:
+    """Stop spawning tail scans and join any in-flight one. Call on app shutdown (and in test teardown)
+    so the background RPC thread never outlives its owner and races a later _rpc monkeypatch. Idempotent."""
+    _tail_stop.set()
+    for t in list(_tail_threads):
+        t.join(timeout=timeout)
+    _tail_threads.clear()
+
+
+def resume_tail() -> None:
+    """Re-arm scans after a stop_tail() (e.g. a fresh TestClient in the same process). Idempotent."""
+    _tail_stop.clear()
 
 
 def warm_tail() -> None:

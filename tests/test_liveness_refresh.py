@@ -123,6 +123,39 @@ def test_recent_disputes_rpc_parses_and_maps(monkeypatch):
     assert rows[0]["disputeTs"] == 1_700_000_500
 
 
+def test_tail_scan_lifecycle_stops_and_resumes(monkeypatch):
+    """The background tail scan must be stoppable so it never outlives its owner and races a later
+    _rpc monkeypatch (the root cause of the previously-flaky checkpoint test). stop_tail() must prevent
+    new spawns and join in-flight ones; resume_tail() must re-arm."""
+    from webapp.backend import live
+
+    spawned = {"n": 0}
+
+    def fake_scan(**_):
+        spawned["n"] += 1
+        return []
+
+    monkeypatch.setattr("data.disputes.recent_disputes_rpc", fake_scan)
+    live.resume_tail()
+    live._tail.update(until=0.0, refreshing=False)     # force "stale" so a spawn is eligible
+
+    # stopped → no spawn
+    live.stop_tail()
+    live._refresh_tail_async()
+    live.stop_tail()                                    # join anything (idempotent)
+    assert spawned["n"] == 0, "a scan spawned while stopped"
+
+    # resumed → a spawn runs, and stop_tail joins it (no thread left behind)
+    live.resume_tail()
+    live._tail.update(until=0.0, refreshing=False)
+    live._refresh_tail_async()
+    live.stop_tail()
+    assert spawned["n"] == 1
+    assert not any(t.is_alive() for t in live._tail_threads), "tail thread outlived stop_tail()"
+    # leave the tail DISABLED, matching the session fixture (conftest._disable_live_rpc_tail) so no
+    # real scan spawns in later tests
+
+
 def test_uma_question_id_is_keccak_of_ancillary():
     from eth_utils import keccak
     from data.negrisk_map import uma_question_id
