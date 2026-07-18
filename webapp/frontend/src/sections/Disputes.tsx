@@ -194,20 +194,27 @@ export function Disputes() {
         )
       }}</Async>
 
-      <DisputeAnatomy />
+      <DisputeAnatomy category={f.category} adapter={f.adapter} />
       <DisputeDetail row={detail} onClose={() => setDetail(null)} />
     </Section>
   )
 }
 
-// distributions over the full released parquet — jump magnitude, price impact, outcome mix
-function DisputeAnatomy() {
+// distributions over the merged dispute set — jump magnitude, price impact, outcome mix.
+// Scoped to the explorer's category/adapter filter so the graphs respond to the SAME control that
+// filters the table (no separate selector) — this is what makes them stop looking static.
+function DisputeAnatomy({ category, adapter }: { category?: string; adapter?: string }) {
   const { C } = useColors()
-  const q = useApi(api.disputeAnalytics, [])
+  const q = useApi(() => api.disputeAnalytics(24, category, adapter), [category, adapter])
   const [hRef, hIn] = useInViewOnce<HTMLDivElement>()
+  const scope = [category, adapter].filter(Boolean).join(' · ')
   return (
     <Async q={q}>{(d) => (
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <div className="col-span-full -mb-2 flex items-baseline gap-2 text-2xs text-muted">
+          <span className="label text-sig">dispute anatomy</span>
+          <span>{scope ? <>scoped to <span className="text-ink-2">{scope}</span></> : 'all disputes'} · n {int(d.n)}</span>
+        </div>
         <Panel>
           <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
             <div className="label text-sig">jump-magnitude distribution · |realized logit|</div>

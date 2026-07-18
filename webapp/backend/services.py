@@ -651,12 +651,23 @@ def proposers(limit: int = 15) -> dict:
 # ---------------------------------------------------------------------------------------------
 # dispute anatomy — distributions over the full released parquet
 # ---------------------------------------------------------------------------------------------
-def disputes_analytics(bins: int = 24) -> dict:
+def disputes_analytics(bins: int = 24, category: str | None = None,
+                       adapter: str | None = None) -> dict:
+    """Jump-magnitude / price-impact / round / outcome distributions over the merged dispute set.
+
+    Optionally scoped to a category/adapter — the SAME equality filter `disputes()` applies — so the UI's
+    anatomy graphs respond to the dispute-explorer filter instead of being a frozen whole-dataset view.
+    An empty or unknown category yields n=0 (handled by the `df.empty` guard below), never a crash."""
     import numpy as np
     df = _merged_disputes_df()
+    if category and not df.empty:
+        df = df[df["category"] == category]
+    if adapter and not df.empty:
+        df = df[df["adapter"] == adapter]
     if df.empty:
-        return {"n": 0, "histogram": [], "scatter": [], "by_round": {}, "by_outcome": {}}
-    out: dict = {"n": int(len(df))}
+        return {"n": 0, "histogram": [], "scatter": [], "by_round": {}, "by_outcome": {},
+                "category": category, "adapter": adapter}
+    out: dict = {"n": int(len(df)), "category": category, "adapter": adapter}
     if "realizedJumpLogit" in df.columns:
         mag = df["realizedJumpLogit"].dropna().astype(float).abs()
         if len(mag):

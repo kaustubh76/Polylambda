@@ -47,7 +47,10 @@ export const api = {
   reconLive: () => req<Recon>('/recon/live'),
   sigma: () => req<Sigma>('/sigma'),
   proposers: (limit = 15) => req<Proposers>(`/proposers?limit=${limit}`),
-  disputeAnalytics: (bins = 24) => req<DisputeAnalytics>(`/disputes/analytics?bins=${bins}`),
+  disputeAnalytics: (bins = 24, category?: string, adapter?: string) =>
+    req<DisputeAnalytics>(`/disputes/analytics?bins=${bins}`
+      + (category ? `&category=${encodeURIComponent(category)}` : '')
+      + (adapter ? `&adapter=${encodeURIComponent(adapter)}` : '')),
   hfOverview: (live = false) => req<HfOverview>(`/hf/overview${live ? '?live=1' : ''}`),
   hfMarkets: (qs = '') => req<HfMarkets>(`/hf/markets${qs}`),
   quoteCurve: (category: string, price: number, horizon_days: number) =>
@@ -176,6 +179,8 @@ export interface DisputeAnalytics {
   scatter?: { pre: number; post: number }[]
   by_round?: Record<string, number>
   by_outcome?: Record<string, number>
+  category?: string | null
+  adapter?: string | null
 }
 export interface QuoteCurve {
   points: { inventory: number; bid: number; ask: number; mid: number }[]
