@@ -13,10 +13,10 @@ exit-on-risk** — because on Polymarket a resolution/dispute is a *directional 
 at a haircut (the CLOB stays open), not a freeze. The engine estimates σ (belief-volatility), λ (jump
 intensity), and a fair-value mid, prices A-S quotes augmented with a jump premium + directional skew,
 and pulls/reduces inventory only when `E[jump loss] > forgone rewards + spread`. It ships with a
-**historical replay-ablation as the primary edge proof**, a paper/paper-live forward-test harness, an
-Envio dispute indexer, a released dispute dataset, and a FastAPI+React dashboard that also drives a live
-**on-chain testnet market on Polygon Amoy**. Everything defaults to paper-only; the live mainnet CLOB
-write path is hard-gated by jurisdiction.
+**historical replay-ablation as the primary edge proof**, a paper/paper-live forward-test harness, a
+released dispute dataset (labelled from **keyless RPC** — no indexer required), and a FastAPI+React
+dashboard that also drives a live **on-chain testnet market on Polygon Amoy**. Everything defaults to
+paper-only; the live mainnet CLOB write path is hard-gated by jurisdiction.
 
 ## How to navigate
 

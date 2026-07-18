@@ -146,6 +146,9 @@ def test_recon_no_ground_truth_bucket(monkeypatch):
 def test_resolve_indexer_probe_order_and_hosted_secret(monkeypatch):
     import data.disputes as dz
 
+    # HOSTED_GRAPHQL_URL is now opt-in (no baked default — the old hosted dev deploy is gone), so
+    # configure one to exercise the probe ORDER + its no-admin-secret quirk.
+    monkeypatch.setattr(dz, "HOSTED_GRAPHQL_URL", "http://hosted:9/v1/graphql")
     seen = []
 
     def gql_only_hosted_up(q, *, url=None, secret=None, timeout=60):
@@ -159,6 +162,23 @@ def test_resolve_indexer_probe_order_and_hosted_secret(monkeypatch):
     assert (url, secret) == (dz.HOSTED_GRAPHQL_URL, "")    # hosted rejects the admin-secret header
     assert [u for u, _ in seen] == ["http://explicit:9/v1/graphql", dz.GRAPHQL_URL,
                                     dz.HOSTED_GRAPHQL_URL]  # explicit → local → hosted
+
+
+def test_resolve_indexer_skips_unset_hosted(monkeypatch):
+    """With HOSTED_GRAPHQL_URL unset (the default now), it must NOT be probed at all — the old baked
+    dev-deploy default made every call burn a 15s timeout on a corpse."""
+    import data.disputes as dz
+
+    monkeypatch.setattr(dz, "HOSTED_GRAPHQL_URL", "")
+    seen = []
+
+    def gql(q, *, url=None, secret=None, timeout=60):
+        seen.append(url)
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(dz, "_gql", gql)
+    assert dz.resolve_indexer() == (None, None)
+    assert seen == [dz.GRAPHQL_URL]        # local only — no empty/dead hosted probe
 
     # an answering explicit endpoint wins immediately (no further probes)
     seen.clear()
@@ -202,7 +222,10 @@ def test_export_build_rows_resolves_endpoint_and_flags_hosted(monkeypatch):
     from data.disputes import HOSTED_GRAPHQL_URL
 
     logs, seen = [], {}
-    monkeypatch.setattr(ex, "resolve_indexer", lambda u=None: (HOSTED_GRAPHQL_URL, ""))
+    # HOSTED_GRAPHQL_URL is opt-in now (empty by default), so configure one to exercise the
+    # coverage-capped warning path.
+    monkeypatch.setattr(ex, "HOSTED_GRAPHQL_URL", "http://hosted:9/v1/graphql")
+    monkeypatch.setattr(ex, "resolve_indexer", lambda u=None: (ex.HOSTED_GRAPHQL_URL, ""))
 
     def fake_loader(url, *, secret=None, log=None, **kw):
         seen.update(url=url, secret=secret)
@@ -214,13 +237,30 @@ def test_export_build_rows_resolves_endpoint_and_flags_hosted(monkeypatch):
     monkeypatch.setattr(ex, "load_disputes_from_indexer", fake_loader)
     monkeypatch.setattr(ex, "_categories_for", lambda cids: {"0xc": "politics"})
     rows = ex.build_rows(None, log=logs.append)
-    assert seen == {"url": HOSTED_GRAPHQL_URL, "secret": ""}  # resolved url + no-secret threaded through
+    assert seen == {"url": ex.HOSTED_GRAPHQL_URL, "secret": ""}  # resolved url + no-secret threaded through
     assert any("COVERAGE-CAPPED" in line for line in logs)    # a hosted export is flagged un-authoritative
     assert rows[0]["category"] == "politics"
+    assert rows[0]["post_hf_cutoff"] is False                 # 2023 dispute — inside the HF window
 
+    # No indexer reachable → fall back to the keyless RPC scan rather than refusing to export. The
+    # hosted Envio deploy is gone, so raising here would make the release unmaintainable.
     monkeypatch.setattr(ex, "resolve_indexer", lambda u=None: (None, None))
-    with pytest.raises(RuntimeError):                         # nothing reachable → refuse to export
-        ex.build_rows(None, log=None)
+    called = {}
+
+    def fake_rpc_loader(**kw):
+        called["yes"] = True
+        return [{"conditionId": "0xc", "tradeableConditionId": "0xc", "questionId": "0xq",
+                 "adapter": "negrisk", "hf_joinable": True, "disputeTs": 1700000000,
+                 "requestTimestamp": 1700000000, "round": 1, "disputer": "0xd",
+                 "proposer": "0xp", "proposedOutcome": "NO", "disputeId": "0xh-1"}]
+
+    monkeypatch.setattr("data.disputes.load_disputes_rpc", fake_rpc_loader)
+    rows = ex.build_rows(None, log=None)
+    assert called.get("yes") and rows[0]["adapter"] == "negrisk"
+
+    # ...but an explicit source="indexer" must still refuse rather than silently switch sources
+    with pytest.raises(RuntimeError):
+        ex.build_rows(None, source="indexer", log=None)
 
 
 # --- load_disputes: the released parquet is the default numerator source ---
@@ -271,3 +311,135 @@ def test_load_disputes_source_precedence(monkeypatch, tmp_path):
         {"conditionId": "0xb", "disputeTs": 9, "adapter": "legacy", "disputer": "0xe"}]})
     assert dz.load_disputes() == [{"conditionId": "0xb", "disputeTs": 9, "adapter": "legacy",
                                    "disputer": "0xe"}]
+
+
+# --- U: adapter coverage — a missing adapter silently truncates the export ---------------------
+def test_derivable_covers_every_adapter_the_release_uses():
+    """The RPC export filters OO logs by `topics[1] IN DERIVABLE|NEGRISK`, so an adapter missing from
+    that set is invisible — a re-export would silently DROP its disputes rather than fail. This caught
+    0x157ce2d6… (108 real rows) before it reached a published artifact. If a new adapter ever appears
+    on-chain, fail loudly here instead."""
+    pytest.importorskip("pandas")
+    import pandas as pd
+    from data.disputes import DERIVABLE, NEGRISK, RELEASE_PARQUET
+
+    df = pd.read_parquet(RELEASE_PARQUET)
+    used = set(df.adapter.dropna().unique())
+    known = set(DERIVABLE.values()) | {"negrisk"}
+    missing = used - known
+    assert not missing, (
+        f"adapters in the release that the RPC scan cannot see: {missing} — add them to DERIVABLE "
+        f"(after validating their conditionId derivation) or the next export drops those rows")
+
+
+def test_new_adapter_derives_condition_id_like_v2():
+    """0x157ce2d6… earns its DERIVABLE entry: its released (questionId -> conditionId) pairs must
+    reproduce under keccak(adapter ++ questionId ++ 2), the same rule as V2/Legacy."""
+    pytest.importorskip("pandas")
+    import pandas as pd
+    from eth_utils import keccak
+    from data.disputes import RELEASE_PARQUET
+
+    adpt = "0x157ce2d672854c848c9b79c49a8cc6cc89176a49"
+    df = pd.read_parquet(RELEASE_PARQUET)
+    rows = df[df.adapter == adpt]
+    if rows.empty:
+        pytest.skip("adapter not present in this release cut")
+    a = bytes.fromhex(adpt[2:])
+    ok = sum(1 for r in rows.itertuples()
+             if r.questionId and "0x" + keccak(a + bytes.fromhex(r.questionId[2:])
+                                               + (2).to_bytes(32, "big")).hex() == r.conditionId)
+    assert ok == len(rows), f"only {ok}/{len(rows)} derive — it is NOT a keccak-derivable adapter"
+
+
+# --- V: the batch scan must survive keyless-RPC throttling -------------------------------------
+def test_rpc_retries_transient_throttle_then_succeeds(monkeypatch):
+    """All endpoints 401 (progressive throttling under a batch job) → back off and retry, don't die.
+    The first real export crashed exactly here, ~1.7k lookups in."""
+    import data.disputes as dz
+
+    calls = {"n": 0}
+
+    def flaky(url, body, timeout):
+        calls["n"] += 1
+        if calls["n"] <= len(dz.RPC_URLS) * 2:        # every endpoint throttled for 2 full rounds
+            raise RuntimeError("HTTP Error 401: Unauthorized")
+        return "0x64"
+
+    monkeypatch.setattr(dz, "_rpc_once", flaky)
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    assert dz._rpc("eth_blockNumber", []) == "0x64"
+    assert calls["n"] > len(dz.RPC_URLS)              # proves it went round again rather than raising
+
+
+def test_rpc_does_not_retry_application_errors(monkeypatch):
+    """A JSON-RPC error ('range too large') is NOT transient — it must surface immediately so the
+    caller's range-bisection reacts, instead of sleeping through pointless retries."""
+    import data.disputes as dz
+
+    calls = {"n": 0}
+
+    def hard(url, body, timeout):
+        calls["n"] += 1
+        raise RuntimeError({"code": -32005, "message": "query returned more than 10000 results"})
+
+    monkeypatch.setattr(dz, "_rpc_once", hard)
+    monkeypatch.setattr("time.sleep", lambda s: pytest.fail("must not back off on an app error"))
+    with pytest.raises(RuntimeError):
+        dz._rpc("eth_getLogs", [{}])
+    assert calls["n"] == len(dz.RPC_URLS)             # one pass over the endpoints, no retry round
+
+
+def test_block_timestamps_checkpoint_survives_a_crash(monkeypatch, tmp_path):
+    """A throttle near the end must not discard the earlier lookups — the cache is flushed en route."""
+    import data.disputes as dz
+
+    cache_file = tmp_path / "block_ts.json"
+    monkeypatch.setattr(dz, "RPC_BLOCK_TS_CACHE", str(cache_file))
+    monkeypatch.setattr(dz, "_BLOCK_TS_CHECKPOINT", 2)
+
+    # Key the stub off the REQUESTED BLOCK, never a shared call counter. A counter makes this test
+    # hostage to any other caller of dz._rpc in the same process: webapp/backend/live.py starts a
+    # background tail refresh, and when tests/test_webapp.py ran first that thread was still alive and
+    # calling the patched _rpc — burning one of the four allowed calls, so only 3 got checkpointed and
+    # this test failed intermittently depending on file order. Block-keyed = deterministic regardless.
+    def boom_above_4(method, params, timeout=60):
+        b = int(params[0], 16)
+        if b > 4:
+            raise RuntimeError("HTTP Error 401: Unauthorized")
+        return {"timestamp": hex(1_700_000_000 + b)}
+
+    monkeypatch.setattr(dz, "_rpc", boom_above_4)
+    with pytest.raises(RuntimeError):
+        dz._block_timestamps_cached([1, 2, 3, 4, 5, 6], log=None)
+    import json as _j
+    saved = _j.loads(cache_file.read_text())
+    assert len(saved) == 4, f"partial progress lost: only {len(saved)} of 4 checkpointed"
+    assert set(saved) == {"1", "2", "3", "4"}        # the ones that SUCCEEDED, not merely four of them
+
+    # the resumed run reuses them and only re-fetches what's genuinely missing (5, 6)
+    fetched: list[int] = []
+
+    def only_new(method, params, timeout=60):
+        fetched.append(int(params[0], 16))
+        return {"timestamp": hex(1_700_000_999)}
+
+    monkeypatch.setattr(dz, "_rpc", only_new)
+    out = dz._block_timestamps_cached([1, 2, 3, 4, 5, 6], log=None)
+    assert len(out) == 6
+    assert sorted(fetched) == [5, 6], f"resume refetched cached blocks: {sorted(fetched)}"
+
+
+def test_block_ts_cache_paths_are_distinct():
+    """Two DIFFERENT caches live in data/disputes.py:
+        BLOCK_TS_CACHE      {txHash: ts}  — the indexer path (dispute_block_ts.json)
+        RPC_BLOCK_TS_CACHE  {block:  ts}  — the RPC export   (rpc_block_ts.json)
+    They were briefly BOTH named BLOCK_TS_CACHE, so the later definition shadowed the earlier one and
+    the export read/wrote the indexer's cache — overwriting {txHash: ts} entries with {block: ts} under
+    the same key space, with no error. Different data, different key type, different file: assert it,
+    because a name collision like that is invisible at runtime."""
+    import data.disputes as dz
+
+    assert dz.BLOCK_TS_CACHE != dz.RPC_BLOCK_TS_CACHE
+    assert dz.BLOCK_TS_CACHE.endswith("dispute_block_ts.json")
+    assert dz.RPC_BLOCK_TS_CACHE.endswith("rpc_block_ts.json")

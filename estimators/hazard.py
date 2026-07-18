@@ -164,12 +164,25 @@ _RELEASE_PQ = os.path.join(os.path.dirname(os.path.dirname(__file__)),
                            "dataset_release", "polymarket-oov2-disputes-v1", "disputes.parquet")
 
 
+def _hf_window_sql() -> str:
+    """The HF-window predicate shared by every training read of the released layer.
+
+    Same invariant as data.disputes.load_disputes: `hf_joinable` is SPATIAL (the market exists in HF),
+    never temporal, so it does NOT keep these reads inside the HF snapshot window once the released
+    layer is extended past the cutoff. Post-cutoff disputes would arrive with an HF-derived
+    `market_size` of ~0 (the HF fill tape ends at the same cutoff, so those markets look fill-less) —
+    i.e. phantom zero-liquidity positives — on top of an inflated category_base_rate. Bound both.
+    """
+    from data.disputes import HF_CUTOFF_TS
+    return f"hf_joinable AND disputeTs <= {HF_CUTOFF_TS}"
+
+
 def _disputes_by_proposer() -> dict[str, int]:
-    """{proposer_lower: their total dispute count} across the released dispute layer."""
+    """{proposer_lower: their total dispute count} across the released dispute layer (HF window)."""
     import duckdb
 
     rows = duckdb.sql(f"SELECT lower(proposer), count(*) FROM '{_RELEASE_PQ}' "
-                      f"WHERE hf_joinable AND proposer IS NOT NULL GROUP BY 1").fetchall()
+                      f"WHERE {_hf_window_sql()} AND proposer IS NOT NULL GROUP BY 1").fetchall()
     return {p: int(n) for p, n in rows if p}
 
 
@@ -181,7 +194,8 @@ def disputed_feature_index() -> dict[str, dict]:
 
     pq = _RELEASE_PQ
     disp = duckdb.sql(
-        f"SELECT conditionId, category, preDisputePrice FROM '{pq}' WHERE hf_joinable").fetchall()
+        f"SELECT conditionId, category, preDisputePrice FROM '{pq}' "
+        f"WHERE {_hf_window_sql()}").fetchall()
 
     br = _base_rate_fn()
     sizes = _fill_count_map([d[0] for d in disp])
@@ -189,6 +203,11 @@ def disputed_feature_index() -> dict[str, dict]:
     for cid, cat, price in disp:
         cat = cat or "other"
         index[cid] = {
+            # `price` is NOT a model feature (see SAFE_FEATURES) — it is only carried for the LIVE
+            # builder, where estimate_lambda uses it for the jump_drift DIRECTION. 174 joinable rows
+            # have no preDisputePrice (no pre-dispute fills in the tape); 0.5 is the deliberate neutral
+            # default → logit 0 → jump_drift exactly 0, i.e. "no directional claim", not a fabricated
+            # observation. Training never reads this field.
             "category": cat, "price": float(price) if price is not None else 0.5,
             "category_base_rate": br(cat), "market_size": market_size_feature(sizes.get(cid, 0)),
             # DEPLOYED model is size-only (category_base_rate + market_size). proposer_reliability is
@@ -351,7 +370,7 @@ def build_matched_training_rows(*, control_pool: int = 12000, graphql_url: str |
     # disputed rows with REAL proposer (self-contained: independent of the deployed size-only index,
     # which zeros proposer). LOO removes each market's own dispute.
     disp = duckdb.sql(f"SELECT conditionId, category, lower(proposer) FROM '{_RELEASE_PQ}' "
-                      f"WHERE hf_joinable").fetchall()
+                      f"WHERE {_hf_window_sql()}").fetchall()
     disputed_ids = {d[0] for d in disp}
     dsizes = _fill_count_map([d[0] for d in disp])
     disp_rows = []
@@ -395,12 +414,22 @@ def train_and_cache(*, matched: bool = False, graphql_url: str | None = None,
 
 def _holdout_eval(rows, offset: float, *, seed: int = 0) -> dict:
     """Stratified 70/30 hold-out: train on 70%, score the untouched 30% at natural calibration.
-    Held-out Brier + AUC — discrimination (AUC) is the honest metric for a rare event."""
+    Held-out Brier + AUC — discrimination (AUC) is the honest metric for a rare event.
+
+    The sort before the shuffle is what makes this REPRODUCIBLE. `seed` alone does not: a seeded
+    shuffle of a list whose incoming order is arbitrary is still arbitrary, and these rows are built
+    off Python set iteration (data.disputes.dispute_counts_by_category does `list({...})`), which
+    varies per process. Symptom: three runs on IDENTICAL data returned held-out AUC 0.7153 / 0.7055 /
+    0.7105 — so the published headline was one draw from a ~1pt spread, not a fact. Order first, then
+    shuffle, and the seed finally means something."""
     import numpy as np
     from sklearn.metrics import brier_score_loss, roc_auc_score
 
-    pos = [r for r in rows if r["disputed"] == 1]
-    neg = [r for r in rows if r["disputed"] == 0]
+    def _key(r):     # rows carry no id — the feature tuple is the stable identity we have
+        return tuple(float(r[f]) for f in SAFE_FEATURES)
+
+    pos = sorted((r for r in rows if r["disputed"] == 1), key=_key)
+    neg = sorted((r for r in rows if r["disputed"] == 0), key=_key)
     rng = np.random.RandomState(seed)
     rng.shuffle(pos); rng.shuffle(neg)
     cp, cn = int(len(pos) * 0.7), int(len(neg) * 0.7)

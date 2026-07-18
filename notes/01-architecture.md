@@ -5,7 +5,8 @@
 
 ## 1. System overview
 
-PolyLambda is a Python market-making engine (+ a TypeScript Envio indexer + a React dashboard) with a
+PolyLambda is a Python market-making engine (+ a React dashboard, and a legacy/optional TypeScript Envio
+indexer) with a
 strict one-way dependency flow. The core is pure math and pure data-access modules; I/O lives at the
 edges (data adapters, clob adapters, the web app). Everything is **offline-first** — the test suite runs
 with no network and no DuckDB, and every live data plane degrades to an "offline" state independently.
@@ -20,7 +21,8 @@ data/  (HF + DuckDB backbone, dispute labels)
                    └──► execution/  (loop, paper/paper-live/clob adapters)
                            └──► forwardtest/  (runner, session_log, ablation, replay_ablation)
 recon/     validates indexed outcomes vs HF payouts (a hard gate)
-indexer/   (TS/Envio) produces the dispute labels shipped in dataset_release/
+indexer/   (TS/Envio) LEGACY/OPTIONAL — a second implementation of the dispute labels.
+           The shipped dataset_release/ parquet is produced from keyless RPC (data/export_disputes.py).
 webapp/    FastAPI + React over the engine; also drives the on-chain Amoy market (contracts/)
 ```
 
@@ -66,8 +68,20 @@ The deployed system reads three *unrelated* sources; each can be offline without
 | Plane | Source | Used by | Config |
 |-------|--------|---------|--------|
 | **Historical** | HF dataset `moose-code/polymarket-onchain-v1` via DuckDB over `hf://` | estimators, recon, base rates, replay-ablation | `DATA_SOURCE=hf`, `HF_DATASET` |
-| **Live disputes** | Envio HyperIndex GraphQL (hosted or local) | `webapp` LiveIndexer, hazard controls, recon-live | `INDEXER_GRAPHQL_URL` |
+| **Live disputes** | **keyless Polygon RPC** — `data.disputes.recent_disputes_rpc` scans OOv2 `DisputePrice` back from chain head | `webapp` LiveIndexer section | `POLYGON_RPC_URL` |
 | **On-chain market** | Polygon Amoy RPC → `PolyLambdaMarket` | `webapp` LiveTestnet section | `AMOY_RPC_URL`, `MARKET_ADDRESS` |
+
+**Envio is opt-in and legacy, not a live plane.** `webapp/backend/live.py` is source-agnostic and tries
+**Envio-only-if-configured-and-fresh → keyless RPC (the default) → offline**. There is **no baked-in
+endpoint** — the old free-tier dev deploy ended, so an unset env goes straight to RPC
+(`live.py:4-8,24`), and `INDEXER_GRAPHQL_URL` is unset in `fly.toml` / `render.yaml` / `Dockerfile`.
+A *stale* indexer URL is worse than an empty one. The only jobs still wanting an indexer are
+`estimators.hazard --matched`, `services.ablation(live=True)` and `services.recon_live()` — all of which
+degrade honestly to the published artifacts.
+
+Liveness for the RPC plane is judged on the **chain head** (is `eth_blockNumber`'s block time ≈ now?),
+not on the latest dispute — disputes are sparse and bursty, so "at chain tip, no dispute for N days"
+reads as LIVE-but-quiet rather than stale (`live.py:10-13`).
 
 ## 5. Run modes and gating
 

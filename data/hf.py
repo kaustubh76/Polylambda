@@ -20,9 +20,37 @@ from __future__ import annotations
 import functools
 import os
 
+# Load .env HERE (not just in webapp/backend/chain.py) because this module is the one thing every HF
+# entrypoint imports — the webapp AND the CLI jobs that do the heavy scans (webapp.backend.precompute,
+# data.export_disputes, data.calibrate). Without this, a token in .env silently never reached them.
+# Real process env always wins (load_dotenv does not override), so CI/Render secrets are unaffected.
+try:
+    from pathlib import Path as _Path
+
+    from dotenv import load_dotenv as _load_dotenv
+
+    _load_dotenv(_Path(__file__).resolve().parents[1] / ".env")
+except Exception:  # noqa: BLE001 — dotenv is a convenience; process env alone must still work
+    pass
+
 HF_DATASET = os.environ.get("HF_DATASET", "moose-code/polymarket-onchain-v1")
 DATA_SOURCE = os.environ.get("DATA_SOURCE", "hf")            # "hf" | "graphql"
 CACHE_DIR = os.environ.get("DATA_CACHE_DIR", ".data_cache")
+
+
+def hf_token() -> str | None:
+    """The Hugging Face read token, or None. Accepts either env name: HF_TOKEN (documented/primary) or
+    HF_ACCESS_TOKEN (what the HF UI calls it) — read at CALL time so a late-set env still works."""
+    for k in ("HF_TOKEN", "HF_ACCESS_TOKEN"):
+        v = os.environ.get(k)
+        if v and v.strip():
+            return v.strip()
+    return None
+
+
+def has_hf_token() -> bool:
+    """True if an HF token is configured (never exposes the value)."""
+    return hf_token() is not None
 
 # table -> physical layout on the Hub ("partitioned" = year-partitioned dir, "single" = one file)
 TABLE_LAYOUT: dict[str, str] = {
@@ -93,14 +121,19 @@ def table_path(table: str, *, prefer_cache: bool = True) -> str:
 
 @functools.lru_cache(maxsize=1)
 def connect():
-    """A cached DuckDB connection with httpfs loaded (+ optional HF token for higher rate limits)."""
+    """A cached DuckDB connection with httpfs loaded (+ optional HF token for higher rate limits).
+
+    NB the connection is lru_cached, so the token is bound at FIRST connect — call reset_connection()
+    if the env changes afterwards.
+    """
     import duckdb
 
     con = duckdb.connect()
     con.execute("INSTALL httpfs; LOAD httpfs;")
-    token = os.environ.get("HF_TOKEN")
+    token = hf_token()
     if token:
-        con.execute(f"CREATE SECRET hf (TYPE huggingface, TOKEN '{token}');")
+        # escape single quotes: CREATE SECRET takes a literal, not a bind parameter
+        con.execute(f"CREATE SECRET hf (TYPE huggingface, TOKEN '{token.replace(chr(39), chr(39) * 2)}');")
     return con
 
 

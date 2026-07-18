@@ -249,8 +249,11 @@ raw UMA OO price-request ts the event carries — can precede the dispute tx by 
 `disputer`, `proposer`, `proposedOutcome`, + fill-tape price context (pre/post price + realized logit
 jump; populated with `--with-price-context`).
 
-- **1,794 disputes → 1,527 unique disputed markets** (V2 723 · NegRisk 963 · other 108), 2022-12-28 →
-  2026-04-09; **100% `hf_joinable`** across all adapters — the released `conditionId` is the effective
+- **1,794 disputes → 1,527 unique disputed markets** (V2 723 · NegRisk 963 · other 108), 2022-12-30 →
+  2026-04-18 (verified against the parquet; an earlier "2022-12-28 → 2026-04-09" here was wrong on both
+  ends). The **HF head** — the window the λ denominator is frozen at — is `HF_CUTOFF_BLOCK` 85,948,287 =
+  **2026-04-24T07:43:38Z** (that block's on-chain timestamp; `data.disputes.HF_CUTOFF_TS`), so the layer
+  sits ~6 days inside it. **100% `hf_joinable`** across all adapters — the released `conditionId` is the effective
   HF join key (tradeable cid for NegRisk, recovered via `data/negrisk_map.py`; native for V2/Legacy),
   so NegRisk rows carry a `category` and join the fill tape.
 - The DuckDB join recipe + the NegRisk map explainer are baked into the card. License `CC-BY-4.0` (matches upstream).

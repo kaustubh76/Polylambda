@@ -19,7 +19,8 @@ TWO-SOURCE JOIN (this is where the whole data layer converges):
     via data.disputes; DATA_SOURCE=graphql sources them live from the scoped OOv2 indexer). HF has none.
   * matched CONTROLS + fill tapes + outcomes <- the HF dataset (data.metadata / data.fills /
     data.conditions), ideally via data.cache.materialize_slice for speed.
-The join key is conditionId. Labels ship in-repo (1,794 released disputes); only if the release
+The join key is conditionId. Labels ship in-repo (1,794 released disputes inside the HF window, of
+1,848 shipped); only if the release
 parquet, RPC cache and indexer are ALL unavailable does `load_disputes` return [] and run_replay
 report 0 disputes with the power calc — honestly "no labels", not "no edge".
 

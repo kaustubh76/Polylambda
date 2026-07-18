@@ -18,6 +18,21 @@ export const signed = (x: number | null | undefined, dp = 2): string =>
 export const fixed = (x: number | null | undefined, dp = 4): string =>
   x == null ? '—' : x.toFixed(dp)
 
+// compact magnitude for dense cells (HF volumes/fill counts run to 1e9 — a full-precision
+// $1,636,188,222.00 would blow out a table column): 1.6B · 886.9M · 12.3k
+export const compact = (x: number | null | undefined, dp = 1): string => {
+  if (x == null) return '—'
+  const a = Math.abs(x)
+  const s = x < 0 ? '−' : ''
+  if (a >= 1e9) return `${s}${(a / 1e9).toFixed(dp)}B`
+  if (a >= 1e6) return `${s}${(a / 1e6).toFixed(dp)}M`
+  if (a >= 1e3) return `${s}${(a / 1e3).toFixed(dp)}k`
+  return `${s}${Math.round(a)}`
+}
+
+export const usdCompact = (x: number | null | undefined, dp = 1): string =>
+  x == null ? '—' : `$${compact(Math.abs(x), dp)}`
+
 // compact addresses / condition ids
 export const short = (s: string | null | undefined, head = 6, tail = 4): string =>
   !s ? '—' : s.length <= head + tail + 2 ? s : `${s.slice(0, head)}…${s.slice(-tail)}`

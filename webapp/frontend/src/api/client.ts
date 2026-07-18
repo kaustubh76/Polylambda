@@ -185,15 +185,16 @@ export interface QuoteCurve {
 export interface HfOverview {
   resolution: { YES: number; NO: number; tie: number; resolved: number; unresolved: number; total: number }
   markets_by_year: { year: string; n: number }[]
+  fills_by_year: { year: string; n: number }[]
   by_category: { category: string; n_markets: number; n_resolved: number }[]
-  coverage: { repo: string; total_conditions: number; resolved_conditions: number; total_fills: number; market_date_min: string; market_date_max: string; cutoff_block: number }
-  source?: string; note?: string; live_error?: string
+  coverage: { repo: string; total_conditions: number; resolved_conditions: number; total_fills: number; fills_source?: string; market_date_min: string; market_date_max: string; cutoff_block: number }
+  built_at?: string; source?: string; note?: string; live_error?: string
 }
-export interface HfMarketRow { conditionId: string; marketName: string; marketSlug: string; category: string; startDate: string | null; endDate: string | null; resolved: boolean; resolvedOutcome: string | null }
-export interface HfMarkets { total: number; rows: HfMarketRow[]; categories: string[]; n_cached: number; note: string }
+export interface HfMarketRow { conditionId: string; marketName: string; marketSlug: string; category: string; startDate: string | null; endDate: string | null; resolved: boolean; resolvedOutcome: string | null; volume: number | null; trades: number | null }
+export interface HfMarkets { total: number; rows: HfMarketRow[]; categories: string[]; n_cached: number; has_volume?: boolean; built_at?: string; note: string }
 
 export interface LiveStatus { reachable: boolean; endpoint: string; source?: string; latency_ms?: number; head_ts?: number | null; head_id?: string | null; head_age_seconds?: number | null; chain_head_ts?: number | null; error?: string }
-export interface LiveDispute { id: string; round: number | null; disputeTs: number; disputer: string | null; proposedOutcome: string | null; proposer: string | null; conditionId: string | null; marketStatus: string | null; finalOutcome: string | null; outcomeSlotCount: number | null }
+export interface LiveDispute { id: string; round: number | null; disputeTs: number; disputer: string | null; proposedOutcome: string | null; proposer: string | null; conditionId: string | null; marketStatus: string | null; finalOutcome: string | null; outcomeSlotCount: number | null; adapter?: string | null; marketName?: string | null; category?: string | null }
 export interface LiveDisputes { reachable: boolean; disputes: LiveDispute[]; source?: string; latency_ms?: number; endpoint: string; error?: string }
 
 // ---- testnet (Polygon Amoy on-chain market) --------------------------------------------------

@@ -112,20 +112,75 @@ def _envio_disputes(limit: int, since_ts: int | None) -> list[dict] | None:
 # ---------------------------------------------------------------------------------------------
 _tail: dict = {"until": 0.0, "rows": [], "refreshing": False, "built_at": None, "error": None}
 _tail_lock = threading.Lock()
+# Lifecycle control for the background scan. Without this the daemon thread is fire-and-forget: it
+# outlives the process/test that spawned it and, because it calls data.disputes._rpc, races any test
+# that monkeypatches _rpc afterwards (the root cause of a flaky checkpoint test). stop_tail() sets the
+# event (skip future spawns) and joins the in-flight thread; the app lifespan calls it on shutdown, so
+# a TestClient context no longer leaves a live RPC thread behind.
+_tail_stop = threading.Event()
+_tail_threads: set[threading.Thread] = set()
+
+
+def _enrich_live_names(rows: list[dict]) -> None:
+    """Attach marketName/category to live dispute rows via a targeted HF market_data lookup, in place.
+
+    Live disputes are brand-new markets, so they are NOT in the shipped dispute_market_context (built
+    from the April release) — without this they'd show a bare conditionId forever. The lookup is keyed
+    by conditionId (an `IN` over market_data: ~0.4s against the local parquet, ~13s against the Hub),
+    runs only in the background tail thread, and is cached because the mapping is immutable. Degrades
+    silently to no names when neither a local parquet nor an HF token is available.
+    """
+    from pathlib import Path
+    cids = sorted({r["conditionId"] for r in rows if r.get("conditionId")})
+    if not cids:
+        return
+    from .cache import DATA_CACHE, WEBAPP_CACHE
+    path = WEBAPP_CACHE / "live_market_names.json"
+    cached: dict = {}
+    try:
+        if path.exists():
+            cached = json.loads(path.read_text())
+    except Exception:  # noqa: BLE001
+        cached = {}
+    todo = [c for c in cids if c not in cached]
+    if todo:
+        try:
+            from data.hf import has_hf_token, query, table_path
+            from data.metadata import category_case_sql
+            if not (has_hf_token() or (DATA_CACHE / "market_data").is_dir()):
+                return                                   # no source for names on this host
+            inl = ",".join(f"'{c}'" for c in todo)
+            got = query(f"""SELECT condition, any_value(marketName), any_value({category_case_sql()})
+                            FROM '{table_path('market_data')}'
+                            WHERE condition IN ({inl}) GROUP BY condition""")
+            for cid, name, cat in got:
+                cached[cid] = {"marketName": name or None, "category": cat}
+            for c in todo:                               # remember misses so we don't re-query forever
+                cached.setdefault(c, {"marketName": None, "category": None})
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(cached))
+        except Exception:  # noqa: BLE001 — enrichment is optional; the feed must still work
+            return
+    for r in rows:
+        hit = cached.get(r.get("conditionId") or "")
+        if hit:
+            r["marketName"] = hit.get("marketName")
+            r["category"] = hit.get("category")
 
 
 def _refresh_tail_async() -> None:
     """Kick a background scan of the OOv2 dispute tail if the cache is stale and no scan is running."""
     now = time.monotonic()
     with _tail_lock:
-        if _tail["refreshing"] or _tail["until"] > now:
-            return
+        if _tail_stop.is_set() or _tail["refreshing"] or _tail["until"] > now:
+            return                            # shutting down, a scan is running, or the cache is fresh
         _tail["refreshing"] = True
 
     def work():
         try:
             from data.disputes import recent_disputes_rpc
             rows = recent_disputes_rpc(lookback_blocks=_TAIL_LOOKBACK, target=_TAIL_TARGET)
+            _enrich_live_names(rows)          # market names for the freshly-labeled NegRisk cids
             with _tail_lock:
                 _tail.update(rows=rows, until=time.monotonic() + _TAIL_TTL,
                              built_at=int(time.time()), error=None)
@@ -135,8 +190,25 @@ def _refresh_tail_async() -> None:
         finally:
             with _tail_lock:
                 _tail["refreshing"] = False
+            _tail_threads.discard(threading.current_thread())
 
-    threading.Thread(target=work, daemon=True).start()
+    t = threading.Thread(target=work, name="rpc-tail-scan", daemon=True)
+    _tail_threads.add(t)
+    t.start()
+
+
+def stop_tail(timeout: float = 5.0) -> None:
+    """Stop spawning tail scans and join any in-flight one. Call on app shutdown (and in test teardown)
+    so the background RPC thread never outlives its owner and races a later _rpc monkeypatch. Idempotent."""
+    _tail_stop.set()
+    for t in list(_tail_threads):
+        t.join(timeout=timeout)
+    _tail_threads.clear()
+
+
+def resume_tail() -> None:
+    """Re-arm scans after a stop_tail() (e.g. a fresh TestClient in the same process). Idempotent."""
+    _tail_stop.clear()
 
 
 def warm_tail() -> None:
@@ -216,8 +288,8 @@ def recent_disputes(*, limit: int = 200, since_ts: int | None = None) -> list[di
         ts = d.get("disputeTs")
         date = datetime.fromtimestamp(int(ts), timezone.utc).strftime("%Y-%m-%d") if ts else None
         rows.append({
-            "conditionId": d.get("conditionId"), "marketName": None,
-            "category": None, "adapter": d.get("adapter"), "disputeDate": date, "disputeTs": ts,
+            "conditionId": d.get("conditionId"), "marketName": d.get("marketName"),
+            "category": d.get("category"), "adapter": d.get("adapter"), "disputeDate": date, "disputeTs": ts,
             "proposedOutcome": d.get("proposedOutcome"),
             "preDisputePrice": None, "postDisputePrice": None, "realizedJumpLogit": None,
             "disputer": d.get("disputer"), "proposer": d.get("proposer"),

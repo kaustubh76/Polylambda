@@ -46,16 +46,21 @@ jobs:
       - name: Install deps
         run: pip install -r requirements.txt
 
-      - name: Regenerate released dispute snapshot (needs a live indexer)
-        if: ${{ env.INDEXER_GRAPHQL_URL != '' }}
+      # No indexer needed any more: --source auto uses one if reachable, else scans OOv2 logs straight
+      # from Polygon over the keyless RPC. Rows past the HF head are marked post_hf_cutoff=true and are
+      # excluded from the λ numerator by data.disputes.load_disputes (they'd bias it +1/+0).
+      - name: Regenerate released dispute snapshot (keyless RPC; no indexer required)
         run: |
           PCTX=""
           if [ "${{ github.event.inputs.with_price_context }}" != "false" ]; then PCTX="--with-price-context"; fi
-          python -m data.export_disputes --graphql-url "$INDEXER_GRAPHQL_URL" $PCTX
+          python -m data.export_disputes --source auto $PCTX
         continue-on-error: true
 
-      - name: Retrain the deployed hazard model
-        if: ${{ env.INDEXER_GRAPHQL_URL != '' }}
+      # NOT gated on the indexer: train_and_cache(matched=False) -> build_training_rows() reads ONLY the
+      # released parquet + HF (verified) — zero indexer calls. Only `--matched` needs one. Gating this on
+      # INDEXER_GRAPHQL_URL meant the deployed model never retrained while base rates refreshed nightly,
+      # so the shipped hazard_model.json silently drifted against the base rates served beside it.
+      - name: Retrain the deployed hazard model (needs HF, not an indexer)
         run: python -m estimators.hazard
         continue-on-error: true
 
@@ -68,8 +73,11 @@ jobs:
       - name: Sync regenerated artifacts into the committed deploy cache
         run: |
           mkdir -p webapp/deploy/cache/webapp
-          # ship the small, non-regenerable-on-a-fresh-host artifacts the Docker image copies in
-          for f in hazard_model.json hazard_model_matched.json hazard_eval_matched.json sigma_prior.json; do
+          # ship the small artifacts the Docker image copies in. Only hazard_model.json is (re)produced
+          # by this workflow — the *_matched* cards come from `estimators.hazard --matched`, which needs
+          # an indexer and is NOT run here, so they stay as committed. (They were previously cp'd from
+          # names no step ever writes — the trainer emits *_matched_eval.json — passing green via `|| true`.)
+          for f in hazard_model.json sigma_prior.json; do
             [ -f ".data_cache/$f" ] && cp ".data_cache/$f" "webapp/deploy/cache/$f" || true
           done
           for f in base_rate_counts.json disputes_by_proposer.json dispute_names.json kappa_by_category.json \

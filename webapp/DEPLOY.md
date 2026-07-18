@@ -46,15 +46,20 @@ gcloud run deploy polylambda --source . --port 8000 --allow-unauthenticated --me
 - **Memory:** ~256–512MB idle; 512MB–1GB is comfortable (numpy/pandas load lazily on first use).
 - **Mode:** defaults to `MODE=paper`. Live trading stays jurisdiction-gated and out of scope; the
   container never installs `web3`/`polymarket-client`, so the write path can't even be constructed.
-- **Live indexer:** the "Live dispute stream" panel queries a hosted Envio HyperIndex over GraphQL
-  (stdlib `urllib`, no dep) — needs only outbound HTTPS, which every host allows. It defaults to the
-  public dev deploy; point `INDEXER_GRAPHQL_URL` at your own production indexer to swap it. If the
-  endpoint is unreachable the panel shows "offline" and the rest of the dashboard is unaffected.
+- **Live dispute feed:** the "Live dispute stream" panel scans OOv2 `DisputePrice` logs straight from
+  Polygon over a **keyless public RPC** (`POLYGON_RPC_URL`, stdlib `urllib`, no dep, no paid service) —
+  needs only outbound HTTPS. The old hosted Envio dev deploy is **gone** (free tier ended), so there is
+  no baked-in GraphQL default: leave `INDEXER_GRAPHQL_URL` **unset** to use the RPC path, and set it only
+  if you run your own indexer (a stale value there costs an 8s timeout per poll *and* disables the RPC
+  feed). The heavy scan runs in a background thread behind a TTL cache, so it never blocks a request; the
+  LIVE badge is gated on **chain-head** freshness. If the RPC is unreachable the panel shows "offline"
+  and the rest of the dashboard is unaffected.
 - **Refreshing artifacts:** if you retrain the hazard model or rebuild the σ prior, re-snapshot with
   `cp .data_cache/hazard_model*.json .data_cache/sigma_prior.json webapp/deploy/cache/ && cp .data_cache/webapp/*.json webapp/deploy/cache/webapp/` and rebuild.
 - **Live engine paths (recon / ablation):** `/api/recon/live` and `/api/ablation?live=1` attempt the
-  real engine when `INDEXER_GRAPHQL_URL` is set (it is, by default) and **fall back to the published
-  artifact with a truthful `source`/`live_error`** otherwise. Each runs in a worker thread under a
+  real engine when `INDEXER_GRAPHQL_URL` is set (it is **not** set by default any more, so both serve the
+  published/committed artifact today) and **fall back with a truthful `source`/`live_error`**
+  otherwise. Each runs in a worker thread under a
   hard deadline (`LIVE_TIMEOUT_S` in `routes.py`) so a slow call never blocks the single uvicorn
   worker. The slim `requirements-deploy.txt` omits the HF/sklearn replay deps, so `?live=1` reports
   "replay deps not installed" and serves the published curve — to ship the richer 4-arm result, run

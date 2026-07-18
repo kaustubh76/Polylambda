@@ -38,13 +38,21 @@ async def lifespan(app: FastAPI):
         # kick the keyless-RPC dispute tail scan so the live feed is warm before users poll it
         try:
             from . import live
-            live.warm_tail()
+            live.warm_tail()                  # no-op if the tail was disabled (e.g. the test session)
         except Exception:  # noqa: BLE001 — live feed is optional; the dashboard runs without it
             pass
         print(f"[webapp] offline DI installed (base-rate denominators: {src}); caches warmed.")
 
     threading.Thread(target=_warm, name="cache-warm", daemon=True).start()
     yield
+    # Shutdown: stop the background RPC tail scan and join it, so it never outlives this app instance.
+    # Under pytest a TestClient enters/exits lifespan per context; without this the daemon scan thread
+    # would linger and call data.disputes._rpc after a later test monkeypatched it.
+    try:
+        from . import live
+        live.stop_tail()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 app = FastAPI(title="PolyLambda Dashboard API",

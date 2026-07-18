@@ -33,7 +33,8 @@ import datetime
 import json
 import os
 
-from .disputes import HOSTED_GRAPHQL_URL, load_disputes_from_indexer, resolve_indexer
+from .disputes import (HF_CUTOFF_TS, HOSTED_GRAPHQL_URL, load_disputes_from_indexer,
+                       resolve_indexer)
 from .hf import connect, query, table_path
 from .metadata import category_case_sql
 
@@ -43,7 +44,8 @@ DATASET_NAME = "polymarket-oov2-disputes-v1"
 # Deterministic column order for the released parquet.
 COLUMNS = ["conditionId", "questionId", "adapter", "hf_joinable", "category",
            "disputeTs", "disputeDate", "requestTimestamp", "round", "disputer", "proposer",
-           "proposedOutcome", "preDisputePrice", "postDisputePrice", "realizedJumpLogit"]
+           "proposedOutcome", "preDisputePrice", "postDisputePrice", "realizedJumpLogit",
+           "post_hf_cutoff"]
 
 
 def _dt(ts: int) -> datetime.datetime:
@@ -90,25 +92,42 @@ def _price_context(cid: str, dispute_ts: int, *, fill_limit: int = 5000) -> tupl
     return pre_p, post_p, jump
 
 
-def build_rows(graphql_url: str | None = None, *, with_price_context: bool = False, log=print) -> list[dict]:
+def _source_disputes(graphql_url: str | None, *, source: str, log=print) -> list[dict]:
+    """Fetch the dispute layer from the indexer or straight from Polygon (same row shape).
+
+    `source="auto"` prefers a reachable indexer and falls back to the keyless RPC scan — because the
+    hosted Envio deploy is GONE, so raising here would make the released dataset unmaintainable.
+    """
+    if source in ("auto", "indexer"):
+        url, secret = resolve_indexer(graphql_url)
+        if url is not None:
+            if log and HOSTED_GRAPHQL_URL and url == HOSTED_GRAPHQL_URL:
+                log("  ⚠ local indexer down -> hosted HyperIndex fallback (COVERAGE-CAPPED: 1000 "
+                    "rows/page, aggregates off). Do NOT publish artifacts from this run as authoritative.")
+            return load_disputes_from_indexer(url, secret=secret, log=log)
+        if source == "indexer":
+            raise RuntimeError("no indexer endpoint reachable and source='indexer' was requested — "
+                               "start the local indexer, or use source='rpc' (no indexer needed)")
+        if log:
+            log("  no indexer reachable -> keyless Polygon RPC scan (no indexer required)")
+    from .disputes import load_disputes_rpc
+    return load_disputes_rpc(log=log)
+
+
+def build_rows(graphql_url: str | None = None, *, with_price_context: bool = False,
+               source: str = "auto", log=print) -> list[dict]:
     """Assemble the full release rows (all adapters). Category on the joinable subset; price optional.
 
     The released `conditionId` is the EFFECTIVE HF join key: the recovered tradeable conditionId for
     NegRisk (via data/negrisk_map.py), the native conditionId for V2/Legacy. So category + price context
     now populate for NegRisk too, wherever the map resolved the market.
 
-    Endpoint via the shared `resolve_indexer` (explicit → local → hosted). A hosted hit keeps the
-    export RUNNING but is coverage-capped — loudly flagged, because a truncated release artifact
-    must never be published as authoritative.
+    `source`: "auto" (indexer if reachable, else the keyless RPC scan) | "indexer" | "rpc". The RPC path
+    needs no indexer at all and carries TRUE dispute block timestamps natively — validated row-for-row
+    against the indexer-sourced release (adapter/questionId/proposer/proposedOutcome/hf_joinable all
+    agree on every match).
     """
-    url, secret = resolve_indexer(graphql_url)
-    if url is None:
-        raise RuntimeError("no indexer endpoint reachable (local Hasura and hosted HyperIndex both "
-                           "down) — start the local indexer before exporting")
-    if log and url == HOSTED_GRAPHQL_URL:
-        log("  ⚠ local indexer down -> hosted HyperIndex fallback (COVERAGE-CAPPED: 1000 rows/page, "
-            "aggregates off). Do NOT publish artifacts from this run as authoritative.")
-    disputes = load_disputes_from_indexer(url, secret=secret, log=log)
+    disputes = _source_disputes(graphql_url, source=source, log=log)
     # effective HF join key per row (tradeable for NegRisk, native for V2/Legacy)
     for d in disputes:
         d["_joinCid"] = d.get("tradeableConditionId") or d["conditionId"]
@@ -141,6 +160,13 @@ def build_rows(graphql_url: str | None = None, *, with_price_context: bool = Fal
             "preDisputePrice": pre,
             "postDisputePrice": post,
             "realizedJumpLogit": jump,
+            # Marks a dispute that happened AFTER the HF snapshot. `hf_joinable` does NOT imply this is
+            # false: it is spatial (the market exists in HF), never temporal. Such rows must stay OUT of
+            # the λ numerator — their market is (usually) absent from HF's frozen n_resolved denominator,
+            # so counting them is +1/+0 and inflates the rate. Consumers filter on disputeTs <=
+            # HF_CUTOFF_TS (data.disputes.load_disputes); this column makes the window legible in the
+            # data instead of re-derived by every reader.
+            "post_hf_cutoff": bool(ts and int(ts) > HF_CUTOFF_TS),
         })
     return rows
 
@@ -160,6 +186,11 @@ def _stats(rows: list[dict]) -> dict:
     return {
         "dataset": DATASET_NAME,
         "total_disputes": len(rows),
+        # The λ numerator uses only the rows inside the HF window (data.disputes.load_disputes), because
+        # the denominator is an HF snapshot frozen at HF_CUTOFF_TS. Once the layer is extended past that
+        # head, total_disputes and the λ-eligible count diverge — publish BOTH so a reader of stats.json
+        # can never mistake the shipped total for the number the base rates were computed on.
+        "in_window_disputes": sum(1 for r in rows if (r["disputeTs"] or 0) <= HF_CUTOFF_TS),
         "hf_joinable": joinable,
         "hf_joinable_pct": round(100 * joinable / len(rows), 1) if rows else 0.0,
         "by_adapter": dict(adapter),
@@ -203,6 +234,12 @@ companion dataset fills exactly that gap: every on-chain `DisputePrice` on a Pol
 linked to its Gnosis CTF `conditionId` so it joins the `moose-code` tables directly.
 
 - **{stats['total_disputes']} disputes** across adapters ({by_adapter}), {stats['date_min']} → {stats['date_max']}.
+- **{stats.get('in_window_disputes', stats['total_disputes'])} of them fall inside the `moose-code` snapshot
+  window** (`disputeTs` ≤ block 85,948,287 / 2026-04-24). Rows past that head are flagged
+  `post_hf_cutoff` and carry **no price context** — the fill tape they would be measured against is
+  frozen at the cutoff. **Compute base rates on the in-window rows only**: the denominator (resolved
+  markets) is an HF snapshot, so a market disputed after the head is counted as disputed while never
+  counting as resolved. See `post_hf_cutoff` below.
 - **{stats['hf_joinable']} ({stats['hf_joinable_pct']}%) are HF-joinable** — across **all** adapters. The
   released `conditionId` is the effective `moose-code` join key: for NegRisk (multi-outcome) markets that
   is the **tradeable** conditionId recovered from the NegRiskOperator (see the NegRisk map below), not the
@@ -210,15 +247,23 @@ linked to its Gnosis CTF `conditionId` so it joins the `moose-code` tables direc
   and joins the fill tape directly.
 
 ## Provenance
-Produced by the PolyLambda scoped Envio indexer (`indexer/`, chain 137 / Polygon), which reads:
+Produced by PolyLambda from **Polygon (chain 137) on-chain logs**, via either of two interchangeable
+sources — a direct **keyless RPC scan** of the OOv2 `DisputePrice` logs (`data/disputes.py`, the default
+and how this release is regenerated today), or the scoped **Envio indexer** (`indexer/`) when one is
+running. Both resolve the same facts:
 - `ConditionalTokens.ConditionPreparation` → the authoritative `questionId → conditionId` map (works for
   **every** adapter, including NegRisk — it is read from chain, never derived);
 - `UmaCtfAdapter.QuestionInitialized` (V2 + NegRisk + Legacy) → `(adapter, requestTimestamp) → conditionId`;
 - `OptimisticOracleV2.{{ProposePrice, DisputePrice, Settle}}` → the proposal/dispute/settle events, whose
   `conditionId` is resolved via the lookup above (no keccak derivation — which fails for NegRisk).
 
-Reconciliation: the indexer's resolved `finalOutcome` matches `moose-code` `condition.payoutNumerators`
-at **{recon_line}**.
+The RPC path reaches the same `conditionId` without an indexer: it decodes each `DisputePrice` log,
+derives the UMA `questionId` as `keccak(ancillaryData)`, and — for NegRisk — bridges to the tradeable
+`conditionId` through the NegRiskOperator `QuestionPrepared` event (see the NegRisk map below).
+
+Reconciliation: the resolved `finalOutcome` matches `moose-code` `condition.payoutNumerators`
+at **{recon_line}**. (This figure is carried from the last indexer-backed run — the reconciliation
+check requires an indexer, so it is not recomputed on an RPC-only regeneration.)
 
 ## Schema (`disputes.parquet`)
 | column | type | notes |
@@ -234,7 +279,8 @@ at **{recon_line}**.
 | `round` | int | reset round (0 = first request; bumps on each two-strikes reset) |
 | `disputer` / `proposer` | string | on-chain addresses |
 | `proposedOutcome` | string | the disputed proposal: `YES` / `NO` / `UNRESOLVABLE` / `OTHER` |
-| `preDisputePrice` / `postDisputePrice` / `realizedJumpLogit` | double | optional fill-tape price context (joinable only; null unless exported `--with-price-context`) |
+| `preDisputePrice` / `postDisputePrice` / `realizedJumpLogit` | double | optional fill-tape price context (joinable only; null unless exported `--with-price-context`, and **always null when `post_hf_cutoff`** — the fill tape ends at the cutoff) |
+| `post_hf_cutoff` | bool | `true` iff the dispute happened **after** the `moose-code` snapshot head (block 85,948,287 / 2026-04-24). These rows extend the dispute timeline to the present, but they are **not** base-rate eligible: the resolved-market denominator is frozen at the cutoff, so counting them inflates the rate (they land in `n_markets` but not `n_resolved`). Filter them out for any rate/hazard work; keep them for recency. |
 
 ## Join recipe (DuckDB)
 ```sql
@@ -270,10 +316,10 @@ the `enviodev/polymarket-indexer` lineage.
 """
 
 
-def export_dispute_dataset(graphql_url: str | None = None, out_dir: str = OUT_DIR,
-                           *, with_price_context: bool = False, log=print) -> dict:
+def export_dispute_dataset(graphql_url: str | None = None, out_dir: str = OUT_DIR, *,
+                           source: str = "auto", with_price_context: bool = False, log=print) -> dict:
     """Write disputes.parquet + stats.json + README.md to out_dir. Returns the stats dict."""
-    rows = build_rows(graphql_url, with_price_context=with_price_context, log=log)
+    rows = build_rows(graphql_url, with_price_context=with_price_context, source=source, log=log)
     if not rows:
         raise RuntimeError("no disputes returned from the indexer — is it running / backfilled?")
     os.makedirs(out_dir, exist_ok=True)
@@ -326,7 +372,12 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--graphql-url", default=os.environ.get("GRAPHQL_URL", "http://localhost:8080/v1/graphql"))
     ap.add_argument("--out-dir", default=OUT_DIR)
+    ap.add_argument("--source", choices=["auto", "indexer", "rpc"], default="auto",
+                    help="dispute source: auto (indexer if reachable, else the keyless RPC scan) "
+                         "| indexer | rpc. The old hosted Envio deploy is gone, so rpc/auto is the "
+                         "way to regenerate without an indexer.")
     ap.add_argument("--with-price-context", action="store_true",
                     help="attach pre/post fill-tape prices + realized jump (slow: one HF scan per joinable market)")
     args = ap.parse_args()
-    export_dispute_dataset(args.graphql_url, args.out_dir, with_price_context=args.with_price_context)
+    export_dispute_dataset(args.graphql_url, args.out_dir, source=args.source,
+                           with_price_context=args.with_price_context)

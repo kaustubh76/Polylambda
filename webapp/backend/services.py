@@ -74,10 +74,18 @@ def overview() -> dict:
     d_min, d_max = _dataset_date_bounds(_merged_disputes_df())
     d_min = d_min or stats.get("date_min")
     d_max = d_max or stats.get("date_max")
+    # The tile shows the SHIPPED total (the layer now runs to chain head), but the base rates are
+    # computed only on the rows inside the frozen HF window — so name that number here rather than let
+    # a reader assume the headline count is what λ was fitted on. They diverge by design.
+    in_window = stats.get("in_window_disputes")
+    dispute_sub = f"{stats.get('hf_joinable_pct', 100)}% HF-joinable · all adapters"
+    if in_window and in_window != stats.get("total_disputes"):
+        dispute_sub = f"{in_window:,} in λ window · " + dispute_sub
     tiles = [
         {"label": "OOv2 disputes indexed", "value": stats.get("total_disputes"), "fmt": "int",
-         "sub": f"{stats.get('hf_joinable_pct', 100)}% HF-joinable · all adapters"},
-        {"label": "Hazard held-out AUC", "value": round(metrics.get("holdout_auc", 0.704), 3),
+         "sub": dispute_sub},
+        # fallback tracks the deployed .data_cache/hazard_model.json (retrain: python -m estimators.hazard)
+        {"label": "Hazard held-out AUC", "value": round(metrics.get("holdout_auc", 0.709), 3),
          "fmt": "num", "sub": "size-only model · calibration-limited"},
         {"label": "Frozen λ*", "value": frozen.get("lambda_star", 0.002), "fmt": "num4",
          "sub": "exit threshold (config/model.yaml)"},
@@ -241,13 +249,20 @@ def ablation(live: bool = False) -> dict:
     source = "published"
     grid_rows = None
     live_error = None
+    meta = dict(K.ABLATION_META)
     if live:
-        # attempt the real powered replay (heavy: HF fill tape); fall back to the published artifact,
-        # telling the truth about WHY it fell back so the UI's SourceTag/caveat is honest.
+        # The powered replay is a HEAVY OFFLINE JOB: an HF fill fetch per market over ~7k disputed +
+        # control markets (~hours), far beyond the request budget (routes.LIVE_TIMEOUT_S=12s). So it is
+        # NOT a per-request recompute — the served edge-proof is the committed powered replay, and the
+        # honest thing is to say so (source="replay" + meta.run_date) rather than burn 12s on a replay
+        # that cannot finish. We gate the live attempt behind a configured indexer, which on this stack
+        # is the deliberate signal "a maintainer wants the batch path"; regenerate offline with
+        # `python -m webapp.backend.precompute --ablation --force` (offline-capable, no indexer needed).
         import os
         url = os.environ.get("INDEXER_GRAPHQL_URL") or os.environ.get("ENVIO_GRAPHQL_URL")
         if not url:
-            live_error = "no INDEXER_GRAPHQL_URL configured on this host"
+            live_error = ("a live replay is a heavy offline job (~hours over the HF fill tape), not a "
+                          "per-request recompute — showing the committed powered replay below")
         else:
             try:
                 from forwardtest.replay_ablation import run_replay
@@ -268,9 +283,10 @@ def ablation(live: bool = False) -> dict:
     if grid_rows:
         rows = grid_rows                                  # source already "live"
     else:
-        full_rows = _ablation_full_rows()
-        if full_rows:
-            rows, source = full_rows, "replay"            # a real committed powered-replay artifact
+        full = _ablation_full_rows()
+        if full:
+            rows, meta = full[0], full[1]                 # a real committed powered-replay artifact...
+            source = "replay"                             # ...with ITS OWN meta (counts match the curve)
         else:
             rows = [dict(r) for r in K.ABLATION_PUBLISHED]  # last-resort hardcoded 3-arm constants
     for r in rows:
@@ -285,27 +301,51 @@ def ablation(live: bool = False) -> dict:
                                           "sharpe": r["sharpe"]})
     for a in arms.values():
         a["points"].sort(key=lambda p: p["lambda_star"])
-    out = {"source": source, "meta": K.ABLATION_META, "lambda_star_grid": grid,
+    n_disp = meta.get("n_disputes")
+    n_ctrl = meta.get("n_controls")
+    counts = f"{int(n_disp):,} disputes + {int(n_ctrl):,} matched controls" if n_disp and n_ctrl \
+        else "the disputed set + matched controls"
+    out = {"source": source, "meta": meta, "lambda_star_grid": grid,
            "arms": list(arms.values()),
            "headline": "Reward-aware surgical exit is the edge; blanket avoidance destroys it.",
            "caveat": ("The live forward test is statistically powerless (~1% dispute rate). This "
-                      "is the powered historical counterfactual over 1,409 disputes + matched controls.")}
+                      f"is the powered historical counterfactual over {counts}.")}
     if live_error:
         out["live_error"] = live_error
     return out
 
 
-def _ablation_full_rows() -> list[dict] | None:
-    """The richer real ablation artifact, in priority order:
+def _ablation_meta_from_artifact(data: dict) -> dict:
+    """Display meta from a committed replay artifact's OWN meta block — so the UI's 'N disputes · M
+    controls' matches the curve actually served, not a frozen constant. The artifact reports both the
+    labeled and the WITH-FILLS counts; the curve is computed only over markets with fills, so those are
+    the honest denominators (e.g. 1,409 disputes / 741 controls — the constant said 2,856 controls,
+    which never matched the served data)."""
+    m = data.get("meta") or {}
+    out = dict(K.ABLATION_META)
+    if m.get("n_disputes_with_fills") is not None:
+        out["n_disputes"] = m["n_disputes_with_fills"]
+    if m.get("n_controls_with_fills") is not None:
+        out["n_controls"] = m["n_controls_with_fills"]
+    if data.get("run_date"):
+        out["run_date"] = data["run_date"]     # provenance: this is a committed powered replay, dated
+    return out
+
+
+def _ablation_full_rows() -> tuple[list[dict], dict] | None:
+    """The richer real ablation artifact as (rows, display_meta), in priority order:
       1. .data_cache/webapp/ablation_full.json — the precomputed 4-arm (incl. hazard) grid
-         (precompute.build_ablation_full, needs the indexer + heavy deps).
+         (precompute.build_ablation_full).
       2. the newest forwardtest/results/replay_ablation_*.json — a committed real powered-replay
          result (its `results` list carries {arm, lambda_star, pnl_net_of_rewards, sharpe}).
-    Returns None if neither is present → callers fall back to the published 3-arm constants."""
+    Returns None if neither is present → callers fall back to the published 3-arm constants.
+    The meta rides along so the served curve and its reported counts can never drift apart."""
     try:
         data = cache._load_json(cache.WEBAPP_CACHE / "ablation_full.json")
-        if isinstance(data, list) and data:
-            return [dict(r) for r in data]
+        if isinstance(data, dict) and isinstance(data.get("results"), list) and data["results"]:
+            return [dict(r) for r in data["results"]], _ablation_meta_from_artifact(data)
+        if isinstance(data, list) and data:                      # legacy: a bare rows list, no meta
+            return [dict(r) for r in data], dict(K.ABLATION_META)
     except Exception:
         pass
     try:
@@ -315,26 +355,34 @@ def _ablation_full_rows() -> list[dict] | None:
             data = cache._load_json(files[-1])  # newest by name (dated YYYY-MM-DD)
             rows = data.get("results") if isinstance(data, dict) else None
             if isinstance(rows, list) and rows:
-                return [{"arm": r["arm"], "lambda_star": r["lambda_star"],
-                         "pnl_net_of_rewards": r.get("pnl_net_of_rewards", r.get("pnl", 0.0)),
-                         "sharpe": r.get("sharpe", 0.0)}
-                        for r in rows if "arm" in r and "lambda_star" in r]
+                out = [{"arm": r["arm"], "lambda_star": r["lambda_star"],
+                        "pnl_net_of_rewards": r.get("pnl_net_of_rewards", r.get("pnl", 0.0)),
+                        "sharpe": r.get("sharpe", 0.0)}
+                       for r in rows if "arm" in r and "lambda_star" in r]
+                if out:
+                    return out, _ablation_meta_from_artifact(data)
     except Exception:
         pass
     return None
 
 
 def _ablation_rows_from_replay(res) -> list[dict] | None:
-    """Flatten a live AblationResult into the same row shape the UI consumes. Best-effort."""
+    """Flatten run_replay's output into the row shape the UI consumes. Best-effort.
+
+    run_replay returns a FLAT list[AblationResult] (dataclass: arm, lambda_star, n_disputes, n_controls,
+    pnl_net_of_rewards, sharpe, …) — one per (arm, λ*). (Handles a list[dict] too, for cached artifacts.)"""
+    def field(r, k, default=None):
+        return r.get(k, default) if isinstance(r, dict) else getattr(r, k, default)
     try:
         rows = []
-        for arm in getattr(res, "arms", []) or []:
-            name = arm.get("arm") if isinstance(arm, dict) else getattr(arm, "arm", None)
-            pts = arm.get("points") if isinstance(arm, dict) else getattr(arm, "points", [])
-            for p in pts or []:
-                rows.append({"arm": name, "lambda_star": p["lambda_star"],
-                             "pnl_net_of_rewards": p.get("pnl_net_of_rewards", p.get("pnl", 0.0)),
-                             "sharpe": p.get("sharpe", 0.0)})
+        for r in res or []:
+            arm, ls = field(r, "arm"), field(r, "lambda_star")
+            if arm is None or ls is None:
+                continue
+            pnl = field(r, "pnl_net_of_rewards")
+            rows.append({"arm": arm, "lambda_star": ls,
+                         "pnl_net_of_rewards": field(r, "pnl", 0.0) if pnl is None else pnl,
+                         "sharpe": field(r, "sharpe", 0.0)})
         return rows or None
     except Exception:
         return None
@@ -444,6 +492,8 @@ def disputes(*, category: str | None = None, adapter: str | None = None, year: i
                 r["hfResolved"] = hit.get("resolved")
                 r["hfResolvedOutcome"] = hit.get("resolvedOutcome")
                 r["hfEndDate"] = hit.get("endDate")
+                r["hfVolume"] = hit.get("volume")
+                r["hfTrades"] = hit.get("trades")
                 if not r.get("category") and hit.get("category"):
                     r["category"] = hit.get("category")
     return {"total": int(total), "rows": rows, "columns": cols,
@@ -488,32 +538,53 @@ def _df_records(page) -> list[dict]:
 # HF backbone surfaces (the dataset that powers the whole stack, finally visible in the UI)
 # ---------------------------------------------------------------------------------------------
 def hf_overview(live: bool = False) -> dict:
-    """The HF backbone overview (resolution mix, markets-by-year, category counts, coverage). Served
-    from the shipped precomputed cache; `live=True` recomputes from the HF Hub when HF_TOKEN + network
-    allow (guarded + timed out by the route), else falls back to the cache."""
+    """The HF backbone overview (resolution mix, fills-by-year, category counts, coverage).
+
+    Served from the shipped precomputed cache. `live=True` rebuilds from HF — but ONLY where that is
+    actually affordable: a rebuild scans condition + market_data + the fill tape, and the deploy image
+    ships NO parquet (Dockerfile copies only the JSON caches), so on a slim host every table would be a
+    remote Hub scan that blows the request deadline. So we require a token AND the local parquet cache,
+    and otherwise say so honestly instead of hanging.
+    """
     base = cache.hf_overview()
     out = dict(base) if base else {}
     out["source"] = "cache"
-    if live:
-        import os
-        if not os.environ.get("HF_TOKEN"):
-            out["live_error"] = "no HF_TOKEN configured — showing the shipped cache"
-            return out
-        try:
-            from webapp.backend.precompute import build_hf_overview
-            build_hf_overview(force=True)
-            cache.hf_overview.cache_clear()
-            fresh = cache.hf_overview()
-            if fresh:
-                out = dict(fresh); out["source"] = "live"
-        except Exception as e:  # noqa: BLE001
-            out["live_error"] = f"live HF query failed: {e}"
+    if not live:
+        return out
+    from data.hf import has_hf_token
+    if not has_hf_token():
+        out["live_error"] = "no HF token configured (set HF_TOKEN or HF_ACCESS_TOKEN) — showing the shipped cache"
+        return out
+    if not _hf_local_parquet_ready():
+        out["live_error"] = ("live HF rebuild needs the local parquet cache (this host ships only the "
+                             "precomputed JSON) — the shipped snapshot is authoritative")
+        return out
+    try:
+        from webapp.backend.precompute import build_hf_overview
+        build_hf_overview(force=True)
+        cache.hf_overview.cache_clear()
+        fresh = cache.hf_overview()
+        if fresh:
+            out = dict(fresh); out["source"] = "live"
+    except Exception as e:  # noqa: BLE001
+        out["live_error"] = f"live HF query failed: {e}"
     return out
 
 
-def hf_markets(*, q: str | None = None, category: str | None = None, sort: str = "startDate",
+def _hf_local_parquet_ready() -> bool:
+    """True when the heavy HF tables are materialized locally (dev/CI) — i.e. a live rebuild won't turn
+    into a multi-hundred-MB remote scan on a 512MB host."""
+    return all((cache.DATA_CACHE / t).is_dir() for t in ("condition", "market_data"))
+
+
+_HF_SORT_TEXT = ("startDate", "endDate", "category", "marketName", "resolvedOutcome")
+_HF_SORT_NUM = ("volume", "trades")
+
+
+def hf_markets(*, q: str | None = None, category: str | None = None, sort: str = "volume",
                desc: bool = True, limit: int = 50, offset: int = 0) -> dict:
-    """Browse recent Polymarket markets from the HF dataset (filter by text/category, sort, paginate)."""
+    """Browse the HF market universe (top-by-volume ∪ most-recent), filter by text/category, sort, page.
+    Defaults to volume-ranked — the biggest markets first."""
     data = cache.hf_markets()
     rows = list(data.get("markets") or [])
     if category:
@@ -523,12 +594,17 @@ def hf_markets(*, q: str | None = None, category: str | None = None, sort: str =
         rows = [r for r in rows if ql in str(r.get("marketName", "")).lower()
                 or ql in str(r.get("marketSlug", "")).lower()
                 or ql in str(r.get("conditionId", "")).lower()]
-    if sort in ("startDate", "endDate", "category", "marketName", "resolvedOutcome"):
+    if sort in _HF_SORT_NUM:      # numeric sort; missing volume always sinks to the bottom
+        rows.sort(key=lambda r: (r.get(sort) is None, r.get(sort) or 0.0), reverse=bool(desc))
+        if desc:                  # keep None last under reverse=True
+            rows.sort(key=lambda r: r.get(sort) is None)
+    elif sort in _HF_SORT_TEXT:
         rows.sort(key=lambda r: (r.get(sort) is None, r.get(sort) or ""), reverse=bool(desc))
     total = len(rows)
     cats = sorted({r.get("category") for r in (data.get("markets") or []) if r.get("category")})
     page = rows[offset:offset + limit]
     return {"total": total, "rows": page, "categories": cats, "n_cached": data.get("n", 0),
+            "has_volume": bool(data.get("has_volume")), "built_at": data.get("built_at"),
             "note": data.get("note", "")}
 
 

@@ -70,7 +70,13 @@ exit) · `light_factor=0.3` (re-quote size multiplier while defensive).
 ## 3. `.env` variables (`.env.example`)
 
 **Data layer:** `DATA_SOURCE` (`hf | graphql`), `HF_DATASET`, `HF_TOKEN`, `GRAPHQL_URL` / `DATABASE_URL`
-(local Envio), `INDEXER_GRAPHQL_URL` (hosted indexer), `POLYGON_RPC_URL`, `AMOY_RPC_URL`.
+(local Envio), `INDEXER_GRAPHQL_URL` (**optional/legacy** — see below), `POLYGON_RPC_URL` (the live
+dispute plane; defaults to the keyless tenderly gateway), `AMOY_RPC_URL`.
+
+> **`INDEXER_GRAPHQL_URL` is opt-in and unset by default**, in code *and* in every deploy config. The
+> live feed goes straight to keyless RPC when it's absent. Setting it to a **stale** endpoint is worse
+> than leaving it empty — `live.py` will probe it for reachability/freshness before falling back
+> (`ENVIO_FRESH_MAX_S`, default 2 days). Do not re-introduce a baked-in default.
 **Run mode:** `MODE`, `MAX_CAPITAL_USDC`, `POSITIONING`.
 **Gated CLOB (live only, jurisdiction-gated):** py-sdk creds + `JURISDICTION_ACK`, `BUILDER_CODE`.
 **On-chain testnet:** `MARKET_ADDRESS`, `AMOY_USDC_ADDRESS`, `AMOY_GAS_GWEI`, `ENGINE_COLLATERAL_USDC`,

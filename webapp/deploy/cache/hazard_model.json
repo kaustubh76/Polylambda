@@ -1,29 +1,30 @@
 {
  "coef": [
-  -0.4358535590185803,
-  0.24666864662904003,
+  -2.349182893093619,
+  0.2405759980917127,
   0.0,
   0.0
  ],
- "intercept": -1.256978619607636,
- "offset": -5.868497908559083,
+ "intercept": -1.204869761379711,
+ "offset": -4.8665919667355855,
  "feature_order": [
   "category_base_rate",
   "market_size",
   "proposer_reliability",
   "latency_anomaly"
  ],
+ "trained_at": "2026-07-17",
  "metrics": {
-  "brier": 0.2199362668007746,
-  "n": 3110,
-  "positives": 1527,
-  "pi_train": 0.4909967845659164,
-  "natural_rate": 0.0027196881487519687,
-  "offset": -5.868497908559083,
-  "no_skill_brier": 0.24991894211184745,
-  "base_rate_brier_enriched": 0.48859166004193477,
-  "holdout_brier": 0.4870732450326655,
-  "holdout_auc": 0.7038573558078203,
+  "brier": 0.22030311316933543,
+  "n": 3105,
+  "positives": 1522,
+  "pi_train": 0.4901771336553945,
+  "natural_rate": 0.007348463139446492,
+  "offset": -4.8665919667355855,
+  "no_skill_brier": 0.24990351129677602,
+  "base_rate_brier_enriched": 0.4844690073646753,
+  "holdout_brier": 0.47897010835075665,
+  "holdout_auc": 0.7086444777150755,
   "discriminates": true,
   "caveat": "CLASS-ENRICHED training (positives ~60% vs ~1% natural); output prior-corrected to natural prevalence via `offset`. Headline = held-out AUC (discrimination). At ~1% prevalence this is CALIBRATION-LIMITED (DECISIONS.md #9) \u2014 a directional structural signal, NOT a validated edge over the category base rate; the base rate remains the honest default."
  }

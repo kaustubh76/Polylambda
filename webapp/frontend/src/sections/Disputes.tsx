@@ -8,7 +8,7 @@ import { readQueryParam, writeQuery } from '../lib/urlState'
 import { useToast } from '../components/Toast'
 import { useColors } from '../components/Theme'
 import type { Colors } from '../lib/theme'
-import { fixed, int, short } from '../lib/format'
+import { fixed, int, short, usdCompact } from '../lib/format'
 import { Async, CopyButton, KV, Modal, Panel, Section } from '../components/ui'
 
 const CSV_COLS = ['conditionId', 'marketName', 'category', 'adapter', 'disputeDate', 'proposedOutcome',
@@ -20,9 +20,13 @@ interface DisputeRow {
   disputer?: string | null; proposer?: string | null; round?: number | null
   // HF market context (dispute_market_context.json) — enrichment for the detail view
   hfResolved?: boolean | null; hfResolvedOutcome?: string | null; hfEndDate?: string | null
+  hfVolume?: number | null; hfTrades?: number | null
 }
 
-const ADAPTER_LABEL = (a: string) => (a?.startsWith('0x') ? 'legacy' : a)
+// v2 / negrisk carry friendly labels; a raw-address adapter (0x157ce2d6… — a third UMA CTF adapter
+// the indexer never named) is shown truncated, NOT "legacy": real legacy (0x71392e13…) ships 0 rows,
+// so calling this one "legacy" is simply wrong. The release stores the raw address on purpose.
+const ADAPTER_LABEL = (a: string) => (a?.startsWith('0x') ? short(a, 6, 4) : a)
 const outcomeColor = (C: Colors, o?: string): string =>
   (({ YES: C.profit, NO: C.loss, UNRESOLVABLE: C.warn, OTHER: C.muted } as Record<string, string>)[o || ''] || C.muted)
 const scanAddr = (a: string) => `https://polygonscan.com/address/${a}`
@@ -270,6 +274,14 @@ function DisputeDetail({ row, onClose }: { row: DisputeRow | null; onClose: () =
             <KV k="pre → post price" v={row.preDisputePrice != null ? `${fixed(row.preDisputePrice, 3)} → ${fixed(row.postDisputePrice, 3)}` : '—'} />
             <KV k="realized jump (logit)" v={row.realizedJumpLogit != null ? fixed(row.realizedJumpLogit, 3) : '—'} />
             {row.round != null && <KV k="dispute round" v={row.round} />}
+            {row.hfVolume != null && (
+              <KV k="market volume (HF)" v={
+                <span>
+                  <span className="text-sig">{usdCompact(row.hfVolume)}</span>
+                  {row.hfTrades != null && <span className="text-muted"> · {int(row.hfTrades)} trades</span>}
+                </span>
+              } mono={false} />
+            )}
             {(row.hfResolvedOutcome || row.hfEndDate) && (
               <KV k="HF resolution" mono={false} v={
                 <span>

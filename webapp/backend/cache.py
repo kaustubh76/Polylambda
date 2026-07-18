@@ -146,7 +146,10 @@ def dispute_market_context() -> dict:
 
 @lru_cache(maxsize=1)
 def disputes_df():
-    """The 1,794-row released dispute dataset as a pandas DataFrame (name-enriched)."""
+    """The released dispute dataset as a pandas DataFrame (name-enriched).
+
+    1,848 rows to chain head; 1,794 of them inside the HF window. This is the DISPLAY path, so it
+    carries all of them — only the λ numerator (data.disputes.load_disputes) applies the window."""
     import pandas as pd
 
     if not DISPUTES_PARQUET.exists():

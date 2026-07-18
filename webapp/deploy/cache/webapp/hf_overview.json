@@ -29,6 +29,28 @@
    "n": 319528
   }
  ],
+ "fills_by_year": [
+  {
+   "year": "2022",
+   "n": 3161
+  },
+  {
+   "year": "2023",
+   "n": 328176
+  },
+  {
+   "year": "2024",
+   "n": 57578938
+  },
+  {
+   "year": "2025",
+   "n": 241199667
+  },
+  {
+   "year": "2026",
+   "n": 873548669
+  }
+ ],
  "by_category": [
   {
    "category": "other",
@@ -76,9 +98,11 @@
   "total_conditions": 1117152,
   "resolved_conditions": 992485,
   "total_fills": 1172658611,
+  "fills_source": "computed",
   "market_date_min": "",
   "market_date_max": "2026-04-23",
   "cutoff_block": 85948287
  },
- "note": "Computed live from the HF dataset (condition + market_data). Resolution outcomes are the argmax of each market's on-chain payout vector; markets-by-year is by creation date. Total fills is the dataset's documented full-tape count."
+ "built_at": "2026-07-17",
+ "note": "Computed from the HF dataset. Resolution outcomes are the argmax of each market's on-chain payout vector; markets-by-year is by creation date; fills-by-year is the full CLOB tape (computed)."
 }

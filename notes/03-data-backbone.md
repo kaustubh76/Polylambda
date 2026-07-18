@@ -43,10 +43,19 @@ assigns `tradeableConditionId` so NegRisk disputes join like everything else.
 | `hf_joinable` / `hf_joinable_pct` | 1,794 / **100.0%** |
 | `by_adapter.v2` | 723 |
 | `by_adapter.negrisk` | 963 |
-| `by_adapter` (Legacy / `0x157ce2d6…`) | 108 |
-| span | 2022-12 → 2026-04 |
+| `by_adapter` (`0x157ce2d6…`, keyed by raw address **on purpose**) | 108 |
+| span (`date_min` → `date_max`) | **2022-12-30 → 2026-04-18** |
 
-> The 6 prior diagram fixes aligned `quant-implementation-full.excalidraw` to these exact counts.
+> **The `legacy` adapter is NOT the 108.** `data/disputes.py:57-68` maps `0x6a9d2226…`→`v2` (723),
+> `0x71392e13…`→`legacy` (**0 rows in the current release**), and keys `0x157ce2d6…` (108, live
+> 2025-07-05 → 2026-01-29) by its **raw address on purpose** — renaming it "legacy"/"v3" would silently
+> rewrite those 108 rows on the next export. Anything claiming "Legacy 108" is mislabelled.
+>
+> The whole layer sits inside the HF head: `HF_CUTOFF_BLOCK 85,948,287` = **2026-04-24T07:43:38Z**
+> (`data/disputes.py:77-81`), ~5.6 days after the last dispute — so `load_disputes()`'s
+> `disputeTs <= HF_CUTOFF_TS` guard filters zero rows today. It exists to stop a future extension past
+> the head from inflating the λ numerator (`hf_joinable` is *spatial*, never temporal: a pre-cutoff
+> market disputed post-cutoff would add +1 numerator / +0 denominator).
 
 ## 5. Base rates → λ (`data/base_rates.py`)
 
@@ -54,9 +63,11 @@ assigns `tradeableConditionId` so NegRisk disputes join like everything else.
 - **Numerator** = disputes per category (`dispute_counts_by_category()` in `data/disputes.py`).
 - `category_base_rate()` returns a **Wilson CI** (`_wilson(k, n, z=1.96)`), which becomes
   `LambdaOutput.ci_low/ci_high`.
-- Real signal: politics is ~22× more dispute-prone than crypto. (The diagram's `0.92%` politics /
-  `0.042%` crypto are the earlier V2/Legacy-only rates; the ~22× ratio holds against the corrected
-  all-adapter numbers ~1.83% / ~0.085% — see `../METHODOLOGY.md`.)
+- Real signal (current, all-adapter — `../DATASET.md:265-289`): **politics 1.83%** [1.63, 2.05]
+  (292/15,953) vs **crypto 0.085%** [0.072, 0.099] (144/170,446) → **~22×** more dispute-prone.
+  (An older `0.92%` / `0.042%` pair appears in some historical notes: those are the V2-only 723-row
+  numerator, superseded. The `~22×` ratio coincidentally survived both operands roughly doubling —
+  which is exactly why the stale pair looked plausible for so long.)
 
 ## 6. Recon gate (`recon/check.py`)
 

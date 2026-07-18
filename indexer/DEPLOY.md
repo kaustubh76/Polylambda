@@ -1,15 +1,17 @@
-# Deploying a persistent, at-head PolyLambda indexer
+# Deploying a persistent, at-head PolyLambda indexer (OPTIONAL)
 
-The dashboard's live panels (the "LIVE dispute stream", the request-time merge that keeps the
-disputes explorer current, and the powered `?live=1` ablation) all read one GraphQL endpoint:
-`INDEXER_GRAPHQL_URL`. Point it at a **persistent, continuously-syncing** Envio HyperIndex deploy and
-every live surface self-heals — no app code change.
+> **Read this first — an indexer is no longer required.** The hosted Envio dev deploy
+> (`indexer.dev.hyperindex.xyz/0638687`) is **gone**: the free tier ended. The dashboard's live panels
+> were pivoted to a **keyless Polygon RPC** scan of OOv2 `DisputePrice` logs
+> (`data.disputes.recent_disputes_rpc` → `webapp/backend/live.py`), which reaches chain head with no
+> indexer and no paid service — including NegRisk conditionIds, recovered on-chain via the NegRisk
+> operator's `QuestionPrepared` event. **Leave `INDEXER_GRAPHQL_URL` unset** unless you run your own:
+> a stale value costs an 8s timeout on every status poll *and* disables the working RPC feed.
 
-> **Why this doc exists.** The public default endpoint
-> `https://indexer.dev.hyperindex.xyz/0638687/v1/graphql` is an ephemeral **dev** deploy. It stopped
-> ingesting (head froze ~14 days back: `block_height == latest_processed_block`), which is exactly why
-> the UI's freshness badge now reads "stale · Nd behind" instead of a false "LIVE". A dev deploy is
-> fine for a demo of the schema; it is **not** a source of record and is not kept at head.
+This doc remains for the case where you *want* a GraphQL indexer — e.g. to source `round` and the
+resolution lifecycle directly rather than deriving them, or to run the `--matched` hazard evaluation
+(the one job that genuinely still needs an indexer). Point `INDEXER_GRAPHQL_URL` at a **persistent,
+continuously-syncing** deploy and the live surfaces switch to it automatically — no app code change.
 
 ## What the app expects
 

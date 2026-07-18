@@ -3,10 +3,10 @@ import { api, useApi, type HfMarketRow } from '../api/client'
 import { useDebounced } from '../lib/useDebounced'
 import { useColors } from '../components/Theme'
 import type { Colors } from '../lib/theme'
-import { int, short } from '../lib/format'
+import { compact, int, short, usdCompact } from '../lib/format'
 import { Async, CopyButton, Panel, Section } from '../components/ui'
 
-type SortKey = 'startDate' | 'endDate' | 'category'
+type SortKey = 'volume' | 'trades' | 'startDate' | 'endDate' | 'category'
 const outcomeColor = (C: Colors, o?: string | null): string =>
   (({ YES: C.profit, NO: C.loss, TIE: C.warn, MULTI: C.muted } as Record<string, string>)[o || ''] || C.muted)
 
@@ -17,7 +17,7 @@ export function HfMarkets() {
   const [search, setSearch] = useState('')
   const dq = useDebounced(search, 300)
   const [category, setCategory] = useState<string | undefined>()
-  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'startDate', dir: 'desc' })
+  const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'volume', dir: 'desc' })
   const [page, setPage] = useState(0)
   const limit = 25
 
@@ -37,7 +37,7 @@ export function HfMarkets() {
   return (
     <Section id="hfmarkets" kicker="HF market_data ⋈ condition"
       title="Market browser"
-      subtitle="Browse the most recent Polymarket markets straight from the HF dataset — creation date, category, and on-chain resolution — the market universe the dispute layer sits on top of.">
+      subtitle="The biggest markets by traded volume (plus the most recently created), straight from the HF dataset — volume, trade count, category, and on-chain resolution. This is the market universe the dispute layer sits on top of.">
       <Async q={q}>{(d) => {
         const rows = d.rows
         const from = d.total === 0 ? 0 : page * limit + 1
@@ -62,6 +62,8 @@ export function HfMarkets() {
                 <thead className="text-2xs uppercase tracking-wide text-muted">
                   <tr className="border-b border-line">
                     <th className="px-4 py-2">market</th>
+                    <SortTh label="volume" k="volume" sort={sort} onSort={toggleSort} align="right" />
+                    <SortTh label="trades" k="trades" sort={sort} onSort={toggleSort} align="right" />
                     <SortTh label="category" k="category" sort={sort} onSort={toggleSort} />
                     <SortTh label="created" k="startDate" sort={sort} onSort={toggleSort} />
                     <SortTh label="ends" k="endDate" sort={sort} onSort={toggleSort} />
@@ -77,6 +79,8 @@ export function HfMarkets() {
                           {r.conditionId && <CopyButton value={r.conditionId} label="Copy conditionId" className="shrink-0" />}
                         </div>
                       </td>
+                      <td className="px-2 text-right text-sig" title={r.volume != null ? `$${int(r.volume)}` : undefined}>{usdCompact(r.volume)}</td>
+                      <td className="px-2 text-right text-ink-2" title={r.trades != null ? int(r.trades) : undefined}>{compact(r.trades, 0)}</td>
                       <td className="px-2 capitalize text-muted">{r.category}</td>
                       <td className="px-2 text-muted">{r.startDate ?? '—'}</td>
                       <td className="px-2 text-muted">{r.endDate ?? '—'}</td>
@@ -88,7 +92,7 @@ export function HfMarkets() {
                     </tr>
                   ))}
                   {rows.length === 0 && (
-                    <tr><td colSpan={5} className="px-4 py-10 text-center text-sm text-muted">no markets match.</td></tr>
+                    <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-muted">no markets match.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -106,10 +110,12 @@ export function HfMarkets() {
   )
 }
 
-function SortTh({ label, k, sort, onSort }: { label: string; k: SortKey; sort: { key: SortKey; dir: 'asc' | 'desc' }; onSort: (k: SortKey) => void }) {
+function SortTh({ label, k, sort, onSort, align = 'left' }: {
+  label: string; k: SortKey; sort: { key: SortKey; dir: 'asc' | 'desc' }; onSort: (k: SortKey) => void; align?: 'left' | 'right'
+}) {
   const on = sort.key === k
   return (
-    <th className="px-2">
+    <th className={`px-2 ${align === 'right' ? 'text-right' : ''}`}>
       <button onClick={() => onSort(k)} aria-label={`sort by ${label}`}
         className={`inline-flex items-center gap-1 uppercase tracking-wide transition-colors hover:text-ink-2 ${on ? 'text-sig' : ''}`}>
         {label}<span aria-hidden className="text-[9px]">{on ? (sort.dir === 'desc' ? '▼' : '▲') : '⇅'}</span>

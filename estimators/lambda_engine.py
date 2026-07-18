@@ -15,7 +15,8 @@ Corrected design (DECISIONS.md #9, #11):
 TWO-SOURCE JOIN (DECISIONS.md #13): the DENOMINATOR (resolved markets per category) comes from the
 HF dataset (data.base_rates, which derives category from market_data). The dispute NUMERATOR is not
 in HF (no OOv2 dispute events there); it ships as the released dispute layer
-(dataset_release/polymarket-oov2-disputes-v1: 1,794 disputes, all adapters incl. NegRisk) loaded by
+(dataset_release/polymarket-oov2-disputes-v1: 1,848 disputes to chain head, all adapters incl.
+NegRisk, of which the 1,794 inside the HF window feed this rate) loaded by
 data.disputes and passed in as `dispute_counts` keyed by category — DATA_SOURCE=graphql sources it
 live from the scoped indexer instead. Only if both are unavailable does the count degrade (RPC
 V2/Legacy cache → 0 with a WIDE Wilson interval — honest about the missing labels).
