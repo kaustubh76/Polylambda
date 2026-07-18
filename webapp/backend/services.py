@@ -90,7 +90,7 @@ def overview() -> dict:
         {"label": "Frozen λ*", "value": frozen.get("lambda_star", 0.002), "fmt": "num4",
          "sub": "exit threshold (config/model.yaml)"},
         {"label": "Recon pass rate", "value": round(recon.get("pass_rate", 1.0) * 100, 1),
-         "fmt": "pct", "sub": f"{recon.get('eligible', 28482):,} eligible matched"},
+         "fmt": "pct", "sub": f"{recon.get('eligible', 27238):,} eligible matched"},
     ]
     return {
         "thesis": K.THESIS, "thesis_nuance": K.THESIS_NUANCE, "jump_diffusion": K.JUMP_DIFFUSION,

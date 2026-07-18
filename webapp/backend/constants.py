@@ -84,9 +84,11 @@ DATASET_STATS_FALLBACK = {
                              "economics": 24, "null": 10},
     "by_year": {"2022": 1, "2023": 75, "2024": 394, "2025": 1049, "2026": 329},
     "date_min": "2022-12-30", "date_max": "2026-07-16",
-    # Carried from the last indexer-backed run. NOT recomputed on an RPC-only export: recon needs an
-    # indexer, and the local one is ~4.4M blocks behind head.
-    "recon": {"pass_rate": 1.0, "eligible": 28482, "matched": 28482, "no_ground_truth": 125270},
+    # Deterministic recon over the HF-aligned universe (the local indexer is processed to ~the HF
+    # cutoff, so this covers exactly the HF-comparable set). eligible/matched/no_ground_truth are stable
+    # across runs since recon/check.py added `order_by` — the old 28,482 was one draw of an unordered
+    # limit/offset scan. recon needs an indexer to recompute; this block is the last such result.
+    "recon": {"pass_rate": 1.0, "eligible": 27238, "matched": 27238, "no_ground_truth": 115221},
 }
 
 # the honest calibration caveat that must ride alongside the hazard AUC (DECISIONS.md #9).

@@ -39,12 +39,13 @@ assigns `tradeableConditionId` so NegRisk disputes join like everything else.
 
 | Field | Value |
 |-------|-------|
-| `total_disputes` | **1,794** |
-| `hf_joinable` / `hf_joinable_pct` | 1,794 / **100.0%** |
-| `by_adapter.v2` | 723 |
-| `by_adapter.negrisk` | 963 |
-| `by_adapter` (`0x157ce2d6…`, keyed by raw address **on purpose**) | 108 |
-| span (`date_min` → `date_max`) | **2022-12-30 → 2026-04-18** |
+| `total_disputes` | **1,848** (to chain head) |
+| `in_window_disputes` | **1,794** (≤ HF cutoff — the λ numerator) |
+| `hf_joinable` / `hf_joinable_pct` | 1,848 / **100.0%** |
+| `by_adapter.v2` | 725 (723 in-window) |
+| `by_adapter.negrisk` | 1013 (963 in-window) |
+| `by_adapter` (`0x157ce2d6…`, keyed by raw address **on purpose**) | 110 (108 in-window) |
+| span (`date_min` → `date_max`) | **2022-12-30 → 2026-07-16** |
 
 > **The `legacy` adapter is NOT the 108.** `data/disputes.py:57-68` maps `0x6a9d2226…`→`v2` (723),
 > `0x71392e13…`→`legacy` (**0 rows in the current release**), and keys `0x157ce2d6…` (108, live
@@ -74,8 +75,9 @@ assigns `tradeableConditionId` so NegRisk disputes join like everything else.
 Before estimators trust any indexed data, recon compares each **eligible** indexed `Market.finalOutcome`
 to the HF payout vector (`data.conditions.hf_payout_map()`), bucketing exclusions explicitly.
 
-- Committed result (`stats.json`): `pass_rate = 1.0`, `eligible = 28,482`, `matched = 28,482`,
-  `no_ground_truth = 125,270`.
+- Committed result (`stats.json`): `pass_rate = 1.0`, `eligible = 27,238`, `matched = 27,238`,
+  `no_ground_truth = 115,221` — deterministic over the HF-aligned universe (reproducible since
+  `recon/check.py` ordered its market scan; the old `28,482` was one draw of an unordered limit/offset).
 - **NegRisk phantom conditionIds** land in `excluded_no_ground_truth` — counted as data coverage, never a
   mismatch (that was the fix for the phantom bug).
 

@@ -50,8 +50,9 @@ derives the UMA `questionId` as `keccak(ancillaryData)`, and — for NegRisk —
 `conditionId` through the NegRiskOperator `QuestionPrepared` event (see the NegRisk map below).
 
 Reconciliation: the resolved `finalOutcome` matches `moose-code` `condition.payoutNumerators`
-at **pass_rate = 1.0000 on 28,482 eligible V2/Legacy markets**. (This figure is carried from the last indexer-backed run — the reconciliation
-check requires an indexer, so it is not recomputed on an RPC-only regeneration.)
+at **pass_rate = 1.0000 on 27,238 eligible V2/Legacy markets**. (Deterministic over the HF-aligned
+universe — reproducible run-to-run since the recon scan was ordered; the reconciliation check requires an
+indexer, so it is not recomputed on an RPC-only regeneration.)
 
 ## Schema (`disputes.parquet`)
 | column | type | notes |
