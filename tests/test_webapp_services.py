@@ -55,10 +55,10 @@ def test_disputes_analytics_scopes_to_category():
     pol = services.disputes_analytics(bins=8, category="politics")
     assert pol["category"] == "politics"
     assert 0 < pol["n"] <= full["n"]          # a real subset, never larger than the whole
-    assert pol["n"] < full["n"]               # politics is not the entire dataset
-    # the histogram/outcome mix reflect the subset, not the whole
     assert isinstance(pol.get("by_outcome", {}), dict)
-    # unknown category → graceful empty, not an exception
+    # the filter genuinely NARROWS (not a no-op): an unknown category → graceful empty, never the whole
+    # set and never an exception. (We avoid asserting pol < full, which would encode a data-distribution
+    # assumption — a single-category dataset is a legitimate corpus, not a bug.)
     empty = services.disputes_analytics(bins=8, category="__nope__")
     assert empty["n"] == 0 and empty["histogram"] == [] and empty["category"] == "__nope__"
 

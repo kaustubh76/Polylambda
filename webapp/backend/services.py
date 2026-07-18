@@ -453,17 +453,24 @@ def hazard() -> dict:
 # ---------------------------------------------------------------------------------------------
 # disputes explorer
 # ---------------------------------------------------------------------------------------------
+def _filter_by_cat_adapter(df, category: str | None, adapter: str | None):
+    """Category/adapter equality filter shared by the explorer table (disputes) and its anatomy graphs
+    (disputes_analytics), so the two always scope identically for the same filter. Column-guarded: a
+    frame missing the column is left unfiltered rather than raising; an empty frame is a no-op."""
+    if category and "category" in df.columns:
+        df = df[df["category"] == category]
+    if adapter and "adapter" in df.columns:
+        df = df[df["adapter"] == adapter]
+    return df
+
+
 def disputes(*, category: str | None = None, adapter: str | None = None, year: int | None = None,
              q: str | None = None, sort: str = "disputeTs", desc: bool = True,
              limit: int = 50, offset: int = 0) -> dict:
     df = _merged_disputes_df()
     if df.empty:
         return {"total": 0, "rows": [], "columns": [], "facets": {}}
-    view = df
-    if category:
-        view = view[view["category"] == category]
-    if adapter:
-        view = view[view["adapter"] == adapter]
+    view = _filter_by_cat_adapter(df, category, adapter)
     if year and "disputeDate" in view.columns:
         view = view[view["disputeDate"].astype(str).str.startswith(str(year))]
     if q:
@@ -659,11 +666,7 @@ def disputes_analytics(bins: int = 24, category: str | None = None,
     anatomy graphs respond to the dispute-explorer filter instead of being a frozen whole-dataset view.
     An empty or unknown category yields n=0 (handled by the `df.empty` guard below), never a crash."""
     import numpy as np
-    df = _merged_disputes_df()
-    if category and not df.empty:
-        df = df[df["category"] == category]
-    if adapter and not df.empty:
-        df = df[df["adapter"] == adapter]
+    df = _filter_by_cat_adapter(_merged_disputes_df(), category, adapter)
     if df.empty:
         return {"n": 0, "histogram": [], "scatter": [], "by_round": {}, "by_outcome": {},
                 "category": category, "adapter": adapter}
