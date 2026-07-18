@@ -69,10 +69,16 @@ def test_ablation_live_falls_back_honestly_without_indexer(monkeypatch):
     monkeypatch.delenv("INDEXER_GRAPHQL_URL", raising=False)
     monkeypatch.delenv("ENVIO_GRAPHQL_URL", raising=False)
     out = services.ablation(live=True)
-    # without an indexer the LIVE replay can't run: it degrades to a real committed replay artifact
-    # ("replay") or the published constants ("published"), and says WHY via live_error.
+    # without an indexer the LIVE replay is not attempted (it's a heavy offline job, not a per-request
+    # recompute): it degrades to the committed replay artifact ("replay") or the published constants
+    # ("published"), FAST, and says WHY via live_error. The fallback must be quick — NOT a real replay
+    # (asserting on the message keeps that contract: a real replay would neither set this nor return
+    # promptly).
     assert out["source"] in ("replay", "published")
-    assert "no INDEXER_GRAPHQL_URL" in out.get("live_error", "")
+    assert "offline job" in out.get("live_error", "")
+    # the served meta must match the committed artifact, not the stale constant (741 controls, not 2856)
+    if out["source"] == "replay":
+        assert out["meta"].get("run_date"), "a committed powered replay must carry its run_date"
 
 
 def test_recon_live_falls_back_to_published_without_indexer(monkeypatch):
@@ -84,6 +90,9 @@ def test_recon_live_falls_back_to_published_without_indexer(monkeypatch):
     assert "by_category" in out
 
 
-def test_ablation_full_reader_is_none_or_rows():
-    rows = services._ablation_full_rows()
-    assert rows is None or (isinstance(rows, list) and rows)
+def test_ablation_full_reader_is_none_or_rows_with_meta():
+    # _ablation_full_rows now returns (rows, meta) so the served curve and its reported counts can't
+    # drift apart — or None when no artifact is present.
+    got = services._ablation_full_rows()
+    assert got is None or (isinstance(got, tuple) and isinstance(got[0], list) and got[0]
+                           and isinstance(got[1], dict))

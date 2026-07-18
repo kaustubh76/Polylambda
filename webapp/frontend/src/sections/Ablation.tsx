@@ -51,7 +51,7 @@ export function Ablation() {
             <Panel>
               <div className="mb-3 text-sm">
                 <span className="font-semibold text-sig">{d.headline}</span>
-                <span className="ml-2 text-2xs text-muted">{int(d.meta.n_disputes as number)} disputes · {int(d.meta.n_controls as number)} matched controls · {d.meta.span}</span>
+                <span className="ml-2 text-2xs text-muted">{int(d.meta.n_disputes as number)} disputes · {int(d.meta.n_controls as number)} matched controls · {d.meta.span}{d.meta.run_date ? ` · powered replay ${d.meta.run_date}` : ''}</span>
               </div>
               <div className="grid gap-5 md:grid-cols-2">
                 <MiniChart title="Net P&L (USD, net of forgone rewards)" data={pnl} arms={arms} frozen={Number(d.meta.lambda_star_frozen)} fmt={(v) => `$${(v / 1000).toFixed(0)}k`} />

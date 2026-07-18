@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api, useApi } from '../api/client'
 import { useColors } from '../components/Theme'
-import { int } from '../lib/format'
+import { int, short } from '../lib/format'
 import { Async, Panel, Section, SourceTag, Stat } from '../components/ui'
 
 // exclusion buckets recon.check reports; only the populated ones render
@@ -49,7 +49,8 @@ export function Recon() {
                 <div className="space-y-2.5">
                   {adapters.map(([a, n], i) => {
                     const total = adapters.reduce((s, [, v]) => s + v, 0)
-                    const label = a.startsWith('0x') ? 'legacy' : a
+                    // raw-address adapter (0x157ce2d6…) → truncated, not "legacy" (real legacy = 0 rows)
+                    const label = a.startsWith('0x') ? short(a, 6, 4) : a
                     return (
                       <Bar key={a} label={label} n={n} total={total} color={C.series[i % C.series.length]} />
                     )

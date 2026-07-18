@@ -23,7 +23,10 @@ interface DisputeRow {
   hfVolume?: number | null; hfTrades?: number | null
 }
 
-const ADAPTER_LABEL = (a: string) => (a?.startsWith('0x') ? 'legacy' : a)
+// v2 / negrisk carry friendly labels; a raw-address adapter (0x157ce2d6… — a third UMA CTF adapter
+// the indexer never named) is shown truncated, NOT "legacy": real legacy (0x71392e13…) ships 0 rows,
+// so calling this one "legacy" is simply wrong. The release stores the raw address on purpose.
+const ADAPTER_LABEL = (a: string) => (a?.startsWith('0x') ? short(a, 6, 4) : a)
 const outcomeColor = (C: Colors, o?: string): string =>
   (({ YES: C.profit, NO: C.loss, UNRESOLVABLE: C.warn, OTHER: C.muted } as Record<string, string>)[o || ''] || C.muted)
 const scanAddr = (a: string) => `https://polygonscan.com/address/${a}`

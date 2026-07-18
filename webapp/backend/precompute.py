@@ -300,23 +300,31 @@ def build_dispute_market_context(force: bool = False) -> str:
 
 def build_ablation_full(force: bool = False) -> str:
     """The richer 4-arm powered replay (incl. the hazard arm) → .data_cache/webapp/ablation_full.json,
-    which services.ablation() serves in place of the published 3-arm constants. HEAVY + networked
-    (HF fill tape via the indexer), so it's gated behind `--ablation`; the app degrades gracefully
-    to the published constants when the artifact is absent."""
+    which services.ablation() serves in place of the published 3-arm constants. HEAVY (~5h: an HF fill
+    fetch per market over ~7k disputed+control markets), so it's gated behind `--ablation`; the app
+    degrades gracefully to the committed replay / published constants when the artifact is absent.
+
+    Offline-capable: run_replay's default DATA_SOURCE=hf sources disputes from the released parquet and
+    fills from HF, so no indexer is required (the url is used only for DATA_SOURCE=graphql). Writes a
+    {run_date, meta, results} envelope so services can report counts that MATCH the served curve."""
     out = WEBAPP_CACHE / "ablation_full.json"
     if out.exists() and not force:
         return f"skip (exists): {out.name}"
-    url = os.environ.get("INDEXER_GRAPHQL_URL") or os.environ.get("ENVIO_GRAPHQL_URL")
-    if not url:
-        return "skip: no INDEXER_GRAPHQL_URL set (needed for the live replay)"
+    import datetime
+    url = os.environ.get("INDEXER_GRAPHQL_URL") or os.environ.get("ENVIO_GRAPHQL_URL") or ""
     from forwardtest.replay_ablation import run_replay
     from webapp.backend.services import _ablation_rows_from_replay
     grid = [0.0005, 0.001, 0.002, 0.005, 0.01]
-    rows = _ablation_rows_from_replay(run_replay(url, grid))
+    res = run_replay(url, grid)                  # list[AblationResult]
+    rows = _ablation_rows_from_replay(res)
     if not rows:
         return "skip: replay produced no rows"
-    _write("ablation_full.json", rows)
-    return f"wrote ablation_full.json ({len(rows)} rows)"
+    # counts are identical across results (they describe the run) — take them off the first
+    meta = {"n_disputes_with_fills": getattr(res[0], "n_disputes", None),
+            "n_controls_with_fills": getattr(res[0], "n_controls", None)}
+    _write("ablation_full.json",
+           {"run_date": datetime.date.today().isoformat(), "meta": meta, "results": rows})
+    return f"wrote ablation_full.json ({len(rows)} rows, {meta})"
 
 
 def main() -> None:
