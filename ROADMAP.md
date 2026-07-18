@@ -25,7 +25,7 @@ mode never needed.**
 | Reserve-before-send notional cap vs `MAX_CAPITAL_USDC` | Order-state reconciliation (loop trusts local `state.order_ids`) |
 | Reward-aware exit gate + inventory cap (`execution/loop.py`) | Kill-switch, max-loss/day, **persisted** capital ledger |
 | Session-log schema (`forwardtest/session_log.py`) | Live market selection + capital allocation |
-| Live dispute feed (`webapp/backend/live.py`, Envio HyperIndex) | Real-time proposal detector wired into the loop (reorg-guarded) |
+| Live dispute feed (`webapp/backend/live.py`, keyless Polygon RPC scan) | Real-time proposal detector wired into the loop (reorg-guarded) |
 | Frozen params (`config/model.yaml`, λ\*=0.002, κ_loss=0.76) | Live session logging (`simulated: True` is hardcoded) + live P&L dashboard |
 | 141 pytest green; replay-ablation edge proof | Key custody / secrets ops for an unattended hot wallet |
 
@@ -139,8 +139,8 @@ mid-session restart.
   high-λ_select names. Generalizes `runner.select_real_markets` from disputed-parquet to live.
 - Capital allocation: split `MAX_CAPITAL_USDC` across selected markets weighted by
   reward-rate ÷ jump-risk; per-market caps feed the `RiskGovernor`.
-- **Real-time proposal detector:** wire `webapp/backend/live.py` (Envio, sub-second) as the
-  injected `proposal_detector` in `run_loop` — with the **reorg-confirmation guard** the loop
+- **Real-time proposal detector:** wire `webapp/backend/live.py` (keyless Polygon RPC dispute-tail
+  scan) as the injected `proposal_detector` in `run_loop` — with the **reorg-confirmation guard** the loop
   docstring demands. This turns exit-on-risk from an always-False stub into the defining live
   behavior.
 
@@ -194,12 +194,12 @@ The submission stands on four legs, three of which already exist:
 
 1. **Live attributed volume** — real `OrderFilled` events carrying our `builder` code
    (the *new* asset, from Phases 2–6).
-2. **Edge proof** — `forwardtest/replay_ablation.py` over 1,794 disputes with the λ\*-sensitivity
-   curve (publish the curve, not a tuned point — `config/model.yaml` mandates this).
+2. **Edge proof** — `forwardtest/replay_ablation.py` over the 1,794 in-window disputes with the
+   λ\*-sensitivity curve (publish the curve, not a tuned point — `config/model.yaml` mandates this).
 3. **Public good** — the released dataset `dataset_release/polymarket-oov2-disputes-v1/`
-   (1,794 disputes, 100% HF-joinable, CC-BY-4.0).
-4. **Live product** — the quant terminal with the Phase-5 live panel, the sub-second Envio
-   indexer, and the testnet lifecycle proof (`contracts/PolyLambdaMarket.sol`,
+   (1,848 disputes to chain head, 100% HF-joinable, CC-BY-4.0).
+4. **Live product** — the quant terminal with the Phase-5 live panel, the keyless-RPC live dispute
+   feed, and the testnet lifecycle proof (`contracts/PolyLambdaMarket.sol`,
    `scripts/e2e_onchain.py`).
 
 **Exit gate:** a submission README linking all four + the reproducible green test suite, and the

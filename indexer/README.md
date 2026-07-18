@@ -11,8 +11,8 @@ settles + CTF `ConditionPreparation` — on **Polygon (chain 137)** into Postgre
 You probably don't need to run this. Dispute labels resolve in this order:
 
 1. **Released parquet** (the default — complete, offline):
-   `dataset_release/polymarket-oov2-disputes-v1/disputes.parquet` — 1,794 disputes, all adapters,
-   100% HF-joinable. This is what `data.disputes.load_disputes()` reads out of the box.
+   `dataset_release/polymarket-oov2-disputes-v1/disputes.parquet` — 1,848 disputes to chain head, all
+   adapters, 100% HF-joinable. `data.disputes.load_disputes()` reads the 1,794 in-window out of the box.
 2. **Local indexer** (`DATA_SOURCE=graphql`, full fidelity) — this repo, live labels via Hasura.
 3. **Hosted HyperIndex deploy** — fallback only, **not authoritative**: row-capped at 1000/page,
    rejects the admin-secret header, aggregates off (coverage-capped).
@@ -74,8 +74,8 @@ Adapter events carry `questionID`; OO events carry `ancillaryData` (→ question
 **Validated — the honest gap is closed:** the full **28M→head backfill is done**. Dispute
 capture cross-checked **723/723** against the independent RPC/keccak path, and recon
 `pass_rate` = **1.0** on the eligible set (`recon/check.py`). Released output:
-`dataset_release/polymarket-oov2-disputes-v1/disputes.parquet` — **1,794 disputes**, 100%
-HF-joinable across all adapters (NegRisk via the tradeable-cid map in `data/negrisk_map.py`).
+`dataset_release/polymarket-oov2-disputes-v1/disputes.parquet` — **1,848 disputes** (1,794 in-window),
+100% HF-joinable across all adapters (NegRisk via the tradeable-cid map in `data/negrisk_map.py`).
 
 ## Tests
 

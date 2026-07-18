@@ -2,7 +2,7 @@
 
 **A belief-volatility market-making bot for Polymarket that treats disputes as jumps — and exits before they lock your capital.**
 
-PolyLambda indexes the Polymarket → UMA resolution lifecycle and CLOB fills with **Envio HyperSync/HyperIndex**, estimates a market's belief-volatility (**σ**), its dispute jump-intensity (**λ**), and its fair value, then quotes via an **Avellaneda–Stoikov** model augmented with a jump-risk premium. When a resolution proposal lands or λ spikes, it **flattens and pulls liquidity before the dispute lock** — the single behavior that separates it from naive LP farming.
+PolyLambda reads the Polymarket → UMA resolution lifecycle and CLOB fills from the **`moose-code` HF dataset** (frozen history) and a **keyless Polygon RPC** scan (the live dispute tail), estimates a market's belief-volatility (**σ**), its dispute jump-intensity (**λ**), and its fair value, then quotes via an **Avellaneda–Stoikov** model augmented with a jump-risk premium. When a resolution proposal lands or λ spikes, it **flattens and pulls liquidity before the dispute lock** — the single behavior that separates it from naive LP farming. (A scoped **Envio HyperIndex** exists as an optional/legacy backfill; the hosted deploy is retired and the stack no longer depends on it.)
 
 > **Status:** research / forward-test. This is not financial advice. It places real orders only in explicit live mode, and is designed to be run with *tiny* capital (or paper-live) until the edge is validated. Custody/vault is intentionally **out of scope** for v1. See [Safety](#safety--disclaimers).
 
@@ -43,9 +43,9 @@ PolyLambda indexes the Polymarket → UMA resolution lifecycle and CLOB fills wi
 > **⚠ CORRECTION (edge + validation):** "frozen for 4–6 days when a market disputes" — only
 > *redemption* freezes; trading continues (degraded). And the **live** λ-ablation is
 > statistically powerless in 18 days (~0–3 disputes expected, ≈0 DVM hard-locks). The
-> **primary** edge proof is a **historical counterfactual replay over the 1,794 released
-> disputes (1,409 replayed with usable fill tapes — [DATASET.md](DATASET.md) §5b'') + matched
-> controls**; the live ablation is a pre-registered,
+> **primary** edge proof is a **historical counterfactual replay over the 1,794 in-window
+> disputes (of 1,848 released; 1,409 replayed with usable fill tapes — [DATASET.md](DATASET.md)
+> §5b'') + matched controls**; the live ablation is a pre-registered,
 > explicitly-underpowered sanity check. See [DECISIONS.md](DECISIONS.md) #1, #11.
 
 ---
@@ -144,9 +144,11 @@ if proposal_detected(market) or λ(market,t) > λ*:
 ## Architecture
 
 ```
-Polygon ── Envio HyperSync/HyperIndex ──► Postgres / GraphQL
-  (UMA OOv2 · CTF Adapter · CTF · CTF Exchange : lifecycle + OrderFilled)
-        │  fast on-chain data
+moose-code HF dataset (history) ─┐
+keyless Polygon RPC (live tail) ─┤──► data/ (DuckDB + dispute labels)
+  (UMA OOv2 DisputePrice logs · CTF · OrderFilled fill tape)
+  [Envio HyperIndex: optional/legacy backfill only]
+        │  historical + live on-chain data
         ▼
 ESTIMATORS (Python):  σ · λ(+jump cost) · fair value
         │
@@ -214,15 +216,15 @@ poly_lambda/
 > queried in place via DuckDB in `data/`), so the local indexer is **scoped down to the OOv2 dispute
 > lifecycle only** — the one thing HF lacks. This unblocks σ / recon / λ base-rates / the
 > replay-ablation without a multi-day local backfill. Dispute **labels** now ship in-repo as the
-> released `dataset_release/polymarket-oov2-disputes-v1` parquet (**1,794 disputes, all adapters,
-> 100% HF-joinable**) — the scoped indexer (`indexer/`) is only needed to refresh the release or
-> for `DATA_SOURCE=graphql`.
+> released `dataset_release/polymarket-oov2-disputes-v1` parquet (**1,848 disputes to chain head, all
+> adapters, 100% HF-joinable**; 1,794 inside the HF window feed the λ base rates) — the scoped indexer
+> (`indexer/`) is only needed to refresh the release or for `DATA_SOURCE=graphql`.
 
 ---
 
 ## Tech stack
 
-- **Indexing:** Envio HyperIndex (TypeScript) → Postgres + GraphQL
+- **Data:** `moose-code` HF dataset (history, via DuckDB) + keyless Polygon RPC scan (live dispute tail). Envio HyperIndex (TypeScript → Postgres/GraphQL) is an **optional/legacy** backfill — the hosted deploy is retired.
 - **Quant / bot:** Python 3.11+ — `numpy`, `pandas`, `scikit-learn` (σ, λ), `Polymarket/py-sdk` (CLOB V2 API; pinned — see correction below)
 - **Tooling:** `pnpm` (Envio), `uv`/`pip` (Python), `pytest`
 
@@ -332,8 +334,8 @@ python -m forwardtest.ablation          # λ-term ON vs OFF → risk-adjusted P&
 > will be permanently red or silently gamed by async/bimodal resolution, reorgs, and
 > multi-adapter joins. Redefine it as **100% on the ELIGIBLE set** (settled + past confirmation
 > depth + supported adapter) with **counted exclusion buckets**. And the **primary** edge proof
-> is `forwardtest/replay_ablation.py` (historical counterfactual over the 1,794 released
-> disputes — 1,409 with fills, all adapters — **net of forgone rewards**);
+> is `forwardtest/replay_ablation.py` (historical counterfactual over the 1,794 in-window
+> disputes of 1,848 released — 1,409 with fills, all adapters — **net of forgone rewards**);
 > `forwardtest/ablation.py` (live) is a labeled-underpowered sanity check.
 
 ---

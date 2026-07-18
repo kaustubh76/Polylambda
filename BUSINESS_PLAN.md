@@ -11,13 +11,13 @@
 
 **"The dispute-aware market maker."** PolyLambda is (to our knowledge) the only Polymarket MM
 that prices UMA resolution risk as a **native jump term** in its quoting model, rather than as a
-bolted-on filter — and the historical replay over 1,794 disputes shows the surgical λ_jump exit
+bolted-on filter — and the historical replay over the 1,794 in-window disputes shows the surgical λ_jump exit
 beats both naive diffusion quoting and blanket dispute-avoidance.
 
 - **The engine is the moat:** σ / λ / fair-value estimators → Avellaneda–Stoikov in log-odds with
   a directional jump premium → reward-aware exit-on-risk.
 - **The credibility artifacts:** the released public dispute dataset
-  (`polymarket-oov2-disputes-v1`, 1,794 disputes, 100% HF-joinable, CC-BY-4.0), the hazard model
+  (`polymarket-oov2-disputes-v1`, 1,848 disputes to chain head, 100% HF-joinable, CC-BY-4.0), the hazard model
   card with its honest fair-controls null, and a methodology that documents its own corrected
   premises.
 - **The public face:** the quant-terminal dashboard (already deployed) — extended with the live
@@ -91,7 +91,7 @@ Submission package = ROADMAP Phase 7's four legs, linked from one README.
 Deliberately thin:
 
 - **Infra:** one small VM/container for the bot + dashboard (Fly/Render configs already in repo),
-  the Envio hosted indexer, RPC access — low tens of $/month.
+  keyless Polygon RPC (the live dispute feed; no paid indexer), plus optional RPC access — low tens of $/month.
 - **Trading capital:** the canary ladder above; risk-capped by `MAX_CAPITAL_USDC`, the persisted
   ledger, and max-loss/day (ROADMAP Phase 3).
 - **Key custody:** dedicated low-balance operating wallet, funded just-in-time — the bankroll

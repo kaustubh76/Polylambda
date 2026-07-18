@@ -38,11 +38,12 @@ all columns VARCHAR/camelCase; the fill↔market join (`order_filled.assetId = m
 **The two-source split (DECISIONS.md #13).** HF supplies fills, resolutions, metadata, and category
 denominators — but **not** OOv2 dispute events. Dispute labels come from
 [data/disputes.py](data/disputes.py), which by **default** loads the git-tracked released dispute
-layer (`dataset_release/polymarket-oov2-disputes-v1`: **1,794 disputes, all adapters, 100%
-HF-joinable** — NegRisk joins via the recovered tradeable conditionId, `data/negrisk_map.py`, see §5).
-`DATA_SOURCE=graphql` instead sources labels live from the local Envio indexer, which stays scoped
-down to only the OOv2 dispute lifecycle (the one net-new piece). The **last-resort fallback** pulls
-OOv2 `DisputePrice` logs via a keyless RPC (no Docker) and derives
+layer (`dataset_release/polymarket-oov2-disputes-v1`: **1,848 disputes to chain head, all adapters,
+100% HF-joinable**; the 1,794 inside the HF window feed the λ base rates — NegRisk joins via the
+recovered tradeable conditionId, `data/negrisk_map.py`, see §5). The live dispute tail (and the release
+regeneration) comes from a **keyless Polygon RPC** scan of OOv2 `DisputePrice` logs (no Docker);
+`DATA_SOURCE=graphql` can instead source labels from a local **Envio indexer** (now optional/legacy —
+the hosted deploy is retired) scoped to only the OOv2 dispute lifecycle. `load_disputes()` derives
 `conditionId = keccak256(adapter ++ keccak256(ancillary) ++ 2)` — validated **723/723**, but it
 covers the V2 + Legacy adapters only.
 

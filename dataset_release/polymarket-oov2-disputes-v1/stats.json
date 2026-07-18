@@ -48,8 +48,8 @@
   "parquet_rows": 1848,
   "recon": {
     "pass_rate": 1.0,
-    "eligible": 28482,
-    "matched": 28482,
-    "no_ground_truth": 125270
+    "eligible": 27238,
+    "matched": 27238,
+    "no_ground_truth": 115221
   }
 }

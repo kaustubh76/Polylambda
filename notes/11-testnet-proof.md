@@ -70,7 +70,8 @@ ablation` — all 200 with live payloads. Notables:
   hosted Envio HyperIndex. That endpoint has since been retired: post-pivot the feed reports
   `source=rpc` — keyless Polygon RPC. Re-running this sweep today returns `source=rpc`, not Envio;
   everything else below reproduces unchanged.)**
-- `/api/recon` → `pass_rate 1.0, eligible 28,482, matched 28,482` (matches `stats.json`).
+- `/api/recon` → `pass_rate 1.0, eligible 27,238, matched 27,238` (matches `stats.json`; deterministic
+  since the recon scan was ordered).
 - SPA `GET /` serves the built dashboard (`PolyLambda — dispute-aware market making`).
 
 A local `uvicorn webapp.backend.main:app` run served the identical on-chain state
