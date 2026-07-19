@@ -35,13 +35,31 @@ async def lifespan(app: FastAPI):
 
     def _warm():
         cache.dataset_stats(); cache.hazard_models(); cache.disputes_by_proposer()
+        # Pre-compute the HEAVY read endpoints so the FIRST visitor hits warm caches instead of a cold
+        # 12s quote-curve / 8s events (on the free tier's 0.5 CPU a cold compute + concurrent card loads
+        # = gateway 502s). Each is best-effort — a warm miss must never crash startup.
+        # Only OFFLINE (cache/estimator) endpoints here — NOT the chain reads (chain.status/events hit
+        # the Amoy RPC; warming them in a background daemon would do real network in the test lifespan
+        # and leak a thread, exactly like the tail scan). The chain `events` endpoint is instead kept
+        # warm in prod by its long cache TTL + the keepalive workflow pinging it.
+        from . import services
+        for label, fn in (("overview", services.overview),
+                          ("quote_curve", services.quote_curve),
+                          ("sigma", services.sigma_surface),
+                          ("hf_overview", services.hf_overview),
+                          ("base_rates", services.base_rates),
+                          ("disputes_analytics", services.disputes_analytics)):
+            try:
+                fn()
+            except Exception as e:  # noqa: BLE001
+                print(f"[webapp] warm {label} skipped: {type(e).__name__}")
         # kick the keyless-RPC dispute tail scan so the live feed is warm before users poll it
         try:
             from . import live
             live.warm_tail()                  # no-op if the tail was disabled (e.g. the test session)
         except Exception:  # noqa: BLE001 — live feed is optional; the dashboard runs without it
             pass
-        print(f"[webapp] offline DI installed (base-rate denominators: {src}); caches warmed.")
+        print(f"[webapp] offline DI installed (base-rate denominators: {src}); caches warmed (heavy endpoints prewarmed).")
 
     threading.Thread(target=_warm, name="cache-warm", daemon=True).start()
     yield
