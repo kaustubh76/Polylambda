@@ -71,9 +71,11 @@ Earlier the estimators existed but the runnable loop bypassed them (a hardcoded 
 σ prior). They are now fully integrated so the forward-test exercises the real brain:
 
 - **λ into the loop.** `forwardtest.runner.build_markets` (source=`data`) resolves each market's
-  `estimate_lambda` from the **real category base rates** above (+ Wilson CI, calibrated `kappa_loss`
-  = 0.76, the mean |realizedJumpLogit| over the released disputes, `data/calibrate.py`) — the engine
-  the diagram centers on, no longer a constant.
+  `estimate_lambda` from the **real category base rates** above (+ Wilson CI, calibrated κ: since
+  2026-07-16 **per-category** `kappa_by_category.json` with signed drift — `data/calibrate.py::
+  calibrate_kappa_by_category`, shrunk toward the global mean for thin categories — falling back to
+  the scalar `kappa_loss = 0.76`, the mean |realizedJumpLogit| over the released disputes) — the
+  engine the diagram centers on, no longer a constant.
 - **σ prior into the loop.** the hierarchical (category × price-bucket) prior
   (`data.prior_corpus` → `estimators.sigma.category_price_prior`) replaces the static 0.15; the loop
   also honors the frozen `shrinkage_strength`.

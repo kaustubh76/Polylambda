@@ -34,7 +34,7 @@
 | Knob | Default | Meaning |
 |------|---------|---------|
 | `lambda_star` | 0.002 | exit threshold for `lambda_jump`. The λ signal is a **category dispute base rate** (~0.0004–0.021), so the old `0.15` could never fire — scale-fixed 2026-07-05. `loader.py` **raises** if `lambda_star > 0.05` (`LAMBDA_STAR_SCALE_BOUND`). |
-| `kappa_loss` | 0.76 | `E[loss|jump]` scaling — **calibrated** from the released disputes' `realizedJumpLogit` (mean \|Δlogit\| = 0.76 over 1,149 disputes, `data/calibrate.py`) |
+| `kappa_loss` | 0.76 | `E[loss|jump]` scaling — **calibrated** from the released disputes' `realizedJumpLogit` (mean \|Δlogit\| = 0.76, n≈1,146 with price context over the 1,848-row release, `data/calibrate.py`). Since 2026-07-16 this scalar is the **fallback**: `calibrate_kappa_by_category()` → `kappa_by_category.json` gives per-category κ (+ signed drift, shrunk toward global for thin categories), consumed by `estimators/lambda_engine.py` |
 | `lambda_v1` | `base_rate` | v1 scope marker (not parsed into `Config`) |
 
 ### Execution sizing + inventory (`execution/loop.py:tick`)

@@ -1,8 +1,10 @@
 # PolyLambda — Business Plan (Polymarket Builders Program)
 
-> **Status:** planned 2026-07-11. Companion to [ROADMAP.md](ROADMAP.md) (the technical
-> sequencing). Facts below are cross-checked against [DECISIONS.md](DECISIONS.md) (which wins
-> over the original Readme) and against builders.polymarket.com / docs.polymarket.com as of
+> **Status:** planned 2026-07-11 · updated 2026-07-19. Companion to [ROADMAP.md](ROADMAP.md) (the
+> technical sequencing — see its header for what shipped 07-12 → 07-19: the keyless-RPC live feed,
+> the corrected 100%-joinable dataset with scheduled auto-refresh, per-category κ, and the rebuilt
+> Git-backed deployment). Facts below are cross-checked against [DECISIONS.md](DECISIONS.md) (which
+> wins over the original Readme) and against builders.polymarket.com / docs.polymarket.com as of
 > July 2026. Estimates are labeled as estimates.
 
 ---
@@ -20,8 +22,9 @@ beats both naive diffusion quoting and blanket dispute-avoidance.
   (`polymarket-oov2-disputes-v1`, 1,848 disputes to chain head, 100% HF-joinable, CC-BY-4.0), the hazard model
   card with its honest fair-controls null, and a methodology that documents its own corrected
   premises.
-- **The public face:** the quant-terminal dashboard (already deployed) — extended with the live
-  P&L / attribution panel (ROADMAP Phase 5).
+- **The public face:** the quant-terminal dashboard — live at
+  <https://polylambda-9lu2.onrender.com> (Git-backed Render deploy, push-to-deploy, keepalive) —
+  extended with the live P&L / attribution panel (ROADMAP Phase 5).
 - **The volume generator:** the live bot itself, operated by the non-US entity
   (see [JURISDICTION.md](JURISDICTION.md) resolution log).
 
@@ -78,8 +81,9 @@ The grant fund gates on *working product + active users*. Our traction story has
    arm. All of it visible on the public dashboard, none of it simulated (every simulated figure in
    the product is stamped `simulated: true` — live figures will be stamped `simulated: false`).
 2. **Public goods already shipped** — the dispute dataset (the missing dispute layer for the
-   ecosystem, CC-BY-4.0), the hazard model card, the reproducible dossier
-   (`python -m data.dossier`), 141 green tests.
+   ecosystem, CC-BY-4.0, **self-refreshing** via the scheduled RPC export + retrain workflow), the
+   hazard model card, the interactive dispute-anatomy explorer + HF-backbone views on the live
+   dashboard, the reproducible dossier (`python -m data.dossier`), 173 green tests.
 3. **The narrative** — *"we built the missing dispute-risk layer for Polymarket and we run it
    live."* Product + public good + volume, which is precisely the axis the program says it funds
    ("product innovation and traction").

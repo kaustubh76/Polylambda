@@ -147,7 +147,7 @@ dispute_witnessed, session_end`.
 - **`conditions.py`** — recon ground truth. `resolved_conditions` (:24), `payout_for` (:43), `hf_payout_map()` (:55), `resolution_counts()` (:68).
 - **`cache.py`** — materialize a local slice. `prefetch_state_tables` (:24), `materialize_slice(condition_ids, ...)` (:49), `clear()` (:105).
 - **`prior_corpus.py`** — build the σ prior corpus. `build_sigma_observation_corpus` (:26), `build_and_cache_sigma_prior` (:46), `load_sigma_prior` (:63). Cache `.data_cache/sigma_prior.json`.
-- **`calibrate.py`** — data-derived `kappa_loss`. `calibrate_kappa_loss` (:28), const `KAPPA_LOSS_CALIBRATED=0.76`. **Entry** (:50).
+- **`calibrate.py`** — data-derived `kappa_loss`. `calibrate_kappa_loss` (:28), const `KAPPA_LOSS_CALIBRATED=0.76` (now the scalar **fallback**); `calibrate_kappa_by_category` → `.data_cache/webapp/kappa_by_category.json` (per-category κ + signed drift). **Entry** (:50).
 - **`dossier.py`** — reproducible DATASET.md numbers. `main(full=False)` (:131). **Entry:** `python -m data.dossier [--full]` (:143).
 - **`export_disputes.py`** — package the dispute layer as the releasable HF dataset (`dataset_release/`). `export_dispute_dataset(...)` (:319). **Entry** (:323, argparse).
 

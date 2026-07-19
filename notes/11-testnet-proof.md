@@ -11,7 +11,7 @@
 |---------|--------|
 | Full on-chain market lifecycle (ephemeral market, 11 real signed txns) | **ALL ASSERTIONS PASSED** |
 | Live demo market — engine-signed quote refresh from the real estimators | tx confirmed, `quoteTs` updated |
-| Hosted app <https://polylambda.onrender.com> — all 16 API endpoints | all HTTP 200, live data |
+| Hosted app <https://polylambda-9lu2.onrender.com> — all 16 API endpoints | all HTTP 200, live data |
 | Local backend (`uvicorn webapp.backend.main:app`) | same on-chain state as hosted |
 | Offline suites | pytest **141/141** · indexer vitest 7/7 + `node --test` lifecycle 1/1 · frontend 20/20 + build |
 
@@ -47,7 +47,7 @@ ASSERTIONS PASSED ===`).
 
 ## 3. Live demo market — engine quote refreshed through the hosted app
 
-`POST https://polylambda.onrender.com/api/testnet/engine-quote` made the **deployed backend** run the
+`POST https://polylambda-9lu2.onrender.com/api/testnet/engine-quote` made the **deployed backend** run the
 real estimators (`services.score_market` → `estimate_lambda` + σ prior + `compute_quote`) and sign
 `postQuote` with its engine wallet:
 
@@ -84,8 +84,8 @@ A local `uvicorn webapp.backend.main:app` run served the identical on-chain stat
 python scripts/e2e_onchain.py
 
 # hosted app
-curl https://polylambda.onrender.com/api/health
-curl https://polylambda.onrender.com/api/testnet/status
+curl https://polylambda-9lu2.onrender.com/api/health
+curl https://polylambda-9lu2.onrender.com/api/testnet/status
 
 # live market snapshot straight from the chain (no backend)
 python - <<'EOF'

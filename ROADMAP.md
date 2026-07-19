@@ -1,9 +1,20 @@
 # PolyLambda — Go-Live Roadmap (paper → live, Builders Program)
 
-> **Status:** planned 2026-07-11. Companion to [BUSINESS_PLAN.md](BUSINESS_PLAN.md).
+> **Status:** planned 2026-07-11 · updated 2026-07-19. Companion to [BUSINESS_PLAN.md](BUSINESS_PLAN.md).
 > Jurisdiction is **resolved** (non-US operating entity — see [JURISDICTION.md](JURISDICTION.md)
 > resolution log), so the live leg is open. This document sequences the work; every phase has a
 > numeric exit gate. When in doubt on facts, [DECISIONS.md](DECISIONS.md) wins.
+>
+> **Shipped since planning (2026-07-12 → 07-19), all pre-live infrastructure:** the live dispute
+> feed pivoted to a **keyless Polygon RPC scan** (hosted Envio retired; NegRisk disputes labeled
+> on-chain); the released dataset was corrected + extended to **1,848 disputes at chain head, 100%
+> HF-joinable**, and is now maintainable without any indexer (`data/export_disputes.py` over RPC)
+> with a **scheduled GitHub Actions refresh** committing regenerated artifacts; κ is calibrated
+> **per-category** (`kappa_by_category.json`, scalar 0.76 fallback); the dashboard was rebuilt as a
+> **Git-backed Render deploy** — live at <https://polylambda-9lu2.onrender.com>, push-to-deploy +
+> keepalive — and gained the HF-backbone sections and the interactive dispute-anatomy explorer.
+> None of this moves Phases 0–7 (they are all live-trading work); it hardens the "already built"
+> column below and Phase 7's legs 2–4.
 
 ---
 
@@ -26,8 +37,10 @@ mode never needed.**
 | Reward-aware exit gate + inventory cap (`execution/loop.py`) | Kill-switch, max-loss/day, **persisted** capital ledger |
 | Session-log schema (`forwardtest/session_log.py`) | Live market selection + capital allocation |
 | Live dispute feed (`webapp/backend/live.py`, keyless Polygon RPC scan) | Real-time proposal detector wired into the loop (reorg-guarded) |
-| Frozen params (`config/model.yaml`, λ\*=0.002, κ_loss=0.76) | Live session logging (`simulated: True` is hardcoded) + live P&L dashboard |
-| 141 pytest green; replay-ablation edge proof | Key custody / secrets ops for an unattended hot wallet |
+| Frozen params (`config/model.yaml`, λ\*=0.002; κ **per-category** via `kappa_by_category.json`, scalar 0.76 fallback) | Live session logging (`simulated: True` is hardcoded) + live P&L dashboard |
+| 173 pytest green; replay-ablation edge proof | Key custody / secrets ops for an unattended hot wallet |
+| Scheduled data-refresh (GitHub Actions cron regenerates disputes/hazard/κ artifacts and commits them) | — |
+| NegRisk-labeled live dispute feed (real tradeable markets shown, `data/negrisk_map.py`) | — |
 
 ---
 
@@ -198,8 +211,9 @@ The submission stands on four legs, three of which already exist:
    λ\*-sensitivity curve (publish the curve, not a tuned point — `config/model.yaml` mandates this).
 3. **Public good** — the released dataset `dataset_release/polymarket-oov2-disputes-v1/`
    (1,848 disputes to chain head, 100% HF-joinable, CC-BY-4.0).
-4. **Live product** — the quant terminal with the Phase-5 live panel, the keyless-RPC live dispute
-   feed, and the testnet lifecycle proof (`contracts/PolyLambdaMarket.sol`,
+4. **Live product** — the quant terminal (live at <https://polylambda-9lu2.onrender.com>, Git-backed
+   auto-deploy) with the Phase-5 live panel, the keyless-RPC live dispute feed, the HF-backbone +
+   dispute-anatomy sections, and the testnet lifecycle proof (`contracts/PolyLambdaMarket.sol`,
    `scripts/e2e_onchain.py`).
 
 **Exit gate:** a submission README linking all four + the reproducible green test suite, and the

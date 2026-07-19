@@ -10,11 +10,11 @@ functions + fixtures, the CLOB live shapes are fixture-tested (real network is S
 adapters are seeded/deterministic. `conftest.py` just makes the repo root the pytest rootdir. This is what
 lets the suite be a fast, reliable gate.
 
-## Python suite — 19 files, 172 tests collected
+## Python suite — 19 files, 173 tests collected
 
-> This table is hand-maintained and has silently drifted several times (44 → 101 → 123 → 141 → 172, with
+> This table is hand-maintained and has silently drifted several times (44 → 101 → 123 → 141 → 172 → 173, with
 > the docs lagging each time). **Verify, don't trust:**
-> `.venv/bin/python -m pytest --collect-only -q | tail -1` — 172 as of 2026-07-17.
+> `.venv/bin/python -m pytest --collect-only -q | tail -1` — 173 as of 2026-07-19.
 
 | File | # | Covers |
 |------|---|--------|
