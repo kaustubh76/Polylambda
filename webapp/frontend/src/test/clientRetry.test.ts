@@ -41,13 +41,26 @@ describe('req retry policy', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
-  it('gives up after exhausting retries', async () => {
+  it('rides a long 502 streak (free-tier cold wake) and resolves', async () => {
+    // a wake can 502 for ~30–60s; the budget (8 retries, capped backoff ≈ 55s) must survive it so the
+    // card shows a loading skeleton that self-heals rather than a 502 error box.
+    fetchMock
+      .mockResolvedValueOnce(bad(502)).mockResolvedValueOnce(bad(502)).mockResolvedValueOnce(bad(503))
+      .mockResolvedValueOnce(bad(502)).mockResolvedValueOnce(bad(504))
+      .mockResolvedValueOnce(ok({ awake: true }))
+    const p = req<{ awake: boolean }>('/overview')
+    await vi.advanceTimersByTimeAsync(60_000) // past the ~55s budget
+    await expect(p).resolves.toEqual({ awake: true })
+    expect(fetchMock).toHaveBeenCalledTimes(6)
+  })
+
+  it('gives up after exhausting the (longer) retry budget', async () => {
     fetchMock.mockResolvedValue(bad(502))
     const p = req('/overview')
     p.catch(() => {}) // avoid unhandled-rejection noise while timers advance
-    await vi.advanceTimersByTimeAsync(30_000)
+    await vi.advanceTimersByTimeAsync(90_000) // past the full 8-retry capped budget (~55s + jitter)
     await expect(p).rejects.toThrow('502')
-    expect(fetchMock).toHaveBeenCalledTimes(4) // initial + 3 retries
+    expect(fetchMock).toHaveBeenCalledTimes(9) // initial + 8 retries
   })
 
   it('never retries a POST (engine txns are not idempotent)', async () => {
