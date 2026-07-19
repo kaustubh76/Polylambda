@@ -43,7 +43,7 @@ paper-only; the live mainnet CLOB write path is hard-gated by jurisdiction.
 - **Business / spec docs** — `../BUSINESS_PLAN.md` and `../polycool_info.md` (business context),
   `../WEATHER_COPYTRADE.md` (a design spec only — **no code exists for it yet**; it reuses the `data/`
   plane, not the λ/A-S engine).
-- **Live demo** — the deployed dashboard + on-chain Amoy market: <https://polylambda.onrender.com>
+- **Live demo** — the deployed dashboard + on-chain Amoy market: <https://polylambda-9lu2.onrender.com>
   (see [06-onchain-webapp.md](06-onchain-webapp.md); proof-of-life run in
   [11-testnet-proof.md](11-testnet-proof.md)).
 - **Diagrams** — `../quant-implementation-full.excalidraw` (the model study, panels A–N) and

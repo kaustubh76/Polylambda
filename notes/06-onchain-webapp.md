@@ -106,7 +106,7 @@ imported.
 
 ## 6. Deploy targets
 
-**Live deployment (the submission demo): <https://polylambda.onrender.com>** (Render). Verified
+**Live deployment (the submission demo): <https://polylambda-9lu2.onrender.com>** (Render). Verified
 2026-07-11: `/api/health` ok; `/api/testnet/status` reports chain 80002, `engine_ready: true`, the
 market address above, and the live on-chain quote.
 
