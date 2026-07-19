@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: ping /api/health
         run: |
-          # free-tier cold start can take ~1 min; retry before declaring the demo down
+          # free-tier cold start can take ~1 min; retry before declaring the demo down.
+          # URL is deployment-specific: Render assigned the -9lu2 suffix because the bare
+          # `polylambda` subdomain is held by an older (suspended) service in another account.
           curl -sfS --retry 5 --retry-delay 15 --retry-all-errors --max-time 60 \
-            https://polylambda.onrender.com/api/health
+            https://polylambda-9lu2.onrender.com/api/health
