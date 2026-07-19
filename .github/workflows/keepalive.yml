@@ -13,10 +13,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: ping /api/health
+      - name: ping /api/health (keep the free instance awake)
         run: |
           # free-tier cold start can take ~1 min; retry before declaring the demo down.
           # URL is deployment-specific: Render assigned the -9lu2 suffix because the bare
           # `polylambda` subdomain is held by an older (suspended) service in another account.
           curl -sfS --retry 5 --retry-delay 15 --retry-all-errors --max-time 60 \
             https://polylambda-9lu2.onrender.com/api/health
+      - name: warm the heavy endpoints (so no visitor pays a cold 12s quote-curve / 8s events → 502)
+        run: |
+          base=https://polylambda-9lu2.onrender.com/api
+          for ep in /overview /quote-curve /sigma /testnet/events /disputes/analytics; do
+            curl -sS --retry 3 --retry-delay 10 --retry-all-errors --max-time 45 "$base$ep" -o /dev/null \
+              -w "  warm %{http_code} %{time_total}s $ep\n" || true   # never fail the run on a warm miss
+          done

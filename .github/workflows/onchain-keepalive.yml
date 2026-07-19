@@ -1,0 +1,23 @@
+# Keeps the on-chain testnet demo market "alive": every 6h it asks the LIVE backend to recompute a
+# quote from the real estimators and post it on-chain (Polygon Amoy), engine-signed. No GitHub secrets
+# needed — the engine key lives on the Render service (ENGINE_PRIVATE_KEY), so this is just an HTTP POST
+# that triggers the signed postQuote. A red run means either the demo is down or the engine key is unset.
+name: onchain-keepalive
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # every 6 hours
+  workflow_dispatch: {}
+
+jobs:
+  post-quote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: refresh the on-chain quote (engine-signed postQuote)
+        run: |
+          # free-tier wake can take ~1 min; retry through it. The endpoint signs + sends the tx and
+          # returns { tx, explorer, ... }. Fail the run (curl -f) only if the POST itself errors.
+          curl -sfS --retry 5 --retry-delay 15 --retry-all-errors --max-time 90 \
+            -X POST -H 'content-type: application/json' -d '{}' \
+            https://polylambda-9lu2.onrender.com/api/testnet/engine-quote

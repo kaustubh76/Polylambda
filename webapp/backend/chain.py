@@ -251,7 +251,10 @@ def events(limit: int = 30) -> dict:
                     continue
         out.sort(key=lambda e: (e["block"], e["log_index"]), reverse=True)
         return {"reachable": True, "events": out[:limit], "explorer": EXPLORER}
-    return _cached("events", 4.0, fetch)
+    # events are ~immutable and the fetch is a heavy 10×paged eth_getLogs (~8s) — cache for the full
+    # keepalive cadence (10 min) so the workflow's periodic ping keeps it continuously warm and no
+    # visitor ever pays the cold scan (a free-tier 502 source).
+    return _cached("events", float(os.environ.get("EVENTS_TTL_S", "600")), fetch)
 
 
 def _fmt_event(name: str, log) -> dict:
