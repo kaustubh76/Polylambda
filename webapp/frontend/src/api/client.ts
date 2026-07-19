@@ -3,15 +3,21 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 const BASE = '/api'
 
 // Gateway errors (Render cold start / restart) and network failures are transient — one-shot GETs
-// retry through them so a page load during the boot window self-heals instead of leaving a dead
-// panel. POSTs are never retried (the engine-signed testnet writes are not idempotent), and polled
-// GETs pass retries: 0 because their poll loop already is the retry.
+// retry through them so a page load during the boot window self-heals instead of leaving a dead panel.
+// On the FREE tier a cold wake takes ~30–60s (whole app down until uvicorn binds), so the budget is 8
+// retries with a CAPPED backoff (1+2+4+8+10+10+10+10 ≈ 55s) — enough to ride a wake. Uncapped
+// 2**attempt would balloon to minutes. During the retries the useApi card stays in `loading` (shows a
+// skeleton, not an error), so a cold wake self-heals invisibly. POSTs are never retried (the
+// engine-signed testnet writes are not idempotent); polled GETs pass retries: 0 (their poll loop is the
+// retry). Non-gateway failures (4xx/500) throw immediately — only 502/503/504 + network errors retry.
 const RETRYABLE_STATUS = new Set([502, 503, 504])
+const RETRY_BACKOFF_CAP_MS = 10_000
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const backoff = (attempt: number) => Math.min(1000 * 2 ** attempt, RETRY_BACKOFF_CAP_MS) + Math.random() * 250
 
 export async function req<T>(path: string, init?: RequestInit, opts?: { retries?: number }): Promise<T> {
   const isGet = !init?.method || init.method.toUpperCase() === 'GET'
-  const retries = isGet ? opts?.retries ?? 3 : 0
+  const retries = isGet ? opts?.retries ?? 8 : 0
   for (let attempt = 0; ; attempt++) {
     let res: Response
     try {
@@ -20,12 +26,12 @@ export async function req<T>(path: string, init?: RequestInit, opts?: { retries?
         headers: { 'content-type': 'application/json', ...(init?.headers || {}) },
       })
     } catch (e) {
-      if (attempt < retries) { await sleep(1000 * 2 ** attempt + Math.random() * 250); continue }
+      if (attempt < retries) { await sleep(backoff(attempt)); continue }
       throw e
     }
     if (!res.ok) {
       if (RETRYABLE_STATUS.has(res.status) && attempt < retries) {
-        await sleep(1000 * 2 ** attempt + Math.random() * 250)
+        await sleep(backoff(attempt))
         continue
       }
       const body = await res.json().catch(() => ({}))
