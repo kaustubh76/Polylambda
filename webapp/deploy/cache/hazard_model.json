@@ -1,11 +1,11 @@
 {
  "coef": [
-  -2.349182893093619,
-  0.2405759980917127,
+  -2.0623045678250875,
+  0.0,
   0.0,
   0.0
  ],
- "intercept": -1.204869761379711,
+ "intercept": 0.015092858286934342,
  "offset": -4.8665919667355855,
  "feature_order": [
   "category_base_rate",
@@ -13,9 +13,9 @@
   "proposer_reliability",
   "latency_anomaly"
  ],
- "trained_at": "2026-07-17",
+ "trained_at": "2026-07-20",
  "metrics": {
-  "brier": 0.22030311316933543,
+  "brier": 0.24930031219216184,
   "n": 3105,
   "positives": 1522,
   "pi_train": 0.4901771336553945,
@@ -23,8 +23,8 @@
   "offset": -4.8665919667355855,
   "no_skill_brier": 0.24990351129677602,
   "base_rate_brier_enriched": 0.4844690073646753,
-  "holdout_brier": 0.47897010835075665,
-  "holdout_auc": 0.7086444777150755,
+  "holdout_brier": 0.48289063001923055,
+  "holdout_auc": 0.6160958194172521,
   "discriminates": true,
   "caveat": "CLASS-ENRICHED training (positives ~60% vs ~1% natural); output prior-corrected to natural prevalence via `offset`. Headline = held-out AUC (discrimination). At ~1% prevalence this is CALIBRATION-LIMITED (DECISIONS.md #9) \u2014 a directional structural signal, NOT a validated edge over the category base rate; the base rate remains the honest default."
  }
