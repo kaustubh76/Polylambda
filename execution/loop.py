@@ -269,6 +269,11 @@ def run_loop(markets: list, mode: str = "paper", *, n_ticks: int = 100, interval
             from execution.paper import PaperLiveClob
 
             clob = PaperLiveClob([m.token_id for m in markets])
+        elif mode == "testnet":
+            # never construct a hot-wallet signer implicitly from env — the keeper builds and
+            # injects the TestnetClob (risk-gated, fleet-scoped) explicitly
+            raise RuntimeError("testnet mode requires an injected TestnetClob "
+                               "(build via execution.testnet_keeper)")
         else:
             raise RuntimeError("live mode has no v1 loop adapter — JURISDICTION.md gates it")
     detect = proposal_detector or (lambda cid: False)
@@ -284,9 +289,12 @@ def run_loop(markets: list, mode: str = "paper", *, n_ticks: int = 100, interval
             s.inventory += signed
             s.cash -= signed * f["price"]
             if log:
+                # tx/block are on-chain provenance from the testnet adapter; paper fills carry
+                # neither key, so paper session logs are byte-identical to before
                 log("fill", cid=s.cid, arm=s.arm, side=f["side"], price=f["price"], size=f["size"],
                     order_id=f["order_id"], queue_model=f.get("queue_model", "synthetic"),
-                    inventory_after=s.inventory, cash_after=s.cash)
+                    inventory_after=s.inventory, cash_after=s.cash,
+                    **{k: f[k] for k in ("tx", "block") if k in f})
         for s in markets:
             book = clob.get_book(s.token_id)
             tick(s, book, now, cfg, clob, log, proposal_detected=detect(s.cid))

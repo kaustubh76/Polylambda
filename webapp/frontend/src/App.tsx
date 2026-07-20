@@ -3,9 +3,9 @@ import { AnimatePresence, LazyMotion, domMax, m, MotionConfig } from 'framer-mot
 import { api, useApi } from './api/client'
 import { BaseRates } from './sections/BaseRates'
 import { Hero } from './sections/Hero'
-import { LiveTestnet } from './sections/LiveTestnet'
 // below-the-fold sections are code-split + viewport-deferred so recharts and their code load on
 // scroll, not up front (see DeferSection). Named exports → default-shaped for React.lazy.
+const FleetStatus = lazy(() => import('./sections/FleetStatus').then((m) => ({ default: m.FleetStatus })))
 const ScoreMarket = lazy(() => import('./sections/ScoreMarket').then((m) => ({ default: m.ScoreMarket })))
 const PaperSession = lazy(() => import('./sections/PaperSession').then((m) => ({ default: m.PaperSession })))
 const Ablation = lazy(() => import('./sections/Ablation').then((m) => ({ default: m.Ablation })))
@@ -27,7 +27,7 @@ import { short } from './lib/format'
 
 const NAV = [
   { id: 'overview', label: 'Overview' },
-  { id: 'trade', label: 'Live testnet' },
+  { id: 'fleet', label: 'Fleet & keeper' },
   { id: 'baserates', label: 'λ signal' },
   { id: 'score', label: 'Score a market' },
   { id: 'session', label: 'Paper engine' },
@@ -42,7 +42,7 @@ const NAV = [
 ]
 // `g`-then-letter jump keys (shown as hints in the command palette)
 const GOTO_KEYS: Record<string, string> = {
-  overview: 'o', trade: 't', baserates: 'b', score: 's', session: 'e', ablation: 'a',
+  overview: 'o', baserates: 'b', score: 's', session: 'e', ablation: 'a',
   hazard: 'h', disputes: 'd', live: 'i', recon: 'r', sigma: 'v', hfdata: 'f', hfmarkets: 'm',
 }
 
@@ -117,7 +117,7 @@ function PendingIndicator() {
   return (
     <AnimatePresence>
       {pendingCount > 0 && (
-        <m.a href="#trade" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+        <m.a href="#fleet" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
           aria-live="polite" className="chip border-warn/50 text-warn" title="transactions awaiting confirmation">
           <span className="h-1.5 w-1.5 animate-pulse2 rounded-full bg-warn" />
           {pendingCount} pending
@@ -297,7 +297,7 @@ function AppInner() {
       <main className="mx-auto max-w-7xl space-y-16 px-5 py-10">
         {/* above the fold: eager */}
         <Hero q={overview} />
-        <LiveTestnet />
+        <DeferSection id="fleet" lines={7}><FleetStatus /></DeferSection>
         <BaseRates />
         {/* below the fold: code-split + viewport-deferred (recharts loads on scroll) */}
         <DeferSection id="score" lines={7}><ScoreMarket /></DeferSection>

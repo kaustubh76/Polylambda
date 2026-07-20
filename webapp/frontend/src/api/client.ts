@@ -64,14 +64,15 @@ export const api = {
   // polled endpoints: retries: 0 — the poll loop (with its failure backoff) is the retry
   liveStatus: () => req<LiveStatus>('/live/status', undefined, { retries: 0 }),
   liveDisputes: (limit = 25) => req<LiveDisputes>(`/live/disputes?limit=${limit}`, undefined, { retries: 0 }),
-  // testnet (on-chain PolyLambda market, Polygon Amoy)
-  tnStatus: () => req<TnStatus>('/testnet/status', undefined, { retries: 0 }),
-  tnMarket: () => req<TnMarket>('/testnet/market', undefined, { retries: 0 }),
-  tnPosition: (address: string) => req<TnPosition>(`/testnet/position?address=${address}`, undefined, { retries: 0 }),
-  tnEvents: (limit = 30) => req<TnEvents>(`/testnet/events?limit=${limit}`, undefined, { retries: 0 }),
-  tnEngineQuote: (body: { price?: number; category?: string }) => req<TnTx>('/testnet/engine-quote', { method: 'POST', body: JSON.stringify(body) }),
-  tnDispute: () => req<TnTx>('/testnet/dispute', { method: 'POST', body: '{}' }),
-  tnResolve: (yes_won: boolean) => req<TnTx>('/testnet/resolve', { method: 'POST', body: JSON.stringify({ yes_won }) }),
+  // testnet fleet + keeper (continuous engine)
+  tnFleet: () => req<TnFleet>('/testnet/fleet', undefined, { retries: 0 }),
+  tnKeeper: () => req<TnKeeper>('/testnet/keeper', undefined, { retries: 0 }),
+  tnKeeperRun: (ticks = 10) => req<{ started: boolean; running: boolean }>('/testnet/keeper/run', { method: 'POST', body: JSON.stringify({ ticks }) }),
+  tnKeeperStart: () => req<{ started: boolean; running: boolean }>('/testnet/keeper/start', { method: 'POST', body: '{}' }),
+  tnKeeperStop: () => req<{ stopped: boolean; running: boolean }>('/testnet/keeper/stop', { method: 'POST', body: '{}' }),
+  tnKill: () => req<TnRisk>('/testnet/kill', { method: 'POST', body: '{}' }),
+  tnUnkill: () => req<TnRisk & { removed: boolean }>('/testnet/unkill', { method: 'POST', body: '{}' }),
+  tnRisk: () => req<TnRisk>('/testnet/risk', undefined, { retries: 0 }),
 }
 
 // --- a tiny fetch hook (no react-query dep) ---------------------------------------------------
@@ -208,25 +209,29 @@ export interface LiveStatus { reachable: boolean; endpoint: string; source?: str
 export interface LiveDispute { id: string; round: number | null; disputeTs: number; disputer: string | null; proposedOutcome: string | null; proposer: string | null; conditionId: string | null; marketStatus: string | null; finalOutcome: string | null; outcomeSlotCount: number | null; adapter?: string | null; marketName?: string | null; category?: string | null }
 export interface LiveDisputes { reachable: boolean; disputes: LiveDispute[]; source?: string; latency_ms?: number; endpoint: string; error?: string }
 
-// ---- testnet (Polygon Amoy on-chain market) --------------------------------------------------
+// ---- testnet fleet + keeper (the continuous testnet execution engine) ------------------------
+// on-chain snapshot fields shared by every fleet-market row (from ChainReader.snapshot)
 export interface TnMarket {
   deployed: boolean; bid: number; ask: number; max_trade?: number; quote_ts?: number
   disputed?: boolean; resolved?: boolean; yes_won?: boolean; total_yes?: number
   escrow_usdc?: number; category?: string | null; lambda_jump?: number; sigma?: number
 }
-export interface TnStatus {
-  reachable: boolean; chain_id?: number; block?: number; engine?: string | null; engine_pol?: number | null
-  engine_ready?: boolean; market_address?: string | null; usdc?: string; explorer?: string
-  market?: TnMarket; error?: string
+export interface TnFleetMarket extends TnMarket {
+  address: string; category: string; token_id: string; tracks_cid: string | null
+  end_date_ts: number; keeper_managed: boolean; label: string; explorer: string; error?: string
 }
-export interface TnPosition {
-  reachable: boolean; address?: string; shares: number; mark?: number; mark_value?: number
-  usdc?: number; disputed?: boolean; resolved?: boolean; yes_won?: boolean
+export interface TnFleet { reachable: boolean; markets: TnFleetMarket[]; explorer?: string; note?: string; error?: string }
+export interface TnRisk {
+  day: string; tx_count: number; gas_pol: number; daily_loss_usd: number; gross_exposure: number
+  consecutive_errors: number; killed: boolean; halted: boolean; halt_reason: string
+  limits: { max_daily_loss_usd: number; portfolio_gross_cap: number; max_tx_per_day: number; max_gas_pol_per_day: number; max_consecutive_errors: number }
 }
-export interface TnEvent {
-  type: string; block: number; log_index: number; tx: string
-  user?: string; buy?: boolean; size?: number; usdc?: number; bid?: number; ask?: number
-  category?: string; lambda_jump?: number; yes_won?: boolean; payout?: number; amount?: number
+export interface TnKeeperMarket { cid: string; token_id: string; arm: string; category: string; inventory: number; cash: number; mark_mid: number | null; equity_mark: number; pnl: number; n_exits: number }
+export interface TnKeeper {
+  running: boolean; ticks_done: number; last_tick_ts: number; interval_s: number
+  out_path: string | null; last_error: string; n_markets: number
+  risk?: TnRisk; markets?: TnKeeperMarket[]
+  engine?: { address: string; pol?: number; usdc?: number; error?: string }
+  clob?: { tx_count: number; last_tx?: { kind: string; market: string; tx: string } | null; last_denied?: string }
+  detector?: { confirmations: number; cached_disputes: number; watched: number; error: string }
 }
-export interface TnEvents { reachable: boolean; events: TnEvent[]; explorer?: string; note?: string }
-export interface TnTx { tx: string; explorer: string; bid?: number; ask?: number; category?: string; lambda_jump?: number; sigma?: number; yesWon?: boolean }

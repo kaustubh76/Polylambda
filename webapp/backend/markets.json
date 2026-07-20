@@ -1,8 +1,4 @@
 {
- "address": "0x1dBF7dA731e58C87B7e6644b719b84804F28b496",
- "usdc": "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
- "engine": "0xFc46DA4cbAbDca9f903863De571E03A39D9079aD",
- "deployed_block": 41839995,
  "abi": [
   {
    "inputs": [
@@ -537,6 +533,26 @@
    ],
    "stateMutability": "view",
    "type": "function"
+  }
+ ],
+ "markets": [
+  {
+   "address": "0x5A074CE9d7eFd787065467c0937010214B69978D",
+   "deployed_block": 42716954,
+   "category": "politics",
+   "tracks_cid": "0x2cd24d17f5680dc6e7b7d67c712a223ae85550745597e81bd2d2b8d073443951",
+   "end_date_ts": 1785744966.3298402,
+   "keeper_managed": true,
+   "label": "fleet-politics-0"
+  },
+  {
+   "address": "0xEFCBc1eA2757473376B023BE57BD2f7241a12949",
+   "deployed_block": 42716972,
+   "category": "crypto",
+   "tracks_cid": "0xe459d1b598da754c9fd5fc155b6efe3a144aa80abbc7d041fce7d35d903d3c8e",
+   "end_date_ts": 1785744982.350753,
+   "keeper_managed": true,
+   "label": "fleet-crypto-1"
   }
  ]
 }

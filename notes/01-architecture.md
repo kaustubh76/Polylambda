@@ -69,7 +69,7 @@ The deployed system reads three *unrelated* sources; each can be offline without
 |-------|--------|---------|--------|
 | **Historical** | HF dataset `moose-code/polymarket-onchain-v1` via DuckDB over `hf://` | estimators, recon, base rates, replay-ablation | `DATA_SOURCE=hf`, `HF_DATASET` |
 | **Live disputes** | **keyless Polygon RPC** — `data.disputes.recent_disputes_rpc` scans OOv2 `DisputePrice` back from chain head | `webapp` LiveIndexer section | `POLYGON_RPC_URL` |
-| **On-chain market** | Polygon Amoy RPC → `PolyLambdaMarket` | `webapp` LiveTestnet section | `AMOY_RPC_URL`, `MARKET_ADDRESS` |
+| **On-chain fleet** | Polygon Amoy RPC → keeper-managed `PolyLambdaMarket` fleet | `webapp` Fleet & keeper section | `AMOY_RPC_URL`, `MARKETS_JSON` |
 
 **Envio is opt-in and legacy, not a live plane.** `webapp/backend/live.py` is source-agnostic and tries
 **Envio-only-if-configured-and-fresh → keyless RPC (the default) → offline**. There is **no baked-in
@@ -94,6 +94,7 @@ reads as LIVE-but-quiet rather than stale (`live.py:10-13`).
   (needs `MODE=live` **and** `JURISDICTION_ACK=RESOLVED_SEE_JURISDICTION_MD` **and** a finite positive
   `MAX_CAPITAL_USDC`). Per `../JURISDICTION.md`, US persons are paper-only. The default is paper.
 
-The **on-chain Amoy testnet** path is a *separate* surface (`webapp/backend/chain.py`) that is
-testnet-guarded by `chain_id == 80002` and deliberately bypasses the mainnet gate — it is a demo, not
-mainnet trading. See [06-onchain-webapp.md](06-onchain-webapp.md).
+The **on-chain Amoy testnet** path is a *separate* surface (`execution/testnet_*`, read via
+`webapp/backend/chain.py:fleet()`) that is testnet-guarded by `chain_id == 80002` and deliberately
+bypasses the mainnet gate — it is real testnet execution, not mainnet trading. See
+[13-testnet-execution.md](13-testnet-execution.md) and [06-onchain-webapp.md](06-onchain-webapp.md).

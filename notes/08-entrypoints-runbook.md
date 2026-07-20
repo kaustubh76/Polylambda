@@ -50,8 +50,9 @@ Order matters — generate & fund the wallet first, then deploy.
 |------|---------|
 | 1. Generate the burner engine wallet (writes `.env`) | `python scripts/gen_engine_wallet.py` |
 | 2. Fund the printed address with POL (faucet) | *manual* |
-| 3. Deploy the market + write `market.json` | `python scripts/deploy_market.py` |
-| 4. Full on-chain lifecycle e2e (ephemeral market) | `python scripts/e2e_onchain.py` |
+| 3. Deploy a keeper-managed fleet (writes `markets.json`) | `python scripts/deploy_fleet.py --n 2` |
+| 4. Run the testnet keeper (continuous engine) | `python -m execution.testnet_keeper --ticks 10 --interval 60` |
+| 5. Full on-chain lifecycle e2e (ephemeral market) | `python scripts/e2e_onchain.py` |
 
 Needs `ENGINE_PRIVATE_KEY` (from step 1), `AMOY_RPC_URL`, optionally `AMOY_GAS_GWEI` (default 30),
 `ENGINE_COLLATERAL_USDC`, `ENGINE_MAX_TRADE`.

@@ -82,6 +82,32 @@ def test_bad_mode_rejected():
         _restore(saved)
 
 
+def test_testnet_mode_accepted():
+    saved = _clear(ENV_KEYS)
+    try:
+        os.environ["MODE"] = "testnet"
+        assert load_config().mode == "testnet"
+    finally:
+        _restore(saved)
+
+
+def test_risk_and_testnet_knobs_load_from_yaml():
+    saved = _clear(ENV_KEYS)
+    try:
+        cfg = load_config()
+        assert cfg.max_daily_loss_usd == 25.0
+        assert cfg.portfolio_gross_cap == 200.0
+        assert cfg.kill_switch_path == ".data_cache/risk/KILL"
+        assert cfg.max_consecutive_errors == 5
+        assert cfg.max_tx_per_day == 200
+        assert cfg.max_gas_pol_per_day == 0.6
+        assert cfg.min_requote_delta == 0.005
+        assert cfg.max_quote_age_s == 900.0
+        assert cfg.dispute_confirmations == 30
+    finally:
+        _restore(saved)
+
+
 def test_defaults_when_yaml_missing():
     saved = _clear(ENV_KEYS)
     try:

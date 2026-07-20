@@ -1,9 +1,16 @@
 # 11 · Testnet proof-of-life (2026-07-11)
 
+> **Historical record.** This documents the original single-market on-chain proof (2026-07-11). That
+> **public-demo market and its `/api/testnet/engine-quote|dispute|resolve` wire have since been
+> removed** (2026-07-20) in favor of the continuous **keeper-managed fleet** — see
+> [13-testnet-execution.md](13-testnet-execution.md), whose live smoke (deploy → keeper → fill →
+> dispute-defense → kill-switch → reconcile) is the current proof. The lifecycle evidence below still
+> holds for the contract itself; reproduce the contract lifecycle with `python scripts/e2e_onchain.py`.
+>
 > **Purpose.** Submission-ready evidence that the on-chain path is a **real Polygon Amoy
 > implementation**, not paper validation: every claim below is a signed transaction or a live
 > endpoint response captured on 2026-07-11, each independently checkable on Amoyscan or by
-> curling the deployed app. Reproduce any time with `python scripts/e2e_onchain.py`.
+> curling the deployed app.
 
 ## 1. What was verified
 

@@ -1,9 +1,17 @@
 # 06 · On-chain market + webapp surface
 
-> **Source of truth.** `contracts/PolyLambdaMarket.sol`, `webapp/backend/*.py`,
-> `webapp/backend/market.json`, `webapp/frontend/src/*`, `scripts/*.py`, `fly.toml` / `render.yaml` /
-> `Dockerfile` / `.env.example`. Mirrors `system-flow.excalidraw` zone ⑦ +
-> `quant-implementation-full.excalidraw` Panel N.
+> **⚠️ Superseded in part (2026-07-20).** The single-market **public-demo surface described below has
+> been removed**: the `/api/testnet/{status,market,position,events,engine-quote,dispute,resolve}`
+> routes, `webapp/backend/market.json`, `chain.py`'s demo write/read functions, the `LiveTestnet`
+> dashboard section, and the `MARKET_ADDRESS` env. The on-chain surface is now the **keeper-managed
+> fleet only** — deploy via `scripts/deploy_fleet.py` (→ `markets.json`), run via
+> `execution/testnet_keeper.py`, read via `chain.py:fleet()` (`/api/testnet/fleet`), shown in the
+> **Fleet & keeper** dashboard section. See [13-testnet-execution.md](13-testnet-execution.md) for the
+> current architecture. The sections below are retained as historical context for the demo era.
+>
+> **Source of truth.** `contracts/PolyLambdaMarket.sol`, `execution/testnet_*.py`,
+> `webapp/backend/*.py`, `webapp/backend/markets.json`, `webapp/frontend/src/*`, `scripts/*.py`,
+> `fly.toml` / `render.yaml` / `Dockerfile` / `.env.example`.
 
 ## 1. Current deployment (Polygon Amoy, chainId 80002)
 

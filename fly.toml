@@ -15,7 +15,6 @@ primary_region = "iad"
   POLYGON_RPC_URL = "https://polygon.gateway.tenderly.co"
   AMOY_RPC_URL = "https://polygon-amoy.drpc.org"
   AMOY_USDC_ADDRESS = "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582"
-  MARKET_ADDRESS = "0x1dBF7dA731e58C87B7e6644b719b84804F28b496"
   # engine signer key is a SECRET: `fly secrets set ENGINE_PRIVATE_KEY=0x...`
   # HF read token is a SECRET too (optional — the HF panels ship precomputed JSON):
   #   `fly secrets set HF_TOKEN=hf_...`

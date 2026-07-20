@@ -65,7 +65,7 @@ describe('req retry policy', () => {
 
   it('never retries a POST (engine txns are not idempotent)', async () => {
     fetchMock.mockResolvedValue(bad(502))
-    await expect(req('/testnet/engine-quote', { method: 'POST', body: '{}' })).rejects.toThrow('502')
+    await expect(req('/testnet/kill', { method: 'POST', body: '{}' })).rejects.toThrow('502')
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 

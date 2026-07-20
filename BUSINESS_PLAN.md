@@ -74,17 +74,25 @@ custody/vault/depositor products stay **out of scope** exactly as the scope-lock
 
 ## 4. Traction plan (what the grant application will show)
 
-The grant fund gates on *working product + active users*. Our traction story has three prongs:
+The grant fund gates on *working product + active users*. Our traction story has four prongs:
 
 1. **Live, verifiable volume** — weeks of uptime; attributed volume on-chain (`OrderFilled.builder`);
    markets quoted; disputes survived with exit-on-risk fired; net P&L vs the λ-OFF counterfactual
    arm. All of it visible on the public dashboard, none of it simulated (every simulated figure in
-   the product is stamped `simulated: true` — live figures will be stamped `simulated: false`).
-2. **Public goods already shipped** — the dispute dataset (the missing dispute layer for the
+   the product is stamped `simulated: true`; the **testnet engine already emits `simulated: false`**
+   with real tx hashes — the same honesty contract mainnet-live will use).
+2. **A real continuous engine, already running on-chain** — the byte-identical production loop
+   drives a **fleet of engine-signed PolyLambdaMarket contracts on Polygon Amoy** (`MODE=testnet`).
+   The full loop is proven end-to-end on testnet: deploy → keeper quoting → real on-chain fill
+   polled → **dispute-defense signing a real `flagDispute()`** → **kill-switch** halt/resume →
+   **exact reconcile** of the keeper's books against on-chain `Traded` events. This de-risks
+   ROADMAP Phases 3–5 (risk governor, reorg-guarded proposal detector, honest session logging)
+   against real chain state — mainnet-live is then the mainnet `LiveClob` adapter, not net-new risk.
+3. **Public goods already shipped** — the dispute dataset (the missing dispute layer for the
    ecosystem, CC-BY-4.0, **self-refreshing** via the scheduled RPC export + retrain workflow), the
    hazard model card, the interactive dispute-anatomy explorer + HF-backbone views on the live
-   dashboard, the reproducible dossier (`python -m data.dossier`), 173 green tests.
-3. **The narrative** — *"we built the missing dispute-risk layer for Polymarket and we run it
+   dashboard, the reproducible dossier (`python -m data.dossier`), 218 green tests.
+4. **The narrative** — *"we built the missing dispute-risk layer for Polymarket and we run it
    live."* Product + public good + volume, which is precisely the axis the program says it funds
    ("product innovation and traction").
 
@@ -120,7 +128,7 @@ Deliberately thin:
 |---|---|---|
 | M1 — Attribution proven | one filled order carries our builder code on-chain | Phase 0 |
 | M2 — Live loop trusted | 1-hour live run reconciles exactly; zero orphans | Phase 2 |
-| M3 — Unattended-safe | fault-injection suite green (kill-switch, daily-loss, breaker) | Phase 3 |
+| M3 — Unattended-safe | fault-injection suite green (kill-switch, daily-loss, breaker) — **kill-switch + tx/gas budgets already demonstrated live on the Amoy testnet fleet** | Phase 3 |
 | M4 — First revenue week | one full Sun–Sat epoch with attributed volume + reward accrual visible on the dashboard | Phases 5–6 |
 | M5 — Grant filed | submission README + application sent, backed by ≥2 weeks of live metrics | Phase 7 |
 

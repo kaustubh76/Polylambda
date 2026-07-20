@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from starlette.concurrency import run_in_threadpool
 
 from . import chain, live, services
-from .schemas import EngineQuoteRequest, ResolveRequest, ScoreRequest, SessionRequest
+from .schemas import KeeperRunRequest, ScoreRequest, SessionRequest
 
 api = APIRouter(prefix="/api")
 
@@ -157,49 +157,75 @@ def get_live_disputes(limit: int = Query(25, ge=1, le=100), since_ts: int | None
     return live.live_disputes(limit=limit, since_ts=since_ts)
 
 
-# --- testnet: on-chain PolyLambda market on Polygon Amoy ------------------------------------------
-@api.get("/testnet/status")
-def get_testnet_status():
-    return chain.status()
+# --- testnet fleet + keeper: the CONTINUOUS testnet execution engine ------------------------------
+def _keeper():
+    from execution.testnet_keeper import get_keeper
+    return get_keeper()
 
 
-@api.get("/testnet/market")
-def get_testnet_market():
-    return chain.market()
+def _risk():
+    """The keeper's governor, constructed on demand so kill/risk work before any keeper run."""
+    k = _keeper()
+    if k.risk is None:
+        from config.loader import load_config
+        from execution.risk import RiskGovernor, RiskLimits
+        k.risk = RiskGovernor(RiskLimits.from_config(load_config()))
+    return k.risk
 
 
-@api.get("/testnet/position")
-def get_testnet_position(address: str = Query(..., min_length=42, max_length=42)):
-    return chain.position(address)
+@api.get("/testnet/fleet")
+def get_testnet_fleet():
+    """Per-market on-chain snapshots across the keeper-managed fleet registry."""
+    return chain.fleet()
 
 
-@api.get("/testnet/events")
-def get_testnet_events(limit: int = Query(30, ge=1, le=100)):
-    return chain.events(limit=limit)
+@api.get("/testnet/keeper")
+def get_testnet_keeper():
+    return _keeper().status()
 
 
-@api.post("/testnet/engine-quote")
-def post_testnet_quote(req: EngineQuoteRequest):
-    try:
-        return chain.post_quote(price=req.price, category=req.category)
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"engine quote failed: {e}")
+@api.post("/testnet/keeper/start")
+def post_keeper_start():
+    k = _keeper()
+    started = k.start_background()
+    return {"started": started, "running": k.running}
 
 
-@api.post("/testnet/dispute")
-def post_testnet_dispute():
-    try:
-        return chain.flag_dispute()
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"flag dispute failed: {e}")
+@api.post("/testnet/keeper/stop")
+def post_keeper_stop():
+    k = _keeper()
+    stopped = k.stop()
+    return {"stopped": stopped, "running": k.running}
 
 
-@api.post("/testnet/resolve")
-def post_testnet_resolve(req: ResolveRequest):
-    try:
-        return chain.resolve(req.yes_won)
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"resolve failed: {e}")
+@api.post("/testnet/keeper/run")
+def post_keeper_run(req: KeeperRunRequest):
+    """Watchdog burst (the GH cron target): start a finite background run if idle; never blocks."""
+    k = _keeper()
+    if k.running:
+        return {"started": False, "running": True, "note": "keeper already running"}
+    started = k.start_background(burst_ticks=req.ticks)
+    return {"started": started, "running": k.running, "ticks": req.ticks}
+
+
+@api.get("/testnet/risk")
+def get_testnet_risk():
+    return _risk().status()
+
+
+@api.post("/testnet/kill")
+def post_testnet_kill():
+    """Cross-process kill-switch: writes the kill file — every signing path halts within one tick."""
+    r = _risk()
+    r.kill("api")
+    return r.status()
+
+
+@api.post("/testnet/unkill")
+def post_testnet_unkill():
+    r = _risk()
+    removed = r.unkill()
+    return {"removed": removed, **r.status()}
 
 
 @api.get("/health")

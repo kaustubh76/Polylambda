@@ -274,7 +274,7 @@ def _outcome_from_price(price: int) -> str | None:
 
 
 def recent_disputes_rpc(*, lookback_blocks: int = 4_500_000, target: int = 50,
-                        window: int = 900_000, log=None) -> list[dict]:
+                        window: int = 900_000, min_confirmations: int = 0, log=None) -> list[dict]:
     """The latest OOv2 disputes straight from Polygon via keyless RPC — the no-indexer live feed.
 
     Scans DisputePrice logs BACKWARD from the chain head in `window`-block steps (resilient bisection
@@ -286,12 +286,15 @@ def recent_disputes_rpc(*, lookback_blocks: int = 4_500_000, target: int = 50,
     QuestionPrepared → derive) — pure RPC, no 36MB map, results cached. A NegRisk dispute that can't be
     resolved simply stays conditionId=None rather than getting a phantom id.
 
+    min_confirmations: drop disputes fewer than this many blocks below the head — the reorg guard
+    demanded by the loop docstring before any costly action (execution/proposal_feed.py sets ~30).
+
     Heavy (a multi-window scan); callers MUST cache it off the request path (see webapp/backend/live.py)."""
     head = chain_head_block()
     adapters_topic = [_pad(a) for a in list(DERIVABLE) + [NEGRISK]]
     floor = max(START_BLOCK, head - int(lookback_blocks))
     rows: list[dict] = []
-    hi = head
+    hi = head - max(0, int(min_confirmations))  # never scan the unconfirmed tip
     while hi >= floor and len(rows) < target:
         lo = max(floor, hi - int(window) + 1)
         logs = _get_oov2_logs_resilient(lo, hi, adapters_topic, log=log)

@@ -43,8 +43,19 @@ class Config:
     inventory_cap_horizon_days: float = 3.0  # position cap ramps over this horizon; ~0 at resolution
     # positioning + mode + risk
     positioning: str = "both"          # reward_farmer | jump_avoid | both
-    mode: str = "paper"                # paper | paper-live | live (env MODE)
+    mode: str = "paper"                # paper | paper-live | testnet | live (env MODE)
     max_capital_usdc: float = 0.0      # hard notional cap for any live order (env MAX_CAPITAL_USDC)
+    # risk governor (execution/risk.py — gates every signed tx in testnet mode)
+    max_daily_loss_usd: float = 25.0   # halt signing when today's mark-to-market loss exceeds this
+    portfolio_gross_cap: float = 200.0 # halt signing when sum(|inventory|) across the fleet exceeds this
+    kill_switch_path: str = ".data_cache/risk/KILL"  # file existence = halt (cross-process)
+    max_consecutive_errors: int = 5    # RPC/send error breaker: open after N in a row
+    max_tx_per_day: int = 200          # signed-tx budget per UTC day
+    max_gas_pol_per_day: float = 0.6   # gas budget per UTC day (POL)
+    # testnet adapter (execution/testnet_clob.py — gas/spam debounce + reorg buffer)
+    min_requote_delta: float = 0.005   # re-post only when bid or ask moved by at least this
+    max_quote_age_s: float = 900.0     # ... or the standing quote is older than this
+    dispute_confirmations: int = 30    # proposal detector: accept disputes at least this many blocks deep
     # data block
     fill_limit: int = 5000
     control_ratio: int = 3
@@ -117,6 +128,15 @@ def load_config(path: str = DEFAULT_PATH) -> Config:
         positioning=str(y.get("positioning", "both")),
         fill_limit=int(data.get("fill_limit", 5000)),
         control_ratio=int(data.get("control_ratio", 3)),
+        max_daily_loss_usd=float(y.get("max_daily_loss_usd", 25.0)),
+        portfolio_gross_cap=float(y.get("portfolio_gross_cap", 200.0)),
+        kill_switch_path=str(y.get("kill_switch_path", ".data_cache/risk/KILL")),
+        max_consecutive_errors=int(y.get("max_consecutive_errors", 5)),
+        max_tx_per_day=int(y.get("max_tx_per_day", 200)),
+        max_gas_pol_per_day=float(y.get("max_gas_pol_per_day", 0.6)),
+        min_requote_delta=float(y.get("min_requote_delta", 0.005)),
+        max_quote_age_s=float(y.get("max_quote_age_s", 900.0)),
+        dispute_confirmations=int(y.get("dispute_confirmations", 30)),
     )
     # env wins (the runtime switches; model params stay frozen in the yaml)
     cfg.mode = os.environ.get("MODE", cfg.mode)
@@ -131,6 +151,6 @@ def load_config(path: str = DEFAULT_PATH) -> Config:
             f"dispute base rate (~0.0004-0.021, DATASET.md 5b), so a threshold above "
             f"{LAMBDA_STAR_SCALE_BOUND} never fires. The replay's sensitivity grid is 0.0005-0.01."
         )
-    if cfg.mode not in ("paper", "paper-live", "live"):
-        raise ValueError(f"MODE={cfg.mode!r} must be paper | paper-live | live")
+    if cfg.mode not in ("paper", "paper-live", "testnet", "live"):
+        raise ValueError(f"MODE={cfg.mode!r} must be paper | paper-live | testnet | live")
     return cfg

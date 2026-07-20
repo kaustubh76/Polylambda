@@ -1,9 +1,10 @@
 """
 session_log — the JSONL session record: the runner WRITES it, the live ablation READS it.
 
-One line per event. Every record carries {t, type, mode, simulated: true} — `simulated` is stamped
-unconditionally because v1 never places real orders (JURISDICTION.md paper-only default); when a
-real live mode ever exists, IT must own flipping that flag, not a consumer.
+One line per event. Every record carries {t, type, mode, simulated} — `simulated` defaults True
+(paper/paper-live never place real orders, JURISDICTION.md paper-only default); a REAL execution
+mode owns flipping it: the testnet keeper (execution/testnet_keeper.py) passes simulated=False
+because its fills are on-chain transactions. No consumer may override the writer's stamp.
 
 Record types (fields set by the runner/loop; the ablation is a pure reader of this file):
   session_start   config snapshot + arm_rule + per-market {cid, token_id, category, end_date_ts,
@@ -30,10 +31,11 @@ def open_log(path: str):
     return open(path, "a")
 
 
-def append(fh, record_type: str, *, mode: str, t: float | None = None, **fields) -> dict:
+def append(fh, record_type: str, *, mode: str, t: float | None = None,
+           simulated: bool = True, **fields) -> dict:
     """Write one event line (adds t/type/mode/simulated), flush, and return the record."""
     rec = {"t": time.time() if t is None else t, "type": record_type, "mode": mode,
-           "simulated": True, **fields}
+           "simulated": simulated, **fields}
     fh.write(json.dumps(rec) + "\n")
     fh.flush()
     return rec

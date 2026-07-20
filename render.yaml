@@ -11,7 +11,13 @@ services:
     autoDeploy: true
     envVars:
       - key: MODE
-        value: paper
+        value: testnet
+      # the continuous testnet execution engine: the production loop signing real Amoy txs from a
+      # background thread (execution/testnet_keeper.py), risk-governed. Set 0 to disable.
+      - key: KEEPER_AUTOSTART
+        value: "1"
+      - key: KEEPER_INTERVAL_S
+        value: "60"
       # Live dispute feed = keyless Polygon RPC eth_getLogs scan (no indexer, no paid service).
       # The old Envio dev deploy ended; leave INDEXER_GRAPHQL_URL UNSET to use the RPC path. Set it
       # only if you stand up your own hosted indexer.
@@ -22,10 +28,8 @@ services:
         value: https://polygon-amoy.drpc.org
       - key: AMOY_USDC_ADDRESS
         value: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582"
-      - key: MARKET_ADDRESS
-        value: "0x1dBF7dA731e58C87B7e6644b719b84804F28b496"
-      # engine wallet key that SIGNS quotes/dispute/resolve on Amoy — SECRET, set in the dashboard.
-      # Without it, reads + user-signed trades still work; only the engine controls go "offline".
+      # engine wallet key that SIGNS the keeper's postQuote/flagDispute txns on Amoy — SECRET, set in
+      # the dashboard. Without it, fleet reads still work; the keeper's signing goes "offline".
       - key: ENGINE_PRIVATE_KEY
         sync: false
       # HF read token — optional. The HF panels serve shipped precomputed JSON, so the app runs fine

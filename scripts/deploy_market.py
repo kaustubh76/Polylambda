@@ -1,12 +1,13 @@
-"""Compile + deploy PolyLambdaMarket to Polygon Amoy, fund a little collateral, post an initial quote,
-and write webapp/backend/market.json (address + ABI) for the app to load.
+"""Compile + deploy a standalone PolyLambdaMarket to Polygon Amoy, fund a little collateral, and post
+an initial quote. A dev/ephemeral single-market deployer; `compile_market()` is the shared solc
+compile reused by scripts/deploy_fleet.py and scripts/e2e_onchain.py. It is NOT app-wired — the
+dashboard reads only the keeper-managed fleet (scripts/deploy_fleet.py -> markets.json).
 
 Prereqs: `python scripts/gen_engine_wallet.py` then FUND the printed address on Amoy (POL for gas;
 test-USDC optional for collateral). Run:  python scripts/deploy_market.py
 """
 from __future__ import annotations
 
-import json
 import os
 import re
 
@@ -17,7 +18,6 @@ from web3 import Web3
 ROOT = os.path.dirname(os.path.dirname(__file__))
 AMOY_RPC = os.environ.get("AMOY_RPC_URL", "https://rpc-amoy.polygon.technology")
 USDC = Web3.to_checksum_address(os.environ.get("AMOY_USDC_ADDRESS", "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582"))
-OUT = os.path.join(ROOT, "webapp", "backend", "market.json")
 SOL = os.path.join(ROOT, "contracts", "PolyLambdaMarket.sol")
 
 _ERC20_APPROVE = [{"name": "approve", "type": "function", "stateMutability": "nonpayable",
@@ -100,11 +100,8 @@ def main() -> None:
     max_trade = int(float(os.environ.get("ENGINE_MAX_TRADE", "0.5")) * 1e6)  # default 0.5 YES/trade
     _send(w3, acct, market.functions.postQuote(600_000, 640_000, max_trade, "politics", 183, 470))
     print(f"posted initial quote: bid 0.60 / ask 0.64, maxTrade {max_trade/1e6} YES, politics")
-
-    with open(OUT, "w") as f:
-        json.dump({"address": addr, "usdc": USDC, "engine": acct.address,
-                   "deployed_block": rcpt["blockNumber"], "abi": abi}, f, indent=1)
-    print("wrote", OUT)
+    print(f"deployed standalone market {addr} at block {rcpt['blockNumber']} "
+          f"(not app-wired; the dashboard reads the keeper-managed fleet only)")
 
 
 if __name__ == "__main__":

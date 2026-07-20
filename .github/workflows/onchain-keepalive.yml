@@ -1,7 +1,8 @@
-# Keeps the on-chain testnet demo market "alive": every 6h it asks the LIVE backend to recompute a
-# quote from the real estimators and post it on-chain (Polygon Amoy), engine-signed. No GitHub secrets
-# needed — the engine key lives on the Render service (ENGINE_PRIVATE_KEY), so this is just an HTTP POST
-# that triggers the signed postQuote. A red run means either the demo is down or the engine key is unset.
+# Watchdog for the CONTINUOUS testnet keeper: every 6h it asks the LIVE backend to run a keeper
+# burst (the production loop → engine-signed postQuote/flagDispute on Polygon Amoy). If the keeper
+# thread is already running (KEEPER_AUTOSTART=1) this is a no-op; if the free-tier instance was
+# spun down or the thread died, the burst restores on-chain quote freshness. No GitHub secrets —
+# the engine key lives on the Render service (ENGINE_PRIVATE_KEY); this is just an HTTP POST.
 name: onchain-keepalive
 
 on:
@@ -10,14 +11,17 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  post-quote:
+  keeper-burst:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: refresh the on-chain quote (engine-signed postQuote)
+      - name: run a keeper burst (idle-only; no-op when the keeper thread is alive)
         run: |
-          # free-tier wake can take ~1 min; retry through it. The endpoint signs + sends the tx and
-          # returns { tx, explorer, ... }. Fail the run (curl -f) only if the POST itself errors.
+          # free-tier wake can take ~1 min; retry through it. Returns {started, running, ...}
+          # immediately (the burst runs in a background thread server-side).
           curl -sfS --retry 5 --retry-delay 15 --retry-all-errors --max-time 90 \
-            -X POST -H 'content-type: application/json' -d '{}' \
-            https://polylambda-9lu2.onrender.com/api/testnet/engine-quote
+            -X POST -H 'content-type: application/json' -d '{"ticks": 10}' \
+            https://polylambda-9lu2.onrender.com/api/testnet/keeper/run
+      - name: report keeper + risk status (visible in the run log)
+        run: |
+          curl -sfS --max-time 60 https://polylambda-9lu2.onrender.com/api/testnet/keeper | head -c 2000

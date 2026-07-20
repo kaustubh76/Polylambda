@@ -443,3 +443,26 @@ def test_block_ts_cache_paths_are_distinct():
     assert dz.BLOCK_TS_CACHE != dz.RPC_BLOCK_TS_CACHE
     assert dz.BLOCK_TS_CACHE.endswith("dispute_block_ts.json")
     assert dz.RPC_BLOCK_TS_CACHE.endswith("rpc_block_ts.json")
+
+
+def test_recent_disputes_rpc_min_confirmations_skips_unconfirmed_tip(monkeypatch):
+    """The reorg guard: the scan must never touch blocks shallower than min_confirmations."""
+    import data.disputes as dz
+
+    scanned: list[tuple[int, int]] = []
+    monkeypatch.setattr(dz, "chain_head_block", lambda: 50_000_000)
+    monkeypatch.setattr(dz, "_block_timestamps", lambda blocks: {b: b for b in blocks})
+
+    def fake_logs(frm, to, adapters_topic, **kw):
+        scanned.append((frm, to))
+        return []
+
+    monkeypatch.setattr(dz, "_get_oov2_logs_resilient", fake_logs)
+    dz.recent_disputes_rpc(lookback_blocks=200_000, target=5, window=100_000,
+                           min_confirmations=30)
+    assert scanned, "scan ran"
+    assert max(to for _, to in scanned) == 50_000_000 - 30  # tip excluded
+    # and with the default (0) the tip is included — existing behavior unchanged
+    scanned.clear()
+    dz.recent_disputes_rpc(lookback_blocks=200_000, target=5, window=100_000)
+    assert max(to for _, to in scanned) == 50_000_000

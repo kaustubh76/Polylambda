@@ -15,6 +15,38 @@
 > keepalive — and gained the HF-backbone sections and the interactive dispute-anatomy explorer.
 > None of this moves Phases 0–7 (they are all live-trading work); it hardens the "already built"
 > column below and Phase 7's legs 2–4.
+>
+> **Shipped 2026-07-19 — testnet execution mode (the continuous engine).** `testnet` is now a
+> first-class execution mode: the REAL production loop (`execution/loop.py`, byte-identical
+> decision logic) continuously drives **engine-signed transactions** on a fleet of Amoy markets via
+> `execution/testnet_clob.py` (orders→`postQuote` collapse, on-chain `Traded` events→fills with tx
+> hashes, `queue_model="onchain"`), run by `execution/testnet_keeper.py` (CLI, or a background
+> thread in the webapp under `KEEPER_AUTOSTART=1`, with the 6h GH cron as a burst watchdog). This
+> **prebuilds several Phase 3/4/5 deliverables against real (testnet) chain state**:
+> `execution/risk.py` **RiskGovernor** (persisted daily ledger, max-loss/day, kill-switch file +
+> `/api/testnet/kill`, tx/gas budgets, error breaker — Phase 3),
+> `execution/proposal_feed.py` **ConfirmedProposalDetector** (the keyless-RPC dispute tail behind a
+> 30-block reorg-confirmation guard, wired as `run_loop`'s `proposal_detector`; a confirmed dispute
+> on a tracked cid signs a real `flagDispute()` — Phase 4), and honest **`simulated: false`
+> session logs** whose fills carry tx hashes (Phase 5). The mainnet CLOB gate is untouched; live
+> still requires Phases 0–2 (`LiveClob`). See [notes/13-testnet-execution.md](notes/13-testnet-execution.md).
+>
+> **Shipped 2026-07-20 — live Amoy smoke passed + demo mode removed.** The full testnet-execution
+> chain was exercised end-to-end on Polygon Amoy against a freshly deployed **fleet of 2**
+> (politics `0x5A07…978D`, crypto `0xEFCB…2949`): `scripts/deploy_fleet.py` → keeper run → a real
+> user `buyYes` **fill polled** from the on-chain `Traded` event (engine SELL, booked to inventory
+> with the tx hash) → **dispute-defense** (`DISPUTE_TRIGGERS` → `exit(trigger=proposal)` → a real
+> `flagDispute()` → on-chain `disputed=true`) → **kill-switch** (a would-be `postQuote` suppressed
+> while `KILL` present, then resumed) → **reconcile PASS** (inventory/cash re-derived from on-chain
+> events == the keeper's books, exactly). Two reusable utilities landed:
+> `scripts/smoke_taker.py` (throwaway-user taker) and `scripts/smoke_reconcile.py`. In the same
+> pass the codebase was **hardened to guarantee no mock/demo mode in the live path**: the deploy's
+> initial quote now **fails loud** rather than seeding a fabricated `0.45/0.55`; the equity/risk
+> mark never substitutes a placeholder `0.5`; estimator-input degradation is logged; and the entire
+> legacy single-market **public-demo surface was removed** (the `/api/testnet/{status,market,
+> position,events,engine-quote,dispute,resolve}` routes, `webapp/backend/market.json`, the
+> `LiveTestnet` dashboard section, and `MARKET_ADDRESS`). The dashboard now shows **only the
+> keeper-managed fleet**; every on-chain number is real.
 
 ---
 
@@ -38,7 +70,7 @@ mode never needed.**
 | Session-log schema (`forwardtest/session_log.py`) | Live market selection + capital allocation |
 | Live dispute feed (`webapp/backend/live.py`, keyless Polygon RPC scan) | Real-time proposal detector wired into the loop (reorg-guarded) |
 | Frozen params (`config/model.yaml`, λ\*=0.002; κ **per-category** via `kappa_by_category.json`, scalar 0.76 fallback) | Live session logging (`simulated: True` is hardcoded) + live P&L dashboard |
-| 173 pytest green; replay-ablation edge proof | Key custody / secrets ops for an unattended hot wallet |
+| 218 pytest green; replay-ablation edge proof | Key custody / secrets ops for an unattended hot wallet |
 | Scheduled data-refresh (GitHub Actions cron regenerates disputes/hazard/κ artifacts and commits them) | — |
 | NegRisk-labeled live dispute feed (real tradeable markets shown, `data/negrisk_map.py`) | — |
 

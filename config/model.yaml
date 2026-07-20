@@ -36,6 +36,19 @@ inventory_cap_horizon_days: 3.0 # hard position cap ramps to base_inventory_cap 
 # --- positioning (build the engine to support BOTH; ablation decides) ---
 positioning: both      # reward_farmer | jump_avoid | both
 
+# --- risk governor (execution/risk.py — gates every signed tx in testnet mode) ---
+max_daily_loss_usd: 25.0        # halt signing when today's mark-to-market loss exceeds this
+portfolio_gross_cap: 200.0      # halt signing when sum(|inventory|) across the fleet exceeds this
+kill_switch_path: .data_cache/risk/KILL   # file existence = halt (cross-process; `touch` works)
+max_consecutive_errors: 5       # RPC/send error breaker: open after N in a row, close on success
+max_tx_per_day: 200             # signed-tx budget per UTC day
+max_gas_pol_per_day: 0.6        # gas budget per UTC day (POL)
+
+# --- testnet adapter (execution/testnet_clob.py — gas/spam debounce + reorg guard) ---
+min_requote_delta: 0.005        # re-post only when bid or ask moved by at least this
+max_quote_age_s: 900.0          # ... or the standing on-chain quote is older than this
+dispute_confirmations: 30       # accept live disputes only >= this many blocks deep (reorg guard)
+
 # --- historical data layer (data/*, over the HF dataset via DuckDB) ---
 data:
   source: hf                       # mirrors DATA_SOURCE; env wins if set

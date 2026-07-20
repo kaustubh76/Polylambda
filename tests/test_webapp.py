@@ -125,3 +125,47 @@ def test_recon_and_sigma(client):
     assert r["hf_joinable_pct"] == 100.0
     s = client.get("/api/sigma").json()
     assert s["n"] > 0 and len(s["categories"]) >= 5
+
+
+# --- testnet fleet + keeper endpoints (offline: no registry network, fake keeper) ----------------
+def test_fleet_endpoint_graceful_without_registry(client, monkeypatch, tmp_path):
+    from execution import testnet_chain as tc
+    from webapp.backend import chain as chain_mod
+    monkeypatch.setattr(tc, "MARKETS_JSON", tmp_path / "missing.json")
+    monkeypatch.delenv("MARKETS_JSON", raising=False)
+    chain_mod._cache.pop("fleet", None)          # bust the 5s cache from any earlier call
+    d = client.get("/api/testnet/fleet").json()
+    assert d["markets"] == [] and "note" in d    # graceful: no registry -> empty, no error
+
+
+def test_keeper_status_and_risk_endpoints_offline(client, monkeypatch, tmp_path):
+    from execution import testnet_keeper as tk
+    from execution.risk import RiskGovernor, RiskLimits
+    fake = tk.TestnetKeeper(interval_s=1.0)
+    fake.risk = RiskGovernor(RiskLimits(kill_switch_path=str(tmp_path / "KILL")),
+                             ledger_dir=str(tmp_path / "risk"))
+    monkeypatch.setattr(tk, "_keeper", fake)
+    d = client.get("/api/testnet/keeper").json()
+    assert d["running"] is False and d["ticks_done"] == 0
+    r = client.get("/api/testnet/risk").json()
+    assert r["killed"] is False and r["halted"] is False
+
+    # kill writes the file; every later allow_tx is denied; unkill removes it
+    k = client.post("/api/testnet/kill").json()
+    assert k["killed"] is True and (tmp_path / "KILL").exists()
+    u = client.post("/api/testnet/unkill").json()
+    assert u["removed"] is True and not (tmp_path / "KILL").exists()
+
+
+def test_keeper_run_endpoint_reports_already_running(client, monkeypatch, tmp_path):
+    from execution import testnet_keeper as tk
+
+    class _Fake(tk.TestnetKeeper):
+        @property
+        def running(self):
+            return True
+
+    fake = _Fake(interval_s=1.0)
+    monkeypatch.setattr(tk, "_keeper", fake)
+    d = client.post("/api/testnet/keeper/run", json={"ticks": 5}).json()
+    assert d["started"] is False and d["running"] is True

@@ -4,7 +4,9 @@ Run (dev):   uvicorn webapp.backend.main:app --reload --port 8000     (repo root
 The Vite dev server (webapp/frontend, port 5173) proxies /api → 8000. For a single-process demo,
 `npm run build` the frontend and this app serves webapp/frontend/dist as static.
 
-PAPER-mode only: the gated CLOB write path (execution.clob.place_order) is never imported.
+The gated mainnet CLOB write path (execution.clob.place_order) is never imported. The TESTNET
+execution engine (execution/testnet_keeper.py — engine-signed Amoy transactions, risk-governed)
+runs as a background thread when KEEPER_AUTOSTART=1; it is entirely separate from the CLOB gate.
 """
 from __future__ import annotations
 
@@ -38,10 +40,10 @@ async def lifespan(app: FastAPI):
         # Pre-compute the HEAVY read endpoints so the FIRST visitor hits warm caches instead of a cold
         # 12s quote-curve / 8s events (on the free tier's 0.5 CPU a cold compute + concurrent card loads
         # = gateway 502s). Each is best-effort — a warm miss must never crash startup.
-        # Only OFFLINE (cache/estimator) endpoints here — NOT the chain reads (chain.status/events hit
-        # the Amoy RPC; warming them in a background daemon would do real network in the test lifespan
-        # and leak a thread, exactly like the tail scan). The chain `events` endpoint is instead kept
-        # warm in prod by its long cache TTL + the keepalive workflow pinging it.
+        # Only OFFLINE (cache/estimator) endpoints here — NOT the chain reads (chain.fleet hits the
+        # Amoy RPC; warming it in a background daemon would do real network in the test lifespan and
+        # leak a thread, exactly like the tail scan). The fleet read is instead kept warm in prod by
+        # its cache TTL + the keepalive workflow pinging it.
         from . import services
         for label, fn in (("overview", services.overview),
                           ("quote_curve", services.quote_curve),
@@ -60,6 +62,15 @@ async def lifespan(app: FastAPI):
         except Exception:  # noqa: BLE001 — live feed is optional; the dashboard runs without it
             pass
         print(f"[webapp] offline DI installed (base-rate denominators: {src}); caches warmed (heavy endpoints prewarmed).")
+        # the continuous testnet execution engine (opt-in: real signed txs need an explicit flag;
+        # never under pytest, where KEEPER_AUTOSTART is unset)
+        if os.environ.get("KEEPER_AUTOSTART") == "1":
+            try:
+                from execution.testnet_keeper import get_keeper
+                get_keeper().start_background()
+                print("[webapp] testnet keeper autostarted (KEEPER_AUTOSTART=1)")
+            except Exception as e:  # noqa: BLE001 — the dashboard must run without the keeper
+                print(f"[webapp] keeper autostart failed: {type(e).__name__}: {e}")
 
     threading.Thread(target=_warm, name="cache-warm", daemon=True).start()
     yield
@@ -69,6 +80,13 @@ async def lifespan(app: FastAPI):
     try:
         from . import live
         live.stop_tail()
+    except Exception:  # noqa: BLE001
+        pass
+    # stop the keeper thread (no-op if it never started) so it can't outlive the app instance
+    try:
+        from execution import testnet_keeper
+        if testnet_keeper._keeper is not None:
+            testnet_keeper._keeper.stop(timeout=5.0)
     except Exception:  # noqa: BLE001
         pass
 
