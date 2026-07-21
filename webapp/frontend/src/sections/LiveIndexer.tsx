@@ -33,7 +33,7 @@ export function LiveIndexer() {
   // usePoll backs the interval off while the backend is unreachable (e.g. a host cold start).
   const tick = async (): Promise<boolean> => {
     try {
-      const f = await api.liveDisputes(30)
+      const f = await api.liveDisputes(50)
       if (!aliveRef.current) return true
       if (f.reachable) {
         setFeed(f); setFails(0)

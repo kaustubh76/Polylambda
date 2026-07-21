@@ -553,6 +553,42 @@
    "end_date_ts": 1785744982.350753,
    "keeper_managed": true,
    "label": "fleet-crypto-1"
+  },
+  {
+   "address": "0x23dF81e8da265dBa56121176D6815E505c15Dd00",
+   "deployed_block": 42829447,
+   "category": "sports",
+   "tracks_cid": "0x1e285f49c483634426c54834f840f6bfe780e0039eb0ad31357b936600b7c2d2",
+   "end_date_ts": 1785857447.2239842,
+   "keeper_managed": true,
+   "label": "fleet-sports"
+  },
+  {
+   "address": "0x00e6F992D935d2646181b04278C8bA3F7689549d",
+   "deployed_block": 42829480,
+   "category": "economics",
+   "tracks_cid": "0xd72622d154dfe65b9c019d6afcfe75a55717e5c502db611f555b101aafbf6ec5",
+   "end_date_ts": 1785857479.51601,
+   "keeper_managed": true,
+   "label": "fleet-economics"
+  },
+  {
+   "address": "0xf40116dF404Ce1a9464166693e7a9c842a77EB4d",
+   "deployed_block": 42829523,
+   "category": "geopolitics",
+   "tracks_cid": "0x8f3fd1898480d1c72d78c884ac8070388b588ce5fd5a286fcd3f30879893fdb8",
+   "end_date_ts": 1785857527.305973,
+   "keeper_managed": true,
+   "label": "fleet-geopolitics"
+  },
+  {
+   "address": "0xDa74ec606B657a1A7c982339580c366d8cc0D39f",
+   "deployed_block": 42829551,
+   "category": "tech-ai",
+   "tracks_cid": "0xbad86ba21807056824d037b1f9a6051aa235a29722b2f3694409f97ca6c20328",
+   "end_date_ts": 1785857550.9130912,
+   "keeper_managed": true,
+   "label": "fleet-tech-ai"
   }
  ]
 }
