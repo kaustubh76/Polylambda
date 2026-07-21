@@ -146,9 +146,13 @@ def get_hf_markets(q: str | None = None, category: str | None = None, sort: str 
 
 
 @api.get("/live/status")
-def get_live_status():
-    """Live Envio HyperIndex reachability + head + round-trip latency."""
-    return live.indexer_status()
+async def get_live_status():
+    """Live dispute-feed reachability + head + round-trip latency. Deadline-wrapped: the probe does a
+    live eth_blockNumber, and on the 0.5-CPU host a hung keyless-RPC socket must not hold a worker."""
+    try:
+        return await _with_timeout(live.indexer_status, LIVE_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        return {"reachable": False, "source": "rpc", "error": "status probe timed out"}
 
 
 @api.get("/live/disputes")

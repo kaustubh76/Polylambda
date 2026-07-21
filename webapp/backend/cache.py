@@ -94,16 +94,27 @@ def base_rate_counts() -> tuple[dict, str]:
 
 
 @lru_cache(maxsize=1)
+def _dispute_counts_live() -> tuple[dict, str]:
+    """The real per-category dispute numerator, cached ONLY when healthy. Raises otherwise so
+    @lru_cache never locks in a degenerate value: on a cold-start warm-thread race the market_data
+    category join isn't queryable yet and the loader collapses every dispute to 'other' (politics /
+    crypto → 0), which would poison the base-rate panel to an all-zero table for the process."""
+    from data.disputes import dispute_counts_by_category as _real
+    counts = _real()
+    # a healthy result spreads across several real categories; an all-'other' collapse (fewer than 2
+    # non-'other' categories with disputes) means the join wasn't ready — reject it.
+    if counts and sum(1 for k, v in counts.items() if k not in ("other", "null", None) and v > 0) >= 2:
+        return dict(counts), "live"
+    raise RuntimeError("dispute counts unavailable/degenerate (market_data join not ready)")
+
+
 def dispute_counts_by_category() -> tuple[dict, str]:
-    """Disputed-market NUMERATOR by category, from the real released-parquet loader (offline)."""
+    """Disputed-market NUMERATOR by category. Serves the published DATASET.md fallback (uncached, so
+    it retries live on the next call) whenever the live loader is unavailable or degenerate."""
     try:
-        from data.disputes import dispute_counts_by_category as _real
-        counts = _real()
-        if counts:
-            return dict(counts), "live"
+        return _dispute_counts_live()
     except Exception:
-        pass
-    return dict(K.DISPUTE_COUNTS_FALLBACK), "published"
+        return dict(K.DISPUTE_COUNTS_FALLBACK), "published"
 
 
 @lru_cache(maxsize=1)
@@ -163,7 +174,7 @@ def disputes_df():
 
 
 _ARTIFACT_LOADERS = (dataset_stats, hazard_models, sigma_prior, base_rate_counts,
-                     dispute_counts_by_category, disputes_by_proposer, dispute_names, disputes_df,
+                     _dispute_counts_live, disputes_by_proposer, dispute_names, disputes_df,
                      hf_overview, hf_markets, dispute_market_context)
 
 

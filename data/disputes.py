@@ -314,8 +314,11 @@ def recent_disputes_rpc(*, lookback_blocks: int = 4_500_000, target: int = 50,
                 "marketStatus": None, "finalOutcome": None, "outcomeSlotCount": None,
             })
         hi = lo - 1
-    # attach TRUE block timestamps (disputeTs currently holds the block number as a placeholder)
-    ts = _block_timestamps(sorted({r["_block"] for r in rows}))
+    # attach TRUE block timestamps (disputeTs currently holds the block number as a placeholder).
+    # Use the PACED + persistently-cached variant: on the single keyless endpoint an unthrottled
+    # ~60-call burst can self-trigger the 429 that fails the whole live tail scan; pacing + the
+    # immutable block-time cache keep the scan (and thus the live feed) from failing itself.
+    ts = _block_timestamps_cached(sorted({r["_block"] for r in rows}), log=log)
     for r in rows:
         r["disputeTs"] = ts.get(r["_block"], 0)
         r.pop("_block", None)

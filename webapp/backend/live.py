@@ -224,6 +224,14 @@ def _rpc_tail_rows() -> list[dict]:
         return list(_tail["rows"])
 
 
+def _tail_meta() -> dict:
+    """Freshness of the RPC tail cache so a consumer can tell a COLD/warming scan (built_at is None)
+    from a genuinely empty result — the difference between 'scanning the chain…' and 'no disputes'."""
+    with _tail_lock:
+        return {"built_at": _tail["built_at"], "refreshing": _tail["refreshing"],
+                "error": _tail["error"]}
+
+
 def _rpc_status() -> dict:
     """Cheap liveness: chain head (eth_blockNumber block time ≈ now) proves we're at tip; latest dispute
     ts from the tail cache is informational. Never runs the heavy scan on the request path."""
@@ -272,8 +280,16 @@ def live_disputes(*, limit: int = 25, since_ts: int | None = None) -> dict:
         rows = [r for r in rows if (r.get("disputeTs") or 0) > int(since_ts)]
     rows = rows[:limit]
     from data.disputes import RPC_URL
-    return {"reachable": True, "disputes": rows, "source": source,
-            "endpoint": (_ENVIO_URL if source == "envio" else RPC_URL)}
+    out = {"reachable": True, "disputes": rows, "source": source,
+           "endpoint": (_ENVIO_URL if source == "envio" else RPC_URL)}
+    if source == "rpc":
+        # let the UI show "scanning…" (not "no disputes") while the first tail scan is still building
+        meta = _tail_meta()
+        out["warming"] = meta["built_at"] is None
+        out["built_at"] = meta["built_at"]
+        if meta["error"]:
+            out["scan_error"] = meta["error"]
+    return out
 
 
 def recent_disputes(*, limit: int = 200, since_ts: int | None = None) -> list[dict]:

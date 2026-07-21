@@ -129,7 +129,11 @@ export function LiveIndexer() {
               <AnimatePresence initial={false}>
                 {(feed?.disputes ?? []).map((d) => <Row key={d.id} d={d} now={now} fresh={fresh.has(d.id)} />)}
               </AnimatePresence>
-              {feed && feed.disputes.length === 0 && <div className="p-6 text-sm text-muted">no disputes returned</div>}
+              {feed && feed.disputes.length === 0 && (
+                feed.warming
+                  ? <div className="flex items-center gap-2 p-6 text-sm text-muted"><span className="h-2 w-2 animate-pulse2 rounded-full bg-sig" />scanning the chain for recent disputes…</div>
+                  : <div className="p-6 text-sm text-muted">no disputes returned</div>
+              )}
             </div>
           </Panel>
         </div>

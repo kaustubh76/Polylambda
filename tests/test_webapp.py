@@ -36,9 +36,10 @@ def test_baserates_ordered_and_ci_bracketed(client):
     d = client.get("/api/baserates").json()
     rows = d["rows"]
     assert len(rows) >= 6
-    # every rate sits inside its own Wilson interval
+    # every rate sits inside its own Wilson interval (epsilon on BOTH bounds: a 0.0 rate can yield a
+    # tiny-positive ci_low ~1e-20 from float rounding, which a bare `ci_low <= rate` would fail)
     for r in rows:
-        assert r["ci_low"] <= r["rate"] <= r["ci_high"] + 1e-9
+        assert r["ci_low"] - 1e-9 <= r["rate"] <= r["ci_high"] + 1e-9
         assert r["resolved"] > 0
     # sorted descending by rate
     assert rows == sorted(rows, key=lambda r: r["rate"], reverse=True)

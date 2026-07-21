@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, LazyMotion, domMax, m, MotionConfig } from 'framer-motion'
-import { api, useApi } from './api/client'
+import { api, req, useApi } from './api/client'
 import { BaseRates } from './sections/BaseRates'
 import { Hero } from './sections/Hero'
 // below-the-fold sections are code-split + viewport-deferred so recharts and their code load on
@@ -335,6 +335,49 @@ function AppInner() {
   )
 }
 
+// On the free tier the whole app is asleep between visits; the Render gateway 502s every request
+// until uvicorn binds. Rather than fire ~6 data endpoints into that window (each retry logging a
+// console 502), we gate the fetching subtree on /api/health — the one cheap route that returns 200
+// the instant the port binds. `req` already rides 502/503/504 with capped backoff, so this resolves
+// the moment the backend is up, and NO data request is issued before then. A genuine cold wake shows
+// this splash for ~30–60s instead of a flood of broken cards.
+function HealthGate({ children }: { children: ReactNode }) {
+  const [ready, setReady] = useState(false)
+  const [stalled, setStalled] = useState(false)
+  const [nonce, setNonce] = useState(0)
+  useEffect(() => {
+    let alive = true
+    setStalled(false)
+    req('/health', undefined, { retries: 12 })
+      .then(() => { if (alive) setReady(true) })
+      .catch(() => { if (alive) setStalled(true) })   // exhausted the ~95s budget — offer a manual retry
+    return () => { alive = false }
+  }, [nonce])
+
+  if (ready) return <>{children}</>
+  return (
+    <div className="grid min-h-screen place-items-center px-6">
+      <div className="flex max-w-sm flex-col items-center gap-4 text-center">
+        <m.span className="font-mono text-3xl text-sig"
+          animate={stalled ? {} : { opacity: [0.4, 1, 0.4] }}
+          transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}>λ</m.span>
+        {stalled ? (
+          <>
+            <p className="text-sm text-ink-2">The server is taking longer than usual to wake.</p>
+            <button onClick={() => setNonce((n) => n + 1)}
+              className="chip border-sig/40 text-sig hover:bg-sig/10">Retry</button>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-ink-2">Waking the server…</p>
+            <p className="text-2xs text-muted">The first load after an idle period can take ~30–60s on the free tier. Hang tight — this only happens once.</p>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   return (
     <ThemeProvider>
@@ -342,9 +385,11 @@ export default function App() {
         <MotionConfig reducedMotion="user">
           <WalletProvider>
             <ToastProvider>
-              <LiveStatusProvider>
-                <AppInner />
-              </LiveStatusProvider>
+              <HealthGate>
+                <LiveStatusProvider>
+                  <AppInner />
+                </LiveStatusProvider>
+              </HealthGate>
             </ToastProvider>
           </WalletProvider>
         </MotionConfig>

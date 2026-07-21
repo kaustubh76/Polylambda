@@ -207,7 +207,7 @@ export interface HfMarkets { total: number; rows: HfMarketRow[]; categories: str
 
 export interface LiveStatus { reachable: boolean; endpoint: string; source?: string; latency_ms?: number; head_ts?: number | null; head_id?: string | null; head_age_seconds?: number | null; chain_head_ts?: number | null; error?: string }
 export interface LiveDispute { id: string; round: number | null; disputeTs: number; disputer: string | null; proposedOutcome: string | null; proposer: string | null; conditionId: string | null; marketStatus: string | null; finalOutcome: string | null; outcomeSlotCount: number | null; adapter?: string | null; marketName?: string | null; category?: string | null }
-export interface LiveDisputes { reachable: boolean; disputes: LiveDispute[]; source?: string; latency_ms?: number; endpoint: string; error?: string }
+export interface LiveDisputes { reachable: boolean; disputes: LiveDispute[]; source?: string; latency_ms?: number; endpoint: string; error?: string; warming?: boolean; built_at?: number | null; scan_error?: string }
 
 // ---- testnet fleet + keeper (the continuous testnet execution engine) ------------------------
 // on-chain snapshot fields shared by every fleet-market row (from ChainReader.snapshot)

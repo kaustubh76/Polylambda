@@ -125,7 +125,9 @@ def base_rates() -> dict:
         source = "live" if csrc == "live" else "published"
     except Exception:
         rows, source = [], "published"
-    if not rows:
+    # empty OR degenerate (every rate ~0 — e.g. the numerator cache lost the warm-thread race and came
+    # back empty): serve the published DATASET.md §5b table rather than a broken all-zero panel.
+    if not rows or all(r["rate"] <= 0 for r in rows):
         rows = [dict(r) for r in K.BASE_RATES_PUBLISHED]
         source = "published"
     rows.sort(key=lambda r: r["rate"], reverse=True)

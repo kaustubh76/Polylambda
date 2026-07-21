@@ -5,7 +5,7 @@ name: keepalive
 
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 jobs:
@@ -23,7 +23,7 @@ jobs:
       - name: warm the heavy endpoints (so no visitor pays a cold 12s quote-curve / 8s events → 502)
         run: |
           base=https://polylambda-9lu2.onrender.com/api
-          for ep in /overview /quote-curve /sigma /testnet/fleet /disputes/analytics; do
+          for ep in /overview /quote-curve /sigma /testnet/fleet /live/disputes /disputes/analytics; do
             curl -sS --retry 3 --retry-delay 10 --retry-all-errors --max-time 45 "$base$ep" -o /dev/null \
               -w "  warm %{http_code} %{time_total}s $ep\n" || true   # never fail the run on a warm miss
           done
