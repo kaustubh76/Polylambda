@@ -1,11 +1,11 @@
 {
  "coef": [
-  -2.0623045678250875,
+  -2.062304567825087,
   0.0,
   0.0,
   0.0
  ],
- "intercept": 0.015092858286934342,
+ "intercept": 0.015092858286934317,
  "offset": -4.8665919667355855,
  "feature_order": [
   "category_base_rate",
@@ -13,7 +13,7 @@
   "proposer_reliability",
   "latency_anomaly"
  ],
- "trained_at": "2026-07-20",
+ "trained_at": "2026-07-21",
  "metrics": {
   "brier": 0.24930031219216184,
   "n": 3105,

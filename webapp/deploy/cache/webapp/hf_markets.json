@@ -12003,6 +12003,6 @@
  ],
  "n": 1000,
  "has_volume": false,
- "built_at": "2026-07-20",
+ "built_at": "2026-07-21",
  "note": "Most-recently-created Polymarket markets from the HF dataset (market_data \u22c8 condition). Volume needs an HF token (Hub-only orderbook table)."
 }

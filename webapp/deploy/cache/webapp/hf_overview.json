@@ -82,6 +82,6 @@
   "market_date_max": "2026-04-23",
   "cutoff_block": 85948287
  },
- "built_at": "2026-07-20",
+ "built_at": "2026-07-21",
  "note": "Computed from the HF dataset. Resolution outcomes are the argmax of each market's on-chain payout vector; markets-by-year is by creation date; fills-by-year is the full CLOB tape (dataset-documented total; no HF token)."
 }

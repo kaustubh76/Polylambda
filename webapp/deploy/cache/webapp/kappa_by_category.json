@@ -19,16 +19,6 @@
    "kappa_raw": 0.39781,
    "n": 45
   },
-  "crypto": {
-   "kappa": 0.77612,
-   "kappa_raw": 0.78206,
-   "n": 79
-  },
-  "sports": {
-   "kappa": 0.52533,
-   "kappa_raw": 0.44781,
-   "n": 91
-  },
   "economics": {
    "kappa": 0.69164,
    "kappa_raw": 0.51957,
@@ -43,6 +33,16 @@
    "kappa": 0.66965,
    "kappa_raw": 0.6356,
    "n": 80
+  },
+  "crypto": {
+   "kappa": 0.77612,
+   "kappa_raw": 0.78206,
+   "n": 79
+  },
+  "sports": {
+   "kappa": 0.52533,
+   "kappa_raw": 0.44781,
+   "n": 91
   }
  }
 }
