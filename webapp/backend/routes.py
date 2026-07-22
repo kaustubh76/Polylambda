@@ -183,6 +183,24 @@ def get_testnet_fleet():
     return chain.fleet()
 
 
+@api.get("/testnet/ablation")
+async def get_testnet_ablation():
+    """The LIVE testnet session's λ-on vs λ-off P&L edge (honest underpowered/caveat)."""
+    try:
+        return await _with_timeout(services.testnet_ablation, LIVE_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        return {"available": False, "note": "reading the session log timed out"}
+
+
+@api.get("/testnet/session")
+async def get_testnet_session(limit: int = Query(60, ge=1, le=200)):
+    """The last session rollup + recent on-chain fill/exit/dispute-flagged records (tx-proof stream)."""
+    try:
+        return await _with_timeout(lambda: services.testnet_session(limit=limit), LIVE_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        return {"available": False, "note": "reading the session log timed out"}
+
+
 @api.get("/testnet/keeper")
 def get_testnet_keeper():
     return _keeper().status()

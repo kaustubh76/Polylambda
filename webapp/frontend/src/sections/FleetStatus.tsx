@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api, usePoll, type TnFleet, type TnKeeper } from '../api/client'
+import { api, usePoll, type TnAblation, type TnFleet, type TnKeeper } from '../api/client'
 import { useToast } from '../components/Toast'
 import { Caveat, ConfirmDialog, Panel, Pill, Section, Stat } from '../components/ui'
 import { short } from '../lib/format'
@@ -15,13 +15,15 @@ export function FleetStatus() {
   const toast = useToast()
   const [fleet, setFleet] = useState<TnFleet | null>(null)
   const [keeper, setKeeper] = useState<TnKeeper | null>(null)
+  const [abl, setAbl] = useState<TnAblation | null>(null)
   const [confirmKill, setConfirmKill] = useState(false)
   const [busy, setBusy] = useState(false)
 
   usePoll(async () => {
-    const [f, k] = await Promise.allSettled([api.tnFleet(), api.tnKeeper()])
+    const [f, k, a] = await Promise.allSettled([api.tnFleet(), api.tnKeeper(), api.tnAblation()])
     if (f.status === 'fulfilled') setFleet(f.value)
     if (k.status === 'fulfilled') setKeeper(k.value)
+    if (a.status === 'fulfilled') setAbl(a.value)
     return f.status === 'fulfilled' && k.status === 'fulfilled'
   }, POLL_MS)
 
@@ -169,6 +171,51 @@ export function FleetStatus() {
             )}
           </Panel>
         </div>
+
+        {/* live engine P&L — the λ-on vs λ-off edge on real on-chain fills (the traction story) */}
+        {abl?.available && abl.lambda_on && abl.lambda_off && (
+          <Panel>
+            <div className="mb-3 flex items-center justify-between">
+              <div className="label">live engine P&amp;L · λ-on vs λ-off (on-chain)</div>
+              {abl.underpowered && <Pill color="var(--warn)">directional only</Pill>}
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <Stat label="λ-ON P&L" value={`${abl.lambda_on.pnl >= 0 ? '+' : ''}${abl.lambda_on.pnl.toFixed(4)}`}
+                sub={`${abl.lambda_on.n_fills} fills · ${abl.lambda_on.n_exits} exits`} tone={abl.lambda_on.pnl >= 0 ? 'profit' : 'loss'} />
+              <Stat label="λ-OFF P&L" value={`${abl.lambda_off.pnl >= 0 ? '+' : ''}${abl.lambda_off.pnl.toFixed(4)}`}
+                sub={`${abl.lambda_off.n_fills} fills · ${abl.lambda_off.n_exits} exits`} tone={abl.lambda_off.pnl >= 0 ? 'profit' : 'loss'} />
+              <Stat label="ON − OFF" value={`${(abl.delta_on_minus_off?.pnl ?? 0) >= 0 ? '+' : ''}${(abl.delta_on_minus_off?.pnl ?? 0).toFixed(4)}`}
+                sub="USDC (equity mark)" tone={(abl.delta_on_minus_off?.pnl ?? 0) >= 0 ? 'profit' : 'loss'} />
+              <Stat label="disputes" value={String(abl.n_disputes ?? 0)} sub="survived on-chain" />
+            </div>
+            {keeper?.markets && keeper.markets.length > 0 && (
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-left text-2xs">
+                  <thead>
+                    <tr className="border-b border-line uppercase tracking-wide text-muted">
+                      <th className="py-1.5 pr-3">market</th><th className="py-1.5 pr-3">arm</th>
+                      <th className="py-1.5 pr-3">inventory</th><th className="py-1.5 pr-3">cash</th>
+                      <th className="py-1.5 pr-3">equity</th><th className="py-1.5 pr-3">exits</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {keeper.markets.map((m) => (
+                      <tr key={m.token_id} className="border-b border-line/40">
+                        <td className="py-1.5 pr-3">{m.category}</td>
+                        <td className="py-1.5 pr-3 font-mono">{m.arm === 'lambda_on' ? 'λ-on' : 'λ-off'}</td>
+                        <td className="py-1.5 pr-3 num">{m.inventory.toFixed(2)}</td>
+                        <td className="py-1.5 pr-3 num">{m.cash.toFixed(4)}</td>
+                        <td className="py-1.5 pr-3 num">{m.equity_mark.toFixed(4)}</td>
+                        <td className="py-1.5 pr-3 num">{m.n_exits}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {abl.caveat && <div className="mt-3"><Caveat kind="underpowered">{abl.caveat}</Caveat></div>}
+          </Panel>
+        )}
 
         <Panel pad={false}>
           <div className="overflow-x-auto">

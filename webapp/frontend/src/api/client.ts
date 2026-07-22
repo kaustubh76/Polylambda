@@ -67,6 +67,7 @@ export const api = {
   // testnet fleet + keeper (continuous engine)
   tnFleet: () => req<TnFleet>('/testnet/fleet', undefined, { retries: 0 }),
   tnKeeper: () => req<TnKeeper>('/testnet/keeper', undefined, { retries: 0 }),
+  tnAblation: () => req<TnAblation>('/testnet/ablation', undefined, { retries: 0 }),
   tnKeeperRun: (ticks = 10) => req<{ started: boolean; running: boolean }>('/testnet/keeper/run', { method: 'POST', body: JSON.stringify({ ticks }) }),
   tnKeeperStart: () => req<{ started: boolean; running: boolean }>('/testnet/keeper/start', { method: 'POST', body: '{}' }),
   tnKeeperStop: () => req<{ stopped: boolean; running: boolean }>('/testnet/keeper/stop', { method: 'POST', body: '{}' }),
@@ -227,12 +228,20 @@ export interface TnRisk {
   limits: { max_daily_loss_usd: number; portfolio_gross_cap: number; max_tx_per_day: number; max_gas_pol_per_day: number; max_consecutive_errors: number }
 }
 export interface TnKeeperMarket { cid: string; token_id: string; arm: string; category: string; inventory: number; cash: number; mark_mid: number | null; equity_mark: number; pnl: number; n_exits: number }
+export interface TnArmTotals { n_markets: number; equity_mark: number; pnl: number; cash: number; inventory: number; n_exits: number }
 export interface TnKeeper {
   running: boolean; ticks_done: number; last_tick_ts: number; interval_s: number
   out_path: string | null; last_error: string; n_markets: number
   autostart?: boolean; engine_ready?: boolean
-  risk?: TnRisk; markets?: TnKeeperMarket[]
+  risk?: TnRisk; markets?: TnKeeperMarket[]; per_arm?: Record<string, TnArmTotals>
   engine?: { address: string; pol?: number; usdc?: number; error?: string }
   clob?: { tx_count: number; last_tx?: { kind: string; market: string; tx: string } | null; last_denied?: string }
   detector?: { confirmations: number; cached_disputes: number; watched: number; error: string }
+}
+export interface TnArmRollup { arm: string; n_fills: number; n_exits: number; equity_mark: number; pnl: number; cash: number; inventory: number; sim_reward_score: number }
+export interface TnAblation {
+  available: boolean; note?: string
+  lambda_on?: TnArmRollup; lambda_off?: TnArmRollup
+  delta_on_minus_off?: { pnl: number; n_exits: number; sim_reward_score: number }
+  n_disputes?: number; underpowered?: boolean; caveat?: string
 }

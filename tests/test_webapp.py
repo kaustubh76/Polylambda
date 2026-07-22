@@ -170,3 +170,45 @@ def test_keeper_run_endpoint_reports_already_running(client, monkeypatch, tmp_pa
     monkeypatch.setattr(tk, "_keeper", fake)
     d = client.post("/api/testnet/keeper/run", json={"ticks": 5}).json()
     assert d["started"] is False and d["running"] is True
+
+
+def test_testnet_analytics_endpoints(client, monkeypatch, tmp_path):
+    """/testnet/ablation + /testnet/session surface the live session's λ-edge + tx-proof stream,
+    degrading to available:false with no log, computing the real per-arm rollup when one exists."""
+    import json
+    from execution import testnet_keeper as tk
+
+    monkeypatch.setattr(tk, "current_session_path", lambda: str(tmp_path / "absent.jsonl"))
+    assert client.get("/api/testnet/ablation").json()["available"] is False
+    assert client.get("/api/testnet/session").json()["available"] is False
+
+    log = tmp_path / "session-testnet.jsonl"
+    rows = [
+        {"t": 1, "type": "session_start", "mode": "testnet", "simulated": False},
+        {"t": 2, "type": "fill", "mode": "testnet", "simulated": False, "cid": "0xa", "arm": "lambda_on",
+         "side": "SELL", "price": 0.55, "size": 0.3, "queue_model": "onchain",
+         "inventory_after": -0.3, "cash_after": 0.165, "tx": "0xdeadbeef", "block": 1},
+        {"t": 3, "type": "session_end", "mode": "testnet", "simulated": False,
+         "per_market": [
+             {"cid": "0xa", "token_id": "tn-a", "arm": "lambda_on", "category": "politics",
+              "inventory": -0.3, "cash": 0.165, "mark_mid": 0.5, "equity_mark": 0.015, "pnl": 0.015, "n_exits": 1},
+             {"cid": "0xb", "token_id": "tn-b", "arm": "lambda_off", "category": "crypto",
+              "inventory": 0.0, "cash": 0.0, "mark_mid": 0.5, "equity_mark": 0.0, "pnl": 0.0, "n_exits": 0}],
+         "per_arm_totals": {
+             "lambda_on": {"n_markets": 1, "equity_mark": 0.015, "pnl": 0.015, "cash": 0.165, "inventory": -0.3, "n_exits": 1},
+             "lambda_off": {"n_markets": 1, "equity_mark": 0.0, "pnl": 0.0, "cash": 0.0, "inventory": 0.0, "n_exits": 0}},
+         "n_disputes_witnessed": 1, "ticks_done": 3},
+    ]
+    log.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    monkeypatch.setattr(tk, "current_session_path", lambda: str(log))
+
+    a = client.get("/api/testnet/ablation").json()
+    assert a["available"] is True
+    assert a["lambda_on"]["pnl"] == pytest.approx(0.015) and a["lambda_off"]["pnl"] == pytest.approx(0.0)
+    assert a["delta_on_minus_off"]["pnl"] == pytest.approx(0.015)
+    assert a["underpowered"] is True and "UNDERPOWERED" in a["caveat"]
+
+    s = client.get("/api/testnet/session").json()
+    assert s["available"] is True
+    assert s["rollup"]["per_arm_totals"]["lambda_on"]["pnl"] == pytest.approx(0.015)
+    assert any(e["type"] == "fill" and e["tx"] == "0xdeadbeef" for e in s["events"])

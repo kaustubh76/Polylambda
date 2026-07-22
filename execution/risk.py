@@ -31,6 +31,7 @@ class RiskLimits:
     max_consecutive_errors: int = 5
     max_tx_per_day: int = 200
     max_gas_pol_per_day: float = 0.6
+    min_pol_balance: float = 0.02   # halt signing when the engine wallet's POL gas falls below this
 
     @classmethod
     def from_config(cls, cfg) -> "RiskLimits":
@@ -39,7 +40,8 @@ class RiskLimits:
                    kill_switch_path=cfg.kill_switch_path,
                    max_consecutive_errors=cfg.max_consecutive_errors,
                    max_tx_per_day=cfg.max_tx_per_day,
-                   max_gas_pol_per_day=cfg.max_gas_pol_per_day)
+                   max_gas_pol_per_day=cfg.max_gas_pol_per_day,
+                   min_pol_balance=cfg.min_pol_balance)
 
 
 class RiskGovernor:
@@ -53,6 +55,7 @@ class RiskGovernor:
         self._gas_pol = 0.0
         self._equity_open: float | None = None
         self._equity_last: float | None = None
+        self._engine_pol: float | None = None   # latest observed engine POL (None until first read)
         self._consecutive_errors = 0
         self._inventory: dict[str, float] = {}
         self._fh = None
@@ -101,6 +104,10 @@ class RiskGovernor:
         self._roll_day()
         if os.path.exists(self.limits.kill_switch_path):
             return False, "kill-switch file present"
+        # proactive low-gas halt: a distinct, first-class reason instead of 5 generic send errors
+        if self._engine_pol is not None and self._engine_pol < self.limits.min_pol_balance:
+            return False, (f"engine out of gas ({self._engine_pol:.4f} POL < "
+                           f"{self.limits.min_pol_balance} floor) — top up the engine wallet")
         if self._consecutive_errors >= self.limits.max_consecutive_errors:
             return False, f"error breaker open ({self._consecutive_errors} consecutive errors)"
         if self._tx_count >= self.limits.max_tx_per_day:
@@ -143,6 +150,11 @@ class RiskGovernor:
     def record_success(self) -> None:
         self._consecutive_errors = 0
 
+    def mark_engine_pol(self, pol: float) -> None:
+        """Record the engine wallet's current POL gas balance so allow_tx can halt proactively
+        (a clean 'engine out of gas' reason) before the wallet drains into failed sends."""
+        self._engine_pol = float(pol)
+
     # -- views ----------------------------------------------------------------------------------
     def daily_loss(self) -> float:
         if self._equity_open is None or self._equity_last is None:
@@ -174,10 +186,12 @@ class RiskGovernor:
                 "daily_loss_usd": round(self.daily_loss(), 4),
                 "gross_exposure": round(self.gross_exposure(), 4),
                 "consecutive_errors": self._consecutive_errors,
+                "engine_pol": self._engine_pol,
                 "killed": os.path.exists(self.limits.kill_switch_path),
                 "halted": not allowed, "halt_reason": reason,
                 "limits": {"max_daily_loss_usd": self.limits.max_daily_loss_usd,
                            "portfolio_gross_cap": self.limits.portfolio_gross_cap,
                            "max_tx_per_day": self.limits.max_tx_per_day,
                            "max_gas_pol_per_day": self.limits.max_gas_pol_per_day,
-                           "max_consecutive_errors": self.limits.max_consecutive_errors}}
+                           "max_consecutive_errors": self.limits.max_consecutive_errors,
+                           "min_pol_balance": self.limits.min_pol_balance}}

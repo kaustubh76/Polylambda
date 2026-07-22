@@ -117,7 +117,9 @@ class TestnetClob:
             # persistently failing signer (a signed tx proves the whole pipe works)
             self.risk.record_success()
         except Exception as e:  # noqa: BLE001
-            self.risk.record_error(f"{kind} {mb.m.address[:10]}: {e}")
+            # tag out-of-gas distinctly so it's not lumped with RPC/revert errors in the ledger
+            oog = any(s in str(e).lower() for s in ("insufficient funds", "gas required", "out of gas"))
+            self.risk.record_error(f"{kind} {mb.m.address[:10]}: {'OUT-OF-GAS: ' if oog else ''}{e}")
             return None
         self.risk.record_tx(kind, out["tx"], out["gas_pol"], market=mb.m.address)
         rec = {"kind": kind, "market": mb.m.address, **out}

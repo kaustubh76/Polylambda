@@ -55,6 +55,21 @@ def test_error_breaker_opens_and_closes(tmp_path):
     assert g.allow_tx("postQuote")[0] is True
 
 
+def test_low_pol_halts_with_distinct_reason(tmp_path):
+    g = _gov(tmp_path, min_pol_balance=0.02)
+    assert g.allow_tx("postQuote")[0] is True          # POL unknown yet -> allowed
+    g.mark_engine_pol(0.005)                            # engine wallet drained below the floor
+    ok, reason = g.allow_tx("postQuote")
+    assert not ok and "out of gas" in reason and "0.0050" in reason
+    assert g.status()["engine_pol"] == 0.005 and g.status()["halt_reason"] == reason
+    g.mark_engine_pol(0.5)                              # topped up
+    assert g.allow_tx("postQuote")[0] is True
+    # ordered before the generic breaker: kill-switch still wins over low-POL
+    g.mark_engine_pol(0.0)
+    g.kill("test")
+    assert g.allow_tx("postQuote")[1] == "kill-switch file present"
+
+
 def test_gross_cap(tmp_path):
     g = _gov(tmp_path, portfolio_gross_cap=1.0)
     g.record_fill("0xm1", "SELL", 0.6, 0.8)   # inventory -0.8

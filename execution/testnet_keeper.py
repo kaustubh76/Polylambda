@@ -248,6 +248,17 @@ class TestnetKeeper:
                     m.cash + (m.inventory * mid if (mid := _mark_mid(self.clob.get_book(m.token_id)))
                               is not None else 0.0)
                     for m in self.markets))
+                # feed the engine's POL gas to the governor every ~10 ticks (one cheap balance read)
+                # so a wallet draining mid-burst halts cleanly ("engine out of gas") instead of
+                # burning 5 failed sends into the generic error breaker.
+                if self.ticks_done % 10 == 1:
+                    try:
+                        sig = getattr(self.clob, "signer", None)
+                        rdr = getattr(self.clob, "reader", None)
+                        if sig is not None and rdr is not None and getattr(sig, "address", None):
+                            self.risk.mark_engine_pol(rdr.balances(sig.address)["pol"])
+                    except Exception:  # noqa: BLE001 — a balance-read blip must never kill the tick
+                        pass
                 if i < n_ticks - 1 and self.interval_s > 0:
                     stop.wait(self.interval_s)
             roll = self._rollup()
@@ -307,8 +318,18 @@ class TestnetKeeper:
         if self.detector is not None and hasattr(self.detector, "status"):
             st["detector"] = self.detector.status()
         if self.markets:
-            st["markets"] = self._rollup()["per_market"]
+            roll = self._rollup()
+            st["markets"] = roll["per_market"]
+            st["per_arm"] = roll["per_arm_totals"]     # the λ-on vs λ-off edge, surfaced to the API
         return st
+
+
+def current_session_path() -> str:
+    """The testnet session-log path the keeper is (or would be) writing today — the keeper's own
+    out_path if it has run, else the default daily file. Used by the dashboard analytics endpoints."""
+    kp = get_keeper()
+    return kp.out_path or os.path.join(
+        ".data_cache", "sessions", f"session-testnet-{time.strftime('%Y%m%d', time.gmtime())}.jsonl")
 
 
 # module singleton for the webapp (one keeper per process — the nonce-lock argument)

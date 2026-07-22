@@ -52,6 +52,7 @@ class Config:
     max_consecutive_errors: int = 5    # RPC/send error breaker: open after N in a row
     max_tx_per_day: int = 200          # signed-tx budget per UTC day
     max_gas_pol_per_day: float = 0.6   # gas budget per UTC day (POL)
+    min_pol_balance: float = 0.02      # halt signing when the engine wallet POL falls below this (out of gas)
     # testnet adapter (execution/testnet_clob.py — gas/spam debounce + reorg buffer)
     min_requote_delta: float = 0.005   # re-post only when bid or ask moved by at least this
     max_quote_age_s: float = 900.0     # ... or the standing quote is older than this
@@ -134,6 +135,7 @@ def load_config(path: str = DEFAULT_PATH) -> Config:
         max_consecutive_errors=int(y.get("max_consecutive_errors", 5)),
         max_tx_per_day=int(y.get("max_tx_per_day", 200)),
         max_gas_pol_per_day=float(y.get("max_gas_pol_per_day", 0.6)),
+        min_pol_balance=float(y.get("min_pol_balance", 0.02)),
         min_requote_delta=float(y.get("min_requote_delta", 0.005)),
         max_quote_age_s=float(y.get("max_quote_age_s", 900.0)),
         dispute_confirmations=int(y.get("dispute_confirmations", 30)),

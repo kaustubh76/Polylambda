@@ -103,6 +103,9 @@ def test_killed_governor_stops_signing_but_ticks_continue(tmp_path):
     assert risk.status()["halted"] is True
     st = k.status()
     assert st["risk"]["killed"] is True and st["ticks_done"] == 3
+    # the λ-on vs λ-off edge is surfaced to the API (per-market + per-arm rollup)
+    assert "markets" in st and "per_arm" in st
+    assert st["per_arm"].get("lambda_on", {}).get("n_markets", 0) >= 1
 
 
 def test_status_reports_autostart_and_engine_ready(tmp_path, monkeypatch):
