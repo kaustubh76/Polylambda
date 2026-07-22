@@ -105,6 +105,20 @@ def test_killed_governor_stops_signing_but_ticks_continue(tmp_path):
     assert st["risk"]["killed"] is True and st["ticks_done"] == 3
 
 
+def test_status_reports_autostart_and_engine_ready(tmp_path, monkeypatch):
+    import execution.testnet_chain as tc
+    _, _, _, k = _keeper(tmp_path)
+    monkeypatch.setenv("KEEPER_AUTOSTART", "1")
+    monkeypatch.setattr(tc, "engine_key", lambda: "0x" + "11" * 32)
+    st = k.status()
+    assert st["autostart"] is True and st["engine_ready"] is True
+    # both off → the two reasons the live keeper wouldn't be signing
+    monkeypatch.delenv("KEEPER_AUTOSTART", raising=False)
+    monkeypatch.setattr(tc, "engine_key", lambda: None)
+    st2 = k.status()
+    assert st2["autostart"] is False and st2["engine_ready"] is False
+
+
 def test_state_persists_across_bursts(tmp_path):
     chain, signer, risk, k = _keeper(tmp_path)
     k.run(n_ticks=1)

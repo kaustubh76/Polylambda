@@ -62,24 +62,31 @@ class _Hex:
 
 
 class FakeEth:
-    def __init__(self, chain_id=80002, fail_sends=0):
+    def __init__(self, chain_id=80002, fail_sends=0, fail_transient=0):
         self.chain_id = chain_id
-        self._fail_sends = fail_sends
+        self._fail_sends = fail_sends          # nonce-race failures (not transient → outer refetch loop)
+        self._fail_transient = fail_transient  # rate-limit failures (transient → _rpc_retry backoff)
         self.sent = 0
 
     def get_transaction_count(self, addr):
         return 7
 
     def send_raw_transaction(self, raw):
+        if self._fail_transient > 0:
+            self._fail_transient -= 1
+            raise ValueError("429 Too Many Requests")
         if self._fail_sends > 0:
             self._fail_sends -= 1
             raise ValueError("nonce too low: address already used")
         self.sent += 1
         return _Hex()
 
-    def wait_for_transaction_receipt(self, h, timeout=120):
+    def get_transaction_receipt(self, h):
         return {"status": 1, "gasUsed": 50_000, "effectiveGasPrice": 30 * 10**9,
                 "blockNumber": 4242}
+
+    def wait_for_transaction_receipt(self, h, timeout=120):  # legacy; unused by the resilient path
+        return self.get_transaction_receipt(h)
 
 
 class FakeW3:
@@ -126,6 +133,40 @@ def test_signer_gives_up_after_two_nonce_failures():
     w3 = FakeW3(fail_sends=2)
     with pytest.raises(ValueError, match="nonce too low"):
         tc.AmoySigner(w3, key=KEY).send(FakeFn())
+
+
+# --- RPC rate-limit resilience (_rpc_retry) ---------------------------------------------------
+def test_rpc_retry_rides_transient_then_succeeds(monkeypatch):
+    monkeypatch.setattr(tc.time, "sleep", lambda *_a, **_k: None)  # no real backoff in the test
+    calls = {"n": 0}
+
+    def flaky():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise RuntimeError("503 Service Unavailable")
+        return "ok"
+
+    assert tc._rpc_retry(flaky) == "ok" and calls["n"] == 3
+
+
+def test_rpc_retry_never_retries_a_revert(monkeypatch):
+    monkeypatch.setattr(tc.time, "sleep", lambda *_a, **_k: None)
+    calls = {"n": 0}
+
+    def revert():
+        calls["n"] += 1
+        raise RuntimeError("execution reverted: closed")
+
+    with pytest.raises(RuntimeError, match="reverted"):
+        tc._rpc_retry(revert)
+    assert calls["n"] == 1  # deterministic error → one shot, no retry
+
+
+def test_signer_rides_a_rate_limited_send(monkeypatch):
+    monkeypatch.setattr(tc.time, "sleep", lambda *_a, **_k: None)
+    w3 = FakeW3(fail_transient=2)  # 429 twice, then the send lands
+    out = tc.AmoySigner(w3, key=KEY).send(FakeFn())
+    assert out["tx"].startswith("0x") and out["block"] == 4242 and w3.eth.sent == 1
 
 
 def test_deploy_fleet_cid_picker_offline():

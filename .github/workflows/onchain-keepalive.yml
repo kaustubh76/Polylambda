@@ -1,13 +1,13 @@
-# Watchdog for the CONTINUOUS testnet keeper: every 6h it asks the LIVE backend to run a keeper
+# Watchdog for the CONTINUOUS testnet keeper: every 15 min it asks the LIVE backend to run a keeper
 # burst (the production loop → engine-signed postQuote/flagDispute on Polygon Amoy). If the keeper
 # thread is already running (KEEPER_AUTOSTART=1) this is a no-op; if the free-tier instance was
-# spun down or the thread died, the burst restores on-chain quote freshness. No GitHub secrets —
+# spun down or the thread died, the burst restarts it within ~15 min (self-heal). No GitHub secrets —
 # the engine key lives on the Render service (ENGINE_PRIVATE_KEY); this is just an HTTP POST.
 name: onchain-keepalive
 
 on:
   schedule:
-    - cron: "0 */6 * * *"   # every 6 hours
+    - cron: "*/15 * * * *"   # every 15 min — self-heal a dead/cold-booted keeper (POST is idempotent)
   workflow_dispatch: {}
 
 jobs:

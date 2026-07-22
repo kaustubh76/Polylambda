@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import re
 import threading
 import time
@@ -35,6 +36,36 @@ _ERC20_ABI = [
 
 # tx errors that mean "our nonce view raced another signer on the same wallet" — refetch and retry once
 _NONCE_RACE = ("nonce too low", "replacement transaction underpriced", "already known")
+
+# transient RPC failures (keyless public Amoy endpoints rate-limit bursts) — retry with backoff.
+# Deterministic errors (contract reverts, "range too large" 400s) are NOT here, so they raise at once.
+_TRANSIENT = ("429", "403", "401", "too many", "rate limit", "timed out", "timeout", "connection",
+              "reset", "remote end", "502", "503", "504", "bad gateway", "gateway time",
+              "service unavailable", "temporarily")
+_RPC_ATTEMPTS = int(os.environ.get("AMOY_RPC_ATTEMPTS", "6"))
+_RPC_PACE_S = float(os.environ.get("AMOY_RPC_PACE_S", "0"))     # optional min interval between RPC calls
+_last_rpc = [0.0]
+
+
+def _rpc_retry(fn, *a, **k):
+    """Call an RPC-touching thunk, retrying transient/rate-limit failures with exponential backoff
+    (cap ~20s). Contract reverts and other deterministic errors aren't in `_TRANSIENT`, so they raise
+    immediately — we never retry a revert. Optional pacing via AMOY_RPC_PACE_S."""
+    last: Exception | None = None
+    for i in range(max(1, _RPC_ATTEMPTS)):
+        if _RPC_PACE_S:
+            dt = time.monotonic() - _last_rpc[0]
+            if dt < _RPC_PACE_S:
+                time.sleep(_RPC_PACE_S - dt)
+            _last_rpc[0] = time.monotonic()
+        try:
+            return fn(*a, **k)
+        except Exception as e:  # noqa: BLE001
+            last = e
+            if i == _RPC_ATTEMPTS - 1 or not any(t in str(e).lower() for t in _TRANSIENT):
+                raise
+            time.sleep(min(2 ** i, 20) + random.random())
+    raise last  # pragma: no cover
 
 
 @dataclass
@@ -139,21 +170,23 @@ class AmoySigner:
         """Sign + send + wait. Returns {"tx", "gas_pol", "block"}. Raises on revert/guard."""
         if self.acct is None:
             raise RuntimeError("engine wallet not configured (ENGINE_PRIVATE_KEY missing)")
-        if self.w3.eth.chain_id != AMOY_CHAIN_ID:
+        if _rpc_retry(lambda: self.w3.eth.chain_id) != AMOY_CHAIN_ID:
             raise RuntimeError("refusing to sign: connected chain is not Amoy (80002)")
         fee = self.w3.to_wei(int(os.environ.get("AMOY_GAS_GWEI", "30")), "gwei")
         last_err: Exception | None = None
         for attempt in (0, 1):  # second pass only for a cross-process nonce race
             try:
                 with self._lock:
+                    # each RPC hop is 429-retried; a nonce-race error isn't transient, so it falls
+                    # through to the outer refetch-once loop instead of being retried in place.
+                    nonce = _rpc_retry(self.w3.eth.get_transaction_count, self.acct.address)
                     tx = fn.build_transaction({
-                        "from": self.acct.address,
-                        "nonce": self.w3.eth.get_transaction_count(self.acct.address),
+                        "from": self.acct.address, "nonce": nonce,
                         "chainId": AMOY_CHAIN_ID, "value": value,
                         "maxFeePerGas": fee, "maxPriorityFeePerGas": fee})
                     signed = self.acct.sign_transaction(tx)
                     raw = getattr(signed, "raw_transaction", None) or signed.rawTransaction
-                    h = self.w3.eth.send_raw_transaction(raw)
+                    h = _rpc_retry(self.w3.eth.send_raw_transaction, raw)
                 break
             except Exception as e:  # noqa: BLE001
                 last_err = e
@@ -163,7 +196,7 @@ class AmoySigner:
                 raise
         else:  # pragma: no cover — loop always breaks or raises
             raise last_err  # type: ignore[misc]
-        rcpt = self.w3.eth.wait_for_transaction_receipt(h, timeout=120)
+        rcpt = self._wait_receipt(h)
         if rcpt["status"] != 1:
             raise RuntimeError(f"amoy tx reverted: {h.hex()}")
         gas_price = rcpt.get("effectiveGasPrice", fee)
@@ -171,6 +204,24 @@ class AmoySigner:
         return {"tx": hx if hx.startswith("0x") else "0x" + hx,
                 "gas_pol": rcpt["gasUsed"] * gas_price / 1e18,
                 "block": rcpt["blockNumber"]}
+
+    def _wait_receipt(self, h, timeout: float = 180.0):
+        """Poll for the receipt, 429-retrying each poll (the built-in wait_for_transaction_receipt
+        raises straight through a rate-limited poll). 'not found' just means still pending."""
+        try:
+            from web3.exceptions import TransactionNotFound
+        except Exception:  # noqa: BLE001
+            TransactionNotFound = Exception  # type: ignore[assignment,misc]
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < timeout:
+            try:
+                rc = _rpc_retry(self.w3.eth.get_transaction_receipt, h)
+                if rc is not None:
+                    return rc
+            except TransactionNotFound:
+                pass                                    # pending — keep polling
+            time.sleep(3)
+        raise TimeoutError(f"receipt timeout for {h.hex()}")
 
 
 class ChainReader:
@@ -192,10 +243,10 @@ class ChainReader:
     _contract = contract  # internal alias
 
     def head_block(self) -> int:
-        return self.w3.eth.block_number
+        return _rpc_retry(lambda: self.w3.eth.block_number)
 
     def snapshot(self, address: str) -> dict:
-        s = self._contract(address).functions.snapshot().call()
+        s = _rpc_retry(self._contract(address).functions.snapshot().call)
         return {"deployed": True, "bid": s[0] / 1e6, "ask": s[1] / 1e6, "max_trade": s[2] / 1e6,
                 "quote_ts": int(s[3]), "disputed": bool(s[4]), "resolved": bool(s[5]),
                 "yes_won": bool(s[6]), "total_yes": s[7] / 1e6, "escrow_usdc": s[8] / 1e6,
@@ -203,7 +254,7 @@ class ChainReader:
 
     def _timestamp(self, block: int) -> int:
         if block not in self._block_ts:
-            self._block_ts[block] = int(self.w3.eth.get_block(block)["timestamp"])
+            self._block_ts[block] = int(_rpc_retry(self.w3.eth.get_block, block)["timestamp"])
         return self._block_ts[block]
 
     def traded_logs(self, address: str, from_block: int, to_block: int) -> list[dict]:
@@ -212,8 +263,9 @@ class ChainReader:
             return []
         m = self._contract(address)
         out = []
-        for lg in self.w3.eth.get_logs({"address": m.address,
-                                        "fromBlock": from_block, "toBlock": to_block}):
+        logs = _rpc_retry(self.w3.eth.get_logs, {"address": m.address,
+                                                 "fromBlock": from_block, "toBlock": to_block})
+        for lg in logs:
             try:
                 ev = m.events.Traded().process_log(lg)
             except Exception:  # noqa: BLE001 — other event types in the same address filter
@@ -233,5 +285,5 @@ class ChainReader:
         from web3 import Web3
         addr = Web3.to_checksum_address(address)
         usdc = self.w3.eth.contract(address=Web3.to_checksum_address(USDC_ADDR), abi=_ERC20_ABI)
-        return {"pol": self.w3.eth.get_balance(addr) / 1e18,
-                "usdc": usdc.functions.balanceOf(addr).call() / 1e6}
+        return {"pol": _rpc_retry(self.w3.eth.get_balance, addr) / 1e18,
+                "usdc": _rpc_retry(usdc.functions.balanceOf(addr).call) / 1e6}

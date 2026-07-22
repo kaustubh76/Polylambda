@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 
 import solcx
 from eth_account import Account
@@ -48,15 +49,29 @@ def compile_market():
 
 def _send(w3, acct, fn, value=0):
     # Amoy base fee is ~0; web3 auto-inflates the priority fee. Set an explicit low tip (~30 gwei,
-    # the validator floor) so the whole deploy fits a small faucet balance.
+    # the validator floor) so the whole deploy fits a small faucet balance. Every RPC hop is
+    # 429-retried (keyless public Amoy endpoints rate-limit deploy bursts).
+    from execution.testnet_chain import _rpc_retry
     fee = w3.to_wei(int(os.environ.get("AMOY_GAS_GWEI", "30")), "gwei")
-    tx = fn.build_transaction({"from": acct.address, "nonce": w3.eth.get_transaction_count(acct.address),
+    nonce = _rpc_retry(w3.eth.get_transaction_count, acct.address)
+    tx = fn.build_transaction({"from": acct.address, "nonce": nonce,
                                "chainId": w3.eth.chain_id, "value": value,
                                "maxFeePerGas": fee, "maxPriorityFeePerGas": fee})
     signed = acct.sign_transaction(tx)
     raw = getattr(signed, "raw_transaction", None) or signed.rawTransaction
-    h = w3.eth.send_raw_transaction(raw)
-    r = w3.eth.wait_for_transaction_receipt(h)
+    h = _rpc_retry(w3.eth.send_raw_transaction, raw)
+    from web3.exceptions import TransactionNotFound
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < 240:
+        try:
+            r = _rpc_retry(w3.eth.get_transaction_receipt, h)
+            if r is not None:
+                break
+        except TransactionNotFound:
+            pass
+        time.sleep(3)
+    else:
+        raise TimeoutError(f"receipt timeout: {h.hex()}")
     if r["status"] != 1:
         raise RuntimeError(f"tx reverted: {h.hex()}")
     return r

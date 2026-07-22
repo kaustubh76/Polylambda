@@ -69,7 +69,7 @@ def main() -> None:
     from web3 import Web3
 
     from deploy_market import _ERC20_APPROVE, _env, _send, compile_market
-    from execution.testnet_chain import AMOY_RPC, append_market, make_w3
+    from execution.testnet_chain import AMOY_RPC, _rpc_retry, append_market, make_w3
 
     env = _env()
     key = env.get("ENGINE_PRIVATE_KEY")
@@ -80,8 +80,8 @@ def main() -> None:
     usdc_addr = Web3.to_checksum_address(
         os.environ.get("AMOY_USDC_ADDRESS", "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582"))
     usdc = w3.eth.contract(address=usdc_addr, abi=_ERC20_APPROVE)
-    pol0 = w3.eth.get_balance(acct.address) / 1e18
-    usdc0 = usdc.functions.balanceOf(acct.address).call() / 1e6
+    pol0 = _rpc_retry(w3.eth.get_balance, acct.address) / 1e18
+    usdc0 = _rpc_retry(usdc.functions.balanceOf(acct.address).call) / 1e6
     print(f"engine {acct.address} | POL {pol0:.4f} | USDC {usdc0:.2f}")
 
     cats = [c.strip() for c in args.categories.split(",") if c.strip()]
@@ -110,7 +110,7 @@ def main() -> None:
         print(f"  deployed {addr}  ({EXPLORER}/address/{addr})")
 
         fund6 = int(args.collateral_usdc * 1e6)
-        bal6 = usdc.functions.balanceOf(acct.address).call()
+        bal6 = _rpc_retry(usdc.functions.balanceOf(acct.address).call)
         fund6 = min(fund6, bal6)
         if fund6 > 0:
             _send(w3, acct, usdc.functions.approve(addr, fund6))
@@ -130,8 +130,8 @@ def main() -> None:
         append_market(entry, abi=abi, path=args.registry)
         deployed.append(entry)
 
-    pol1 = w3.eth.get_balance(acct.address) / 1e18
-    usdc1 = usdc.functions.balanceOf(acct.address).call() / 1e6
+    pol1 = _rpc_retry(w3.eth.get_balance, acct.address) / 1e18
+    usdc1 = _rpc_retry(usdc.functions.balanceOf(acct.address).call) / 1e6
     print(f"\n=== FLEET DEPLOYED ({len(deployed)} markets) ===")
     for e in deployed:
         print(f"  {e['category']:<10} {e['address']}  tracks {e['tracks_cid'] or '—'}")

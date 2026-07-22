@@ -14,12 +14,14 @@ import json
 import os
 import re
 import sys
+import time
 
 from eth_account import Account
 from web3 import Web3
 from web3.middleware import ExtraDataToPOAMiddleware
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)                                   # make `execution.*` importable when run as a script
 AMOY_RPC = os.environ.get("AMOY_RPC_URL", "https://polygon-amoy.drpc.org")
 USDC_ADDR = Web3.to_checksum_address(os.environ.get("AMOY_USDC_ADDRESS", "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582"))
 GWEI = int(os.environ.get("AMOY_GAS_GWEI", "30"))
@@ -64,21 +66,34 @@ def main() -> None:
     usdc = w3.eth.contract(address=USDC_ADDR, abi=ERC20)
     engine = Account.from_key(engine_key())
 
+    from execution.testnet_chain import _rpc_retry            # 429-retry the keyless public endpoint
+    from web3.exceptions import TransactionNotFound
+
     def send(acct, fn=None, *, to=None, value=0, label=""):
         fee = w3.to_wei(GWEI, "gwei")
-        base = {"from": acct.address, "nonce": w3.eth.get_transaction_count(acct.address),
+        nonce = _rpc_retry(w3.eth.get_transaction_count, acct.address)
+        base = {"from": acct.address, "nonce": nonce,
                 "chainId": 80002, "value": value, "maxFeePerGas": fee, "maxPriorityFeePerGas": fee}
         tx = fn.build_transaction(base) if fn is not None else {**base, "to": Web3.to_checksum_address(to), "gas": 21000}
         signed = acct.sign_transaction(tx)
         raw = getattr(signed, "raw_transaction", None) or signed.rawTransaction
-        h = w3.eth.send_raw_transaction(raw)
-        rc = w3.eth.wait_for_transaction_receipt(h, timeout=180)
+        h = _rpc_retry(w3.eth.send_raw_transaction, raw)
+        t0 = time.monotonic()
+        rc = None
+        while time.monotonic() - t0 < 200:
+            try:
+                rc = _rpc_retry(w3.eth.get_transaction_receipt, h)
+                if rc is not None:
+                    break
+            except TransactionNotFound:
+                pass
+            time.sleep(3)
         hx = h.hex() if h.hex().startswith("0x") else "0x" + h.hex()
-        assert rc["status"] == 1, f"{label} REVERTED {hx}"
+        assert rc is not None and rc["status"] == 1, f"{label} REVERTED/timeout {hx}"
         print(f"  ok {label:<24} {hx}")
         return rc
 
-    snap = m.functions.snapshot().call()
+    snap = _rpc_retry(m.functions.snapshot().call)
     bid, ask, maxt = snap[0] / U, snap[1] / U, snap[2] / U
     print(f"market[{idx}] {mkt['category']} {addr}")
     print(f"  snapshot bid {bid} ask {ask} maxTrade {maxt} disputed {snap[4]} resolved {snap[5]}")

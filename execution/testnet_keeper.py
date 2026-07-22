@@ -285,10 +285,14 @@ class TestnetKeeper:
         return bool(self._thread and self._thread.is_alive())
 
     def status(self) -> dict:
+        from execution.testnet_chain import engine_key
         st = {"running": self.running, "ticks_done": self.ticks_done,
               "last_tick_ts": self.last_tick_ts, "interval_s": self.interval_s,
               "out_path": self.out_path, "last_error": self.last_error,
-              "n_markets": len(self.markets) if self.markets else 0}
+              "n_markets": len(self.markets) if self.markets else 0,
+              # why the live keeper is (not) signing — both must be true in prod:
+              "autostart": os.environ.get("KEEPER_AUTOSTART") == "1",
+              "engine_ready": engine_key() is not None}
         if self.risk is not None:
             st["risk"] = self.risk.status()
         if self.clob is not None:

@@ -230,6 +230,7 @@ export interface TnKeeperMarket { cid: string; token_id: string; arm: string; ca
 export interface TnKeeper {
   running: boolean; ticks_done: number; last_tick_ts: number; interval_s: number
   out_path: string | null; last_error: string; n_markets: number
+  autostart?: boolean; engine_ready?: boolean
   risk?: TnRisk; markets?: TnKeeperMarket[]
   engine?: { address: string; pol?: number; usdc?: number; error?: string }
   clob?: { tx_count: number; last_tx?: { kind: string; market: string; tx: string } | null; last_denied?: string }

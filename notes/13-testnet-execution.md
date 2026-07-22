@@ -70,9 +70,14 @@ would be ~2,880 tx/day (~7 POL); the debounce bounds it to ~100–200 tx/day (~0
 # 2. run the keeper (local dev harness)
 .venv/bin/python -m execution.testnet_keeper --ticks 10 --interval 60
 
-# 3. continuous (Render): KEEPER_AUTOSTART=1 starts the background thread in the webapp process
-#    (one process with the demo routes = the signer nonce lock is global). The 6h GH cron
-#    (onchain-keepalive.yml) POSTs /api/testnet/keeper/run as a spun-down/crash watchdog.
+# 3. continuous (Render): the live keeper needs TWO dashboard settings (verify via
+#    GET /api/testnet/keeper → "autostart" and "engine_ready"):
+#      - KEEPER_AUTOSTART=1   (env)    — starts the background thread on every boot
+#      - ENGINE_PRIVATE_KEY   (secret) — without it the keeper runs read-only (can't sign)
+#    The */5 keepalive keeps the free instance warm so the thread stays up; the */15 GH cron
+#    (onchain-keepalive.yml) POSTs /api/testnet/keeper/run as a spun-down/crash self-heal (idempotent).
+#    All Amoy RPC hops are 429-retried (execution/testnet_chain._rpc_retry), so a rate-limited
+#    keyless endpoint slows a tick but never kills the keeper.
 
 # demo the full defense chain on demand (real Polymarket disputes are rare):
 echo <tracked-conditionId> >> .data_cache/risk/DISPUTE_TRIGGERS

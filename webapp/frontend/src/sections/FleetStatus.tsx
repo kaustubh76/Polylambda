@@ -86,6 +86,14 @@ export function FleetStatus() {
             {risk?.halt_reason ? ` (${risk.halt_reason})` : ''}.
           </Caveat>
         )}
+        {keeper && !keeper.running && !killed && (keeper.autostart === false || keeper.engine_ready === false) && (
+          <Caveat kind="calibration">
+            keeper idle —{keeper.autostart === false ? ' KEEPER_AUTOSTART is not set' : ''}
+            {keeper.autostart === false && keeper.engine_ready === false ? ' and' : ''}
+            {keeper.engine_ready === false ? ' the ENGINE_PRIVATE_KEY secret is missing' : ''}
+            {keeper.autostart !== false && keeper.engine_ready !== false ? ' (spun down; the 15-min watchdog will restart it)' : ' on the host'}.
+          </Caveat>
+        )}
         {!killed && risk?.halted && (
           <Caveat kind="underpowered">signing halted by the risk governor: {risk.halt_reason}</Caveat>
         )}
