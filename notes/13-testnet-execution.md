@@ -40,8 +40,8 @@ against it. So:
 ## Debounce math (the gas guard)
 
 A buffered quote signs only if `|Δbid| ≥ 0.005` or `|Δask| ≥ 0.005` or maxTrade changed or the
-standing quote is older than `max_quote_age_s` (900 s). At 60 s ticks × 2 markets, naive reposting
-would be ~2,880 tx/day (~7 POL); the debounce bounds it to ~100–200 tx/day (~0.3–0.6 POL), and
+standing quote is older than `max_quote_age_s` (900 s). At 60 s ticks × 6 markets, naive reposting
+would be ~8,640 tx/day; the debounce keeps it to a few hundred tx/day (most ticks sign nothing), and
 `max_gas_pol_per_day` (0.6) is the RiskGovernor's hard stop. All knobs in `config/model.yaml`.
 
 ## Honesty notes
@@ -65,7 +65,7 @@ would be ~2,880 tx/day (~7 POL); the debounce bounds it to ~100–200 tx/day (~0
 
 ```bash
 # 1. deploy a fleet (needs ENGINE_PRIVATE_KEY in .env, POL + test-USDC on the engine wallet)
-.venv/bin/python scripts/deploy_fleet.py --n 2 --categories politics,crypto
+.venv/bin/python scripts/deploy_fleet.py --n 4 --categories sports,economics,geopolitics,tech-ai
 
 # 2. run the keeper (local dev harness)
 .venv/bin/python -m execution.testnet_keeper --ticks 10 --interval 60

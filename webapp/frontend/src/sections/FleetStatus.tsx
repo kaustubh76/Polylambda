@@ -86,12 +86,13 @@ export function FleetStatus() {
             {risk?.halt_reason ? ` (${risk.halt_reason})` : ''}.
           </Caveat>
         )}
-        {keeper && !keeper.running && !killed && (keeper.autostart === false || keeper.engine_ready === false) && (
+        {keeper && !keeper.running && !killed && (
           <Caveat kind="calibration">
-            keeper idle —{keeper.autostart === false ? ' KEEPER_AUTOSTART is not set' : ''}
-            {keeper.autostart === false && keeper.engine_ready === false ? ' and' : ''}
-            {keeper.engine_ready === false ? ' the ENGINE_PRIVATE_KEY secret is missing' : ''}
-            {keeper.autostart !== false && keeper.engine_ready !== false ? ' (spun down; the 15-min watchdog will restart it)' : ' on the host'}.
+            keeper idle — {keeper.engine_ready === false
+              ? <>the <span className="font-mono">ENGINE_PRIVATE_KEY</span> secret is missing on the host, so it can't sign.</>
+              : keeper.autostart === false
+                ? <>autostart is off (<span className="font-mono">KEEPER_AUTOSTART</span> not set); it runs only in scheduled bursts until enabled.</>
+                : <>the free-tier host spun down; the 15-min watchdog restarts it (or POST <span className="font-mono">/api/testnet/keeper/run</span>).</>}
           </Caveat>
         )}
         {!killed && risk?.halted && (

@@ -82,7 +82,7 @@ The grant fund gates on *working product + active users*. Our traction story has
    the product is stamped `simulated: true`; the **testnet engine already emits `simulated: false`**
    with real tx hashes — the same honesty contract mainnet-live will use).
 2. **A real continuous engine, already running on-chain** — the byte-identical production loop
-   drives a **fleet of engine-signed PolyLambdaMarket contracts on Polygon Amoy** (`MODE=testnet`).
+   drives a **fleet of 6 engine-signed PolyLambdaMarket contracts on Polygon Amoy** (`MODE=testnet`).
    The full loop is proven end-to-end on testnet: deploy → keeper quoting → real on-chain fill
    polled → **dispute-defense signing a real `flagDispute()`** → **kill-switch** halt/resume →
    **exact reconcile** of the keeper's books against on-chain `Traded` events. This de-risks
@@ -91,7 +91,7 @@ The grant fund gates on *working product + active users*. Our traction story has
 3. **Public goods already shipped** — the dispute dataset (the missing dispute layer for the
    ecosystem, CC-BY-4.0, **self-refreshing** via the scheduled RPC export + retrain workflow), the
    hazard model card, the interactive dispute-anatomy explorer + HF-backbone views on the live
-   dashboard, the reproducible dossier (`python -m data.dossier`), 218 green tests.
+   dashboard, the reproducible dossier (`python -m data.dossier`), 222 green tests.
 4. **The narrative** — *"we built the missing dispute-risk layer for Polymarket and we run it
    live."* Product + public good + volume, which is precisely the axis the program says it funds
    ("product innovation and traction").

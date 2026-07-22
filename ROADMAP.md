@@ -47,6 +47,20 @@
 > position,events,engine-quote,dispute,resolve}` routes, `webapp/backend/market.json`, the
 > `LiveTestnet` dashboard section, and `MARKET_ADDRESS`). The dashboard now shows **only the
 > keeper-managed fleet**; every on-chain number is real.
+>
+> **Shipped 2026-07-22 — reliability + scale (production-hardened).** (a) **Cold-start 502s killed**:
+> a frontend `HealthGate` defers all data requests behind `/api/health` (clean "waking…" splash, no
+> request flood); keepalive tightened to `*/5`. (b) **Live dispute stream made fail-proof**: the RPC
+> tail scan uses the paced+cached block-timestamps (no self-inflicted 429), `/api/live/disputes`
+> surfaces a `warming` flag so the UI shows "scanning…" instead of empty-but-LIVE, and `/api/live/status`
+> is deadline-wrapped; a cold-start `base_rates` degeneracy (all-`other` collapse poisoning an lru_cache)
+> is fixed. (c) **Fleet 2→6** — added sports `0x23dF…Dd00`, economics `0x00e6…549d`, geopolitics
+> `0xf401…EB4d`, tech-ai `0xDa74…D39f` (all real estimator quotes; 2 real taker fills; reconcile PASS;
+> sports auto-`flagDispute`d on a genuinely-confirmed dispute). (d) **RPC-429 resilience**: `_rpc_retry`
+> (backoff on transient, never on reverts) now wraps `AmoySigner`, `ChainReader`, and the deploy/taker
+> scripts, so a rate-limited keyless endpoint slows a tick but never kills it. (e) **Keeper
+> observability**: `/api/testnet/keeper` reports `autostart`/`engine_ready` (surfaced on the dashboard),
+> and the watchdog cron tightened 6h→`*/15`. 222 pytest green.
 
 ---
 
@@ -70,7 +84,7 @@ mode never needed.**
 | Session-log schema (`forwardtest/session_log.py`) | Live market selection + capital allocation |
 | Live dispute feed (`webapp/backend/live.py`, keyless Polygon RPC scan) | Real-time proposal detector wired into the loop (reorg-guarded) |
 | Frozen params (`config/model.yaml`, λ\*=0.002; κ **per-category** via `kappa_by_category.json`, scalar 0.76 fallback) | Live session logging (`simulated: True` is hardcoded) + live P&L dashboard |
-| 218 pytest green; replay-ablation edge proof | Key custody / secrets ops for an unattended hot wallet |
+| 222 pytest green; replay-ablation edge proof | Key custody / secrets ops for an unattended hot wallet |
 | Scheduled data-refresh (GitHub Actions cron regenerates disputes/hazard/κ artifacts and commits them) | — |
 | NegRisk-labeled live dispute feed (real tradeable markets shown, `data/negrisk_map.py`) | — |
 
