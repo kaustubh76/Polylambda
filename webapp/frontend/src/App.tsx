@@ -16,14 +16,11 @@ const Recon = lazy(() => import('./sections/Recon').then((m) => ({ default: m.Re
 const SigmaSurface = lazy(() => import('./sections/SigmaSurface').then((m) => ({ default: m.SigmaSurface })))
 const HfDataset = lazy(() => import('./sections/HfDataset').then((m) => ({ default: m.HfDataset })))
 const HfMarkets = lazy(() => import('./sections/HfMarkets').then((m) => ({ default: m.HfMarkets })))
-import { WalletProvider, useWallet } from './lib/wallet'
-import { ToastProvider, useToast } from './components/Toast'
+import { ToastProvider } from './components/Toast'
 import { LiveStatusProvider, useLiveStatus, freshnessFromAge } from './components/LiveStatus'
 import { ThemeProvider, useTheme } from './components/Theme'
 import { CommandPalette, type Command } from './components/CommandPalette'
-import { CopyButton, PanelSkeleton } from './components/ui'
-import { addressUrl } from './lib/testnet'
-import { short } from './lib/format'
+import { PanelSkeleton } from './components/ui'
 
 const NAV = [
   { id: 'overview', label: 'Overview' },
@@ -42,7 +39,7 @@ const NAV = [
 ]
 // `g`-then-letter jump keys (shown as hints in the command palette)
 const GOTO_KEYS: Record<string, string> = {
-  overview: 'o', baserates: 'b', score: 's', session: 'e', ablation: 'a',
+  overview: 'o', fleet: 'k', baserates: 'b', score: 's', session: 'e', ablation: 'a',
   hazard: 'h', disputes: 'd', live: 'i', recon: 'r', sigma: 'v', hfdata: 'f', hfmarkets: 'm',
 }
 
@@ -111,74 +108,6 @@ function LivePill() {
   )
 }
 
-// header pending-tx indicator — surfaces any signing/mining tx globally so it's never lost on scroll
-function PendingIndicator() {
-  const { pendingCount } = useToast()
-  return (
-    <AnimatePresence>
-      {pendingCount > 0 && (
-        <m.a href="#fleet" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
-          aria-live="polite" className="chip border-warn/50 text-warn" title="transactions awaiting confirmation">
-          <span className="h-1.5 w-1.5 animate-pulse2 rounded-full bg-warn" />
-          {pendingCount} pending
-        </m.a>
-      )}
-    </AnimatePresence>
-  )
-}
-
-function AccountMenu() {
-  const w = useWallet()
-  const toast = useToast()
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  // surface wallet errors (connect rejection, network switch) as toasts
-  useEffect(() => { if (w.error) { toast.error(w.error); w.clearError() } }, [w.error]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [])
-
-  if (!w.address) {
-    return (
-      <button className="chip hover:border-sig/40 hover:text-sig" onClick={w.connect} disabled={w.connecting} aria-label="Connect wallet">
-        <span className="h-1.5 w-1.5 rounded-full bg-muted" />
-        {w.connecting ? 'connecting…' : 'Connect'}
-      </button>
-    )
-  }
-  return (
-    <div className="relative" ref={ref}>
-      <button aria-haspopup="menu" aria-expanded={open} aria-live="polite" onClick={() => setOpen((o) => !o)}
-        className={`chip ${w.onAmoy ? 'border-sig/40 text-sig' : 'border-warn/50 text-warn'}`}
-        title={w.onAmoy ? 'Polygon Amoy' : 'Wrong network — switch to Amoy'}>
-        <span className={`h-1.5 w-1.5 rounded-full ${w.onAmoy ? 'bg-sig animate-pulse2' : 'bg-warn'}`} />
-        {w.onAmoy ? short(w.address, 4, 4) : 'wrong network'}
-      </button>
-      {open && (
-        <div role="menu" className="panel absolute right-0 z-50 mt-2 w-56 p-1.5 text-sm">
-          <div className="flex items-center justify-between px-2 py-1.5">
-            <span className="num text-2xs text-ink-2">{short(w.address, 6, 6)}</span>
-            <CopyButton value={w.address} label="Copy wallet address" />
-          </div>
-          <div className="my-1 border-t border-line" />
-          {!w.onAmoy && (
-            <button role="menuitem" onClick={() => { w.ensureAmoy().catch(() => {}); setOpen(false) }}
-              className="block w-full rounded px-2 py-1.5 text-left text-warn transition-colors hover:bg-elevated/50">⚠ Switch to Amoy</button>
-          )}
-          <a role="menuitem" href={addressUrl(w.address)} target="_blank" rel="noreferrer" onClick={() => setOpen(false)}
-            className="block w-full rounded px-2 py-1.5 text-left text-ink-2 transition-colors hover:bg-elevated/50">View on Amoyscan ↗</a>
-          <button role="menuitem" onClick={() => { w.disconnect(); setOpen(false) }}
-            className="block w-full rounded px-2 py-1.5 text-left text-ink-2 transition-colors hover:bg-elevated/50 hover:text-loss">Disconnect</button>
-        </div>
-      )}
-    </div>
-  )
-}
-
 function ScrollToTop() {
   const [show, setShow] = useState(false)
   useEffect(() => {
@@ -203,7 +132,6 @@ function AppInner() {
   const overview = useApi(api.overview, [])
   const active = useScrollSpy(NAV.map((n) => n.id))
   const mode = overview.data?.mode ?? 'paper'
-  const w = useWallet()
   const navRef = useRef<HTMLUListElement>(null)
 
   // keep the active nav tab scrolled into view (matters on mobile where the row overflows)
@@ -239,14 +167,8 @@ function AppInner() {
       id: `go-${n.id}`, group: 'Go to', label: n.label, hint: `g ${GOTO_KEYS[n.id]}`,
       run: () => document.getElementById(n.id)?.scrollIntoView({ behavior: 'smooth' }),
     }))
-    const wallet: Command[] = w.address
-      ? [
-          { id: 'wallet-copy', group: 'Wallet', label: 'Copy wallet address', run: () => navigator.clipboard?.writeText(w.address!) },
-          { id: 'wallet-disconnect', group: 'Wallet', label: 'Disconnect wallet', run: w.disconnect },
-        ]
-      : [{ id: 'wallet-connect', group: 'Wallet', label: 'Connect wallet', run: () => { w.connect() } }]
-    return [...goto, ...wallet, { id: 'scroll-top', group: 'Page', label: 'Scroll to top', run: () => window.scrollTo({ top: 0, behavior: 'smooth' }) }]
-  }, [w.address]) // eslint-disable-line react-hooks/exhaustive-deps
+    return [...goto, { id: 'scroll-top', group: 'Page', label: 'Scroll to top', run: () => window.scrollTo({ top: 0, behavior: 'smooth' }) }]
+  }, [])
 
   return (
     <div className="min-h-full">
@@ -264,8 +186,6 @@ function AppInner() {
               ⌘K
             </button>
             <ThemeToggle />
-            <PendingIndicator />
-            <AccountMenu />
             <LivePill />
             <span className="chip hidden sm:inline-flex">
               <span className="h-1.5 w-1.5 animate-pulse2 rounded-full bg-sig" />
@@ -319,7 +239,7 @@ function AppInner() {
             real engine (estimators · execution · forward-test). Every figure is computed by the actual
             code or read from a shipped artifact; the paper engine is deterministic and network-free.
           </p>
-          <p>Live trading is jurisdiction-gated and out of scope for v1 — this MVP is paper-mode only, and every simulated figure is stamped <span className="font-mono">simulated: true</span>. The testnet wallet signs on Polygon Amoy — play money, no keys server-side.</p>
+          <p>Mainnet trading is jurisdiction-gated and out of scope for v1 — paper figures are stamped <span className="font-mono">simulated: true</span>. The <b>testnet execution engine</b> runs live on Polygon Amoy: the production loop signs its own quotes/fills from a server-side engine wallet (play-money testnet), stamped <span className="font-mono">simulated: false</span> — this dashboard is a read-only monitor of it.</p>
           <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-line pt-4 text-ink-2">
             <a className="link-underline hover:text-sig" href="https://github.com/kaustubh76/Polylambda" target="_blank" rel="noreferrer">GitHub ↗</a>
             <a className="link-underline hover:text-sig" href="https://huggingface.co/datasets/moose-code/polymarket-onchain-v1" target="_blank" rel="noreferrer">HF dataset ↗</a>
@@ -383,15 +303,13 @@ export default function App() {
     <ThemeProvider>
       <LazyMotion features={domMax}>
         <MotionConfig reducedMotion="user">
-          <WalletProvider>
-            <ToastProvider>
-              <HealthGate>
-                <LiveStatusProvider>
-                  <AppInner />
-                </LiveStatusProvider>
-              </HealthGate>
-            </ToastProvider>
-          </WalletProvider>
+          <ToastProvider>
+            <HealthGate>
+              <LiveStatusProvider>
+                <AppInner />
+              </LiveStatusProvider>
+            </HealthGate>
+          </ToastProvider>
         </MotionConfig>
       </LazyMotion>
     </ThemeProvider>

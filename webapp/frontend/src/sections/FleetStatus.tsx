@@ -103,7 +103,7 @@ export function FleetStatus() {
         {polLow && (
           <Caveat kind="note">
             engine gas is low ({engine!.pol!.toFixed(3)} POL) — top up via the{' '}
-            <a className="underline" href="https://faucet.polygon.technology/" target="_blank" rel="noreferrer">Amoy faucet</a>.
+            <a className="underline" href="https://www.alchemy.com/faucets/polygon-amoy" target="_blank" rel="noreferrer">Amoy faucet</a>.
           </Caveat>
         )}
 

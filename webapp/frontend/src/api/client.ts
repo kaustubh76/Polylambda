@@ -69,11 +69,8 @@ export const api = {
   tnKeeper: () => req<TnKeeper>('/testnet/keeper', undefined, { retries: 0 }),
   tnAblation: () => req<TnAblation>('/testnet/ablation', undefined, { retries: 0 }),
   tnKeeperRun: (ticks = 10) => req<{ started: boolean; running: boolean }>('/testnet/keeper/run', { method: 'POST', body: JSON.stringify({ ticks }) }),
-  tnKeeperStart: () => req<{ started: boolean; running: boolean }>('/testnet/keeper/start', { method: 'POST', body: '{}' }),
-  tnKeeperStop: () => req<{ stopped: boolean; running: boolean }>('/testnet/keeper/stop', { method: 'POST', body: '{}' }),
   tnKill: () => req<TnRisk>('/testnet/kill', { method: 'POST', body: '{}' }),
   tnUnkill: () => req<TnRisk & { removed: boolean }>('/testnet/unkill', { method: 'POST', body: '{}' }),
-  tnRisk: () => req<TnRisk>('/testnet/risk', undefined, { retries: 0 }),
 }
 
 // --- a tiny fetch hook (no react-query dep) ---------------------------------------------------

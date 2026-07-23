@@ -76,7 +76,7 @@ export function Hero({ q }: { q: { data: Overview | null; error: string | null; 
               <Caveat kind="note">{d.thesis_nuance}</Caveat>
             </div>
             <div className="mt-5 flex flex-wrap gap-2">
-              <a href="#trade" className="btn btn-primary">Trade on testnet →</a>
+              <a href="#fleet" className="btn btn-primary">See the live engine →</a>
               <a href="#score" className="btn">Score a market</a>
               <a href="#session" className="btn">Watch the engine defend</a>
             </div>
