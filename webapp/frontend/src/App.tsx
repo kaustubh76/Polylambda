@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, LazyMotion, domMax, m, MotionConfig } from 'framer-motion'
-import { api, req, useApi } from './api/client'
+import { api, useApi } from './api/client'
 import { BaseRates } from './sections/BaseRates'
 import { Hero } from './sections/Hero'
 // below-the-fold sections are code-split + viewport-deferred so recharts and their code load on
@@ -258,40 +258,55 @@ function AppInner() {
 // On the free tier the whole app is asleep between visits; the Render gateway 502s every request
 // until uvicorn binds. Rather than fire ~6 data endpoints into that window (each retry logging a
 // console 502), we gate the fetching subtree on /api/health — the one cheap route that returns 200
-// the instant the port binds. `req` already rides 502/503/504 with capped backoff, so this resolves
-// the moment the backend is up, and NO data request is issued before then. A genuine cold wake shows
-// this splash for ~30–60s instead of a flood of broken cards.
+// the instant the port binds. A tight fixed-interval poll catches the bind within one interval and
+// shows a live "waking… Ns" screen, so a cold wake reads as clear progress (not a blank/broken page)
+// and NO data request is issued before the backend is up.
 function HealthGate({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
-  const [stalled, setStalled] = useState(false)
-  const [nonce, setNonce] = useState(0)
+  const [elapsed, setElapsed] = useState(0)
+  const [nonce, setNonce] = useState(0)   // manual "Retry now" restarts the poll immediately
   useEffect(() => {
     let alive = true
-    setStalled(false)
-    req('/health', undefined, { retries: 12 })
-      .then(() => { if (alive) setReady(true) })
-      .catch(() => { if (alive) setStalled(true) })   // exhausted the ~95s budget — offer a manual retry
-    return () => { alive = false }
-  }, [nonce])
+    setElapsed(0)
+    const t0 = Date.now()
+    const clock = setInterval(() => { if (alive) setElapsed(Math.round((Date.now() - t0) / 1000)) }, 1000)
+    // Tight fixed-interval poll: a free-tier cold wake 502s until uvicorn binds; poll every ~3s so we
+    // catch the bind promptly (the exponential backoff `req` used could lag ~10s behind it). A 502 or
+    // network error just means "still waking" — keep going. No other request fires until healthy.
+    const poll = async () => {
+      while (alive) {
+        const res = await fetch('/api/health', { cache: 'no-store' }).catch(() => null)
+        if (res && res.ok) { if (alive) setReady(true); return }
+        await new Promise((r) => setTimeout(r, 3000))
+      }
+    }
+    poll()
+    return () => { alive = false; clearInterval(clock) }
+  }, [nonce]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (ready) return <>{children}</>
+  const slow = elapsed >= 45
   return (
     <div className="grid min-h-screen place-items-center px-6">
-      <div className="flex max-w-sm flex-col items-center gap-4 text-center">
+      <div className="flex w-full max-w-sm flex-col items-center gap-4 text-center">
         <m.span className="font-mono text-3xl text-sig"
-          animate={stalled ? {} : { opacity: [0.4, 1, 0.4] }}
+          animate={{ opacity: [0.4, 1, 0.4] }}
           transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}>λ</m.span>
-        {stalled ? (
-          <>
-            <p className="text-sm text-ink-2">The server is taking longer than usual to wake.</p>
-            <button onClick={() => setNonce((n) => n + 1)}
-              className="chip border-sig/40 text-sig hover:bg-sig/10">Retry</button>
-          </>
-        ) : (
-          <>
-            <p className="text-sm text-ink-2">Waking the server…</p>
-            <p className="text-2xs text-muted">The first load after an idle period can take ~30–60s on the free tier. Hang tight — this only happens once.</p>
-          </>
+        <p className="text-sm text-ink-2">Waking the server… <span className="num text-muted">{elapsed}s</span></p>
+        {/* indeterminate progress bar — visibly "in progress", never frozen */}
+        <div className="h-1 w-48 overflow-hidden rounded-full bg-elevated">
+          <m.div className="h-full w-1/3 rounded-full bg-sig"
+            animate={{ x: ['-140%', '340%'] }}
+            transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }} />
+        </div>
+        <p className="text-2xs text-muted">
+          {slow
+            ? 'Almost there — free hosts wake slowly. Still connecting…'
+            : 'This site runs on a free tier that sleeps when idle. The first visit after a nap takes ~30s to wake — then it’s instant.'}
+        </p>
+        {slow && (
+          <button onClick={() => setNonce((n) => n + 1)}
+            className="chip border-sig/40 text-sig hover:bg-sig/10">Retry now</button>
         )}
       </div>
     </div>
