@@ -175,9 +175,14 @@ export function FleetStatus() {
         {/* live engine P&L — the λ-on vs λ-off edge on real on-chain fills (the traction story) */}
         {abl?.available && abl.lambda_on && abl.lambda_off && (
           <Panel>
-            <div className="mb-3 flex items-center justify-between">
-              <div className="label">live engine P&amp;L · λ-on vs λ-off (on-chain)</div>
-              {abl.underpowered && <Pill color="var(--warn)">directional only</Pill>}
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="label">engine P&amp;L · λ-on vs λ-off (on-chain)</div>
+              <div className="flex items-center gap-2">
+                {abl.is_live
+                  ? <Pill dot color="rgb(var(--profit))">live</Pill>
+                  : <Pill dot color="rgb(var(--muted))">last on-chain session{abl.session_date ? ` · ${abl.session_date}` : ''}</Pill>}
+                {abl.underpowered && <Pill color="var(--warn)">directional only</Pill>}
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Stat label="λ-ON P&L" value={`${abl.lambda_on.pnl >= 0 ? '+' : ''}${abl.lambda_on.pnl.toFixed(4)}`}

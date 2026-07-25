@@ -156,3 +156,63 @@ def test_runner_refuses_testnet_mode():
 def test_run_loop_refuses_testnet_without_injected_clob():
     with pytest.raises(RuntimeError, match="TestnetClob"):
         run_loop([], mode="testnet", n_ticks=1, interval_s=0.0)
+
+
+# ---------------------------------------------------------------------------------------------
+# session resolution — the dashboard reads the LATEST real on-chain session, live or archived.
+# This is what lets a fresh deploy (with no keeper running) still surface a genuine past session
+# from the committed forwardtest/results/ log instead of an empty "keeper hasn't run" page.
+# ---------------------------------------------------------------------------------------------
+import execution.testnet_keeper as tk
+
+
+def _write_session(path, day_ts=None):
+    import json as _json
+    with open(path, "w") as fh:
+        fh.write(_json.dumps({"type": "session_start", "mode": "testnet", "simulated": False}) + "\n")
+        fh.write(_json.dumps({"type": "session_end", "n_disputes_witnessed": 0,
+                              "per_market": [], "ticks_done": 1}) + "\n")
+
+
+def test_session_date_from_path_parses_and_rejects():
+    assert tk.session_date_from_path("x/session-testnet-20260721.jsonl") == "2026-07-21"
+    assert tk.session_date_from_path("x/session-testnet-bogus.jsonl") is None
+    assert tk.session_date_from_path("") is None
+
+
+def test_latest_session_path_none_when_empty(tmp_path, monkeypatch):
+    monkeypatch.setattr(tk, "_keeper", None)
+    monkeypatch.setattr(tk, "_SESSION_DIRS", (str(tmp_path / "nope"),))
+    path, is_live = tk.latest_session_path()
+    assert path is None and is_live is False
+
+
+def test_latest_session_path_falls_back_to_newest_archived(tmp_path, monkeypatch):
+    d = tmp_path / "sessions"
+    d.mkdir()
+    old = d / "session-testnet-20260720.jsonl"
+    new = d / "session-testnet-20260721.jsonl"
+    _write_session(old, None)
+    _write_session(new, None)
+    monkeypatch.setattr(tk, "_keeper", None)      # no live keeper writing today
+    monkeypatch.setattr(tk, "_SESSION_DIRS", (str(d),))
+    path, is_live = tk.latest_session_path()
+    assert path == str(new)          # newest by embedded date wins
+    assert is_live is False          # archived, not the live keeper
+
+
+def test_latest_session_path_prefers_running_keeper(tmp_path, monkeypatch):
+    d = tmp_path / "sessions"
+    d.mkdir()
+    archived = d / "session-testnet-20260721.jsonl"
+    live = d / "session-testnet-20260726.jsonl"
+    _write_session(archived, None)
+    _write_session(live, None)
+
+    class _LiveKeeper:
+        out_path = str(live)
+        running = True
+    monkeypatch.setattr(tk, "_keeper", _LiveKeeper())
+    monkeypatch.setattr(tk, "_SESSION_DIRS", (str(d),))
+    path, is_live = tk.latest_session_path()
+    assert path == str(live) and is_live is True

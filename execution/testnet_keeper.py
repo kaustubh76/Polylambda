@@ -25,6 +25,7 @@ the GH-cron watchdog.
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import os
 import threading
@@ -326,10 +327,50 @@ class TestnetKeeper:
 
 def current_session_path() -> str:
     """The testnet session-log path the keeper is (or would be) writing today — the keeper's own
-    out_path if it has run, else the default daily file. Used by the dashboard analytics endpoints."""
+    out_path if it has run, else the default daily file. This is a WRITE path (may not exist yet)."""
     kp = get_keeper()
     return kp.out_path or os.path.join(
         ".data_cache", "sessions", f"session-testnet-{time.strftime('%Y%m%d', time.gmtime())}.jsonl")
+
+
+# Directories searched for real on-chain session logs, newest file wins. `.data_cache/sessions` is
+# where the live keeper writes (gitignored — local dev only); `forwardtest/results` holds committed
+# on-chain sessions so a fresh deploy (Render) still has a real session to surface, not an empty page.
+_SESSION_DIRS = (
+    os.path.join(".data_cache", "sessions"),
+    os.path.join("forwardtest", "results"),
+)
+
+
+def latest_session_path() -> tuple[str | None, bool]:
+    """Resolve the best testnet session log to READ for the dashboard analytics endpoints.
+
+    Returns (path, is_live). Prefers the keeper's own out_path when it is actively running today
+    (is_live=True); otherwise falls back to the most-recent existing `session-testnet-*.jsonl` on
+    disk across `_SESSION_DIRS` (is_live=False — an archived real on-chain session). Returns
+    (None, False) only when no session exists anywhere. The fallback is what lets a cold deploy
+    show a genuine past on-chain session instead of a "keeper hasn't run" blank."""
+    kp = get_keeper()
+    if kp.out_path and os.path.exists(kp.out_path):
+        return kp.out_path, bool(kp.running)
+    candidates: list[str] = []
+    for d in _SESSION_DIRS:
+        candidates.extend(glob.glob(os.path.join(d, "session-testnet-*.jsonl")))
+    if not candidates:
+        return None, False
+    # filenames embed the UTC date (session-testnet-YYYYMMDD.jsonl), so lexical max == newest day;
+    # fall back to mtime as the tiebreaker for same-day / non-standard names.
+    newest = max(candidates, key=lambda p: (os.path.basename(p), os.path.getmtime(p)))
+    return newest, False
+
+
+def session_date_from_path(path: str) -> str | None:
+    """Extract the YYYY-MM-DD embedded in a `session-testnet-YYYYMMDD.jsonl` filename, else None."""
+    base = os.path.basename(path or "")
+    stem = base.replace("session-testnet-", "").replace(".jsonl", "")
+    if len(stem) == 8 and stem.isdigit():
+        return f"{stem[0:4]}-{stem[4:6]}-{stem[6:8]}"
+    return None
 
 
 # module singleton for the webapp (one keeper per process — the nonce-lock argument)

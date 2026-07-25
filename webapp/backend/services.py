@@ -740,31 +740,32 @@ def quote_curve(*, category: str = "politics", price: float = 0.62, horizon_days
 def testnet_ablation() -> dict:
     """The LIVE testnet session's λ-on vs λ-off rollup via the real ablation reader (per-arm equity/
     pnl, delta, n_disputes, honest underpowered/caveat). Never recomputes the model — pure log fold."""
-    import os
-    from execution.testnet_keeper import current_session_path
+    from execution.testnet_keeper import latest_session_path, session_date_from_path
     from forwardtest.ablation import run_live_ablation
-    path = current_session_path()
-    if not os.path.exists(path):
-        return {"available": False, "note": "no testnet session yet — the keeper has not run today"}
+    path, is_live = latest_session_path()
+    if not path:
+        return {"available": False, "note": "no on-chain session recorded yet — the keeper has not run"}
     out = run_live_ablation(path)
     out["available"] = True
+    out["is_live"] = is_live
+    out["session_date"] = session_date_from_path(path)
     return out
 
 
 def testnet_session(limit: int = 60) -> dict:
     """The last session_end rollup + the most-recent real on-chain fills / exits / dispute_flagged
     records (each carrying a tx hash) — the on-chain proof stream for the dashboard."""
-    import os
-    from execution.testnet_keeper import current_session_path
+    from execution.testnet_keeper import latest_session_path, session_date_from_path
     from forwardtest.session_log import read
-    path = current_session_path()
-    if not os.path.exists(path):
-        return {"available": False, "note": "no testnet session yet — the keeper has not run today"}
+    path, is_live = latest_session_path()
+    if not path:
+        return {"available": False, "note": "no on-chain session recorded yet — the keeper has not run"}
     recs = read(path)
     end = next((r for r in reversed(recs) if r.get("type") == "session_end"), None)
     keep = {"fill", "exit", "dispute_flagged"}
     events = [r for r in recs if r.get("type") in keep][-int(limit):]
-    return {"available": True, "session_log_path": path, "n_records": len(recs),
+    return {"available": True, "is_live": is_live, "session_date": session_date_from_path(path),
+            "session_log_path": path, "n_records": len(recs),
             "rollup": ({"per_market": end.get("per_market"), "per_arm_totals": end.get("per_arm_totals"),
                         "ticks_done": end.get("ticks_done")} if end else None),
             "events": events}

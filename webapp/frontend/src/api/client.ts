@@ -238,6 +238,7 @@ export interface TnKeeper {
 export interface TnArmRollup { arm: string; n_fills: number; n_exits: number; equity_mark: number; pnl: number; cash: number; inventory: number; sim_reward_score: number }
 export interface TnAblation {
   available: boolean; note?: string
+  is_live?: boolean; session_date?: string | null
   lambda_on?: TnArmRollup; lambda_off?: TnArmRollup
   delta_on_minus_off?: { pnl: number; n_exits: number; sim_reward_score: number }
   n_disputes?: number; underpowered?: boolean; caveat?: string

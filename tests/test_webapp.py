@@ -178,7 +178,7 @@ def test_testnet_analytics_endpoints(client, monkeypatch, tmp_path):
     import json
     from execution import testnet_keeper as tk
 
-    monkeypatch.setattr(tk, "current_session_path", lambda: str(tmp_path / "absent.jsonl"))
+    monkeypatch.setattr(tk, "latest_session_path", lambda: (None, False))
     assert client.get("/api/testnet/ablation").json()["available"] is False
     assert client.get("/api/testnet/session").json()["available"] is False
 
@@ -200,10 +200,11 @@ def test_testnet_analytics_endpoints(client, monkeypatch, tmp_path):
          "n_disputes_witnessed": 1, "ticks_done": 3},
     ]
     log.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
-    monkeypatch.setattr(tk, "current_session_path", lambda: str(log))
+    monkeypatch.setattr(tk, "latest_session_path", lambda: (str(log), False))
 
     a = client.get("/api/testnet/ablation").json()
     assert a["available"] is True
+    assert a["is_live"] is False    # archived on-chain session surfaced on a fresh/idle deploy
     assert a["lambda_on"]["pnl"] == pytest.approx(0.015) and a["lambda_off"]["pnl"] == pytest.approx(0.0)
     assert a["delta_on_minus_off"]["pnl"] == pytest.approx(0.015)
     assert a["underpowered"] is True and "UNDERPOWERED" in a["caveat"]
