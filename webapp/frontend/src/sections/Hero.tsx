@@ -1,7 +1,7 @@
-import type { Overview } from '../api/client'
+import type { LiveEdge, Overview } from '../api/client'
 import { int, num, pct1 } from '../lib/format'
 import { AnimatedNumber, Reveal, Stagger } from '../lib/motion'
-import { Async, Caveat, Panel, PanelSkeleton, Section, SourceTag, Skeleton } from '../components/ui'
+import { Async, Caveat, Panel, PanelSkeleton, Pill, Section, SourceTag, Skeleton } from '../components/ui'
 
 function fmtTile(v: number, fmt: string) {
   if (fmt === 'int') return int(v)
@@ -51,11 +51,46 @@ function StrategyConfig({ frozen, source }: { frozen: Record<string, number | st
   )
 }
 
+const signed = (v: number, digits = 4) => `${v >= 0 ? '+' : ''}${num(v, digits)}`
+
+// Headline strip — the last real on-chain session's λ-on−λ-off edge, led at the top of the page.
+// Honest by construction: it shows the raw on-chain delta but always carries the `directional only`
+// pill while underpowered, so a 1-dispute directional result is never dressed up as a powered one.
+function LiveEdgeStrip({ edge }: { edge: LiveEdge }) {
+  const d = edge.delta_pnl ?? 0
+  const on = edge.lambda_on_pnl ?? 0
+  const off = edge.lambda_off_pnl ?? 0
+  const n = edge.n_disputes ?? 0
+  return (
+    <Panel className="panel-interactive flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <div className="flex items-baseline gap-2">
+          <span className="label text-sig">on-chain λ-edge</span>
+          <span className="num text-2xl font-semibold" style={{ color: d >= 0 ? 'rgb(var(--profit))' : 'rgb(var(--loss))' }}>
+            {signed(d)}<span className="ml-1 text-sm font-normal text-muted">USDC</span>
+          </span>
+        </div>
+        <div className="mt-1 text-2xs text-muted">
+          λ-on {signed(on)} vs λ-off {signed(off)} · {n} dispute{n === 1 ? '' : 's'} survived on-chain
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {edge.is_live
+          ? <Pill dot color="rgb(var(--profit))">live</Pill>
+          : <Pill dot color="rgb(var(--muted))">last on-chain session{edge.session_date ? ` · ${edge.session_date}` : ''}</Pill>}
+        {edge.underpowered && <Pill dot color="rgb(var(--warn))">directional only</Pill>}
+      </div>
+    </Panel>
+  )
+}
+
 export function Hero({ q }: { q: { data: Overview | null; error: string | null; loading: boolean } }) {
   return (
     <Section id="overview" kicker="Polymarket Builders Program · research MVP"
       title="Treat disputes as jumps — and exit before they lock your capital.">
       <Async q={q} skeleton={<HeroSkeleton />}>{(d) => (
+        <div className="space-y-5">
+        {d.live_edge?.available && <LiveEdgeStrip edge={d.live_edge} />}
         <div className="relative grid gap-5 lg:grid-cols-[1.15fr_1fr]">
           {/* on-theme aurora: two slow-drifting brand-hue radial glows behind the panels */}
           <div aria-hidden className="pointer-events-none absolute -inset-8 -z-10 overflow-hidden">
@@ -112,6 +147,7 @@ export function Hero({ q }: { q: { data: Overview | null; error: string | null; 
             </Stagger>
             {d.frozen_params && <StrategyConfig frozen={d.frozen_params} source={d.frozen_params_source} />}
           </div>
+        </div>
         </div>
       )}</Async>
     </Section>

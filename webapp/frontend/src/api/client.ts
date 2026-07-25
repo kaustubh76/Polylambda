@@ -130,9 +130,15 @@ export function useAction<T, A>(fn: (arg: A) => Promise<T>): {
 
 // ---- response types --------------------------------------------------------------------------
 export interface Tile { label: string; value: number; fmt: string; sub: string }
+export interface LiveEdge {
+  available: boolean; is_live?: boolean; session_date?: string | null
+  delta_pnl?: number; lambda_on_pnl?: number; lambda_off_pnl?: number
+  n_disputes?: number; underpowered?: boolean
+}
 export interface Overview {
   thesis: string; thesis_nuance: string; jump_diffusion: string; mode: string; positioning: string
   tiles: Tile[]; frozen_params: Record<string, number | string>; frozen_params_source: string
+  live_edge?: LiveEdge
   dataset: { total_disputes: number; hf_joinable_pct: number; by_year: Record<string, number>
     by_adapter: Record<string, number>; date_min: string; date_max: string }
 }

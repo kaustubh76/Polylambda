@@ -32,6 +32,31 @@ def test_overview_tiles(client):
     assert "dX" in d["jump_diffusion"]
 
 
+def test_overview_live_edge_headline(client, monkeypatch):
+    """The overview payload leads with the last on-chain session's λ-edge, degrading to
+    available:false (never raising) when no session exists — the strip is guarded on it."""
+    from webapp.backend import services
+    from execution import testnet_keeper as tk
+
+    # available: pin to the committed on-chain session so the assertion is deterministic
+    committed = "forwardtest/results/session-testnet-20260721.jsonl"
+    monkeypatch.setattr(tk, "latest_session_path", lambda: (committed, False))
+    services._edge_cache.update(t=0.0, val=None)
+    le = client.get("/api/overview").json()["live_edge"]
+    assert le["available"] is True and le["is_live"] is False
+    assert le["session_date"] == "2026-07-21"
+    assert le["delta_pnl"] == pytest.approx(0.00867, abs=5e-4)  # λ-on +0.0239 − λ-off +0.0152
+    assert le["underpowered"] is True                           # 1 dispute « 10 → directional only
+
+    # degraded: no session anywhere → overview STILL 200, live_edge just unavailable (never raises)
+    monkeypatch.setattr(tk, "latest_session_path", lambda: (None, False))
+    services._edge_cache.update(t=0.0, val=None)
+    d2 = client.get("/api/overview").json()
+    assert d2["live_edge"] == {"available": False}
+    assert len(d2["tiles"]) == 4                                # rest of overview intact
+    services._edge_cache.update(t=0.0, val=None)               # don't leak the degraded value via TTL
+
+
 def test_baserates_ordered_and_ci_bracketed(client):
     d = client.get("/api/baserates").json()
     rows = d["rows"]

@@ -62,6 +62,36 @@ def _dataset_date_bounds(df) -> tuple[str | None, str | None]:
 # ---------------------------------------------------------------------------------------------
 # overview / headline
 # ---------------------------------------------------------------------------------------------
+_EDGE_TTL = 60.0  # seconds — the session-log fold is cheap but shouldn't re-read per overview hit
+_edge_cache: dict = {"t": 0.0, "val": None}
+
+
+def _live_edge() -> dict:
+    """Compact last-on-chain-session λ-edge (λ-on−λ-off) for the overview headline strip.
+
+    Best-effort + TTL-cached: overview is on the cheap, un-`_with_timeout`'d, prewarmed path, so a
+    slow / missing / malformed session log must NEVER stall or break it — any failure degrades to
+    {"available": False}. Surfaces the REAL on-chain delta; the frontend carries the underpowered
+    caveat so a 1-dispute directional result is never dressed up as a powered one."""
+    now = time.monotonic()
+    if _edge_cache["val"] is not None and now - _edge_cache["t"] < _EDGE_TTL:
+        return _edge_cache["val"]
+    try:
+        a = testnet_ablation()
+        if a.get("available"):
+            val = {"available": True, "is_live": a.get("is_live", False),
+                   "session_date": a.get("session_date"),
+                   "delta_pnl": a["delta_on_minus_off"]["pnl"],
+                   "lambda_on_pnl": a["lambda_on"]["pnl"], "lambda_off_pnl": a["lambda_off"]["pnl"],
+                   "n_disputes": a.get("n_disputes", 0), "underpowered": a.get("underpowered", True)}
+        else:
+            val = {"available": False}
+    except Exception:
+        val = {"available": False}     # overview must never break on the session read
+    _edge_cache.update(t=now, val=val)
+    return val
+
+
 def overview() -> dict:
     stats = cache.dataset_stats()
     hz = cache.hazard_models()
@@ -96,6 +126,7 @@ def overview() -> dict:
         "thesis": K.THESIS, "thesis_nuance": K.THESIS_NUANCE, "jump_diffusion": K.JUMP_DIFFUSION,
         "mode": frozen.get("mode", "paper"), "positioning": frozen.get("positioning", "both"),
         "tiles": tiles, "frozen_params": frozen, "frozen_params_source": frozen_src,
+        "live_edge": _live_edge(),
         "dataset": {"total_disputes": stats.get("total_disputes"),
                     "hf_joinable_pct": stats.get("hf_joinable_pct"),
                     "by_year": stats.get("by_year"), "by_adapter": stats.get("by_adapter"),
