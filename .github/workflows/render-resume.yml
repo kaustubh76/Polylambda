@@ -1,0 +1,39 @@
+# The Render workspace exhausted July's free instance-hours on 2026-07-27 and suspended every
+# service ("Free Tier Usage Exceeded"). Free hours reset on the 1st of each month, but a
+# billing-suspended service does not always come back by itself — this workflow resumes
+# `polylambda` explicitly, then health-checks it.
+#
+# Deliberately resumes ONLY polylambda: one always-on free service (~744 h/mo) just fits the
+# free 750 h/mo pool. Resuming the other suspended services (window-*) would split the pool and
+# kill the demo mid-month again — leave them suspended.
+#
+# Needs the RENDER_API_KEY repo secret (workspace: pypi.gateway@gmail.com / "My Workspace").
+name: render-resume
+
+on:
+  schedule:
+    - cron: "20 0 1,2 * *"   # 00:20 UTC on the 1st and 2nd (idempotent; the 2nd is the retry)
+  workflow_dispatch: {}
+
+jobs:
+  resume:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: resume the polylambda service (no-op if already running)
+        run: |
+          code=$(curl -s -o /tmp/resume.json -w '%{http_code}' -X POST \
+            -H "authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            https://api.render.com/v1/services/srv-d9e5h5daeets73afgs00/resume)
+          echo "resume HTTP $code"; cat /tmp/resume.json || true
+          # 2xx = resumed, 400/409-ish = already running / not resumable yet — both fine here;
+          # the health gate below is the real verdict.
+      - name: wait for health (cold boot + image pull can take a few minutes)
+        run: |
+          curl -sfS --retry 20 --retry-delay 30 --retry-all-errors --max-time 60 \
+            https://polylambda-9lu2.onrender.com/api/health
+      - name: kick the on-chain keeper back to life
+        run: |
+          curl -sfS --retry 3 --retry-delay 20 --retry-all-errors --max-time 90 \
+            -X POST -H 'content-type: application/json' -d '{"ticks": 10}' \
+            https://polylambda-9lu2.onrender.com/api/testnet/keeper/run || true
