@@ -32,8 +32,10 @@ jobs:
         run: |
           curl -sfS --retry 20 --retry-delay 30 --retry-all-errors --max-time 60 \
             https://polylambda-9lu2.onrender.com/api/health
-      - name: kick the on-chain keeper back to life
+      - name: kick the on-chain keeper back to life (continuous, not a 10-tick burst)
         run: |
+          # KEEPER_AUTOSTART=1 makes the keeper start on boot; this is the belt-and-suspenders kick
+          # for a resume that didn't cold-boot. /keeper/start runs continuously (start_background,
+          # ~10k ticks) so the engine stays live all month, vs /keeper/run which died after 10 ticks.
           curl -sfS --retry 3 --retry-delay 20 --retry-all-errors --max-time 90 \
-            -X POST -H 'content-type: application/json' -d '{"ticks": 10}' \
-            https://polylambda-9lu2.onrender.com/api/testnet/keeper/run || true
+            -X POST https://polylambda-9lu2.onrender.com/api/testnet/keeper/start || true
