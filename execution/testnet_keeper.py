@@ -44,6 +44,22 @@ def _mark_mid(book: dict) -> float | None:
     return None
 
 
+def _max_markets_env() -> int:
+    """KEEPER_MAX_MARKETS — cap on how many markets the live keeper manages (0/unset/invalid = all).
+    The lever for constrained hosts (Render free = 512MB): the full fleet's per-market estimator +
+    MarketState + web3 footprint OOM-kills the box, so the live engine signs for a trimmed subset."""
+    try:
+        return max(0, int(os.environ.get("KEEPER_MAX_MARKETS", "0") or "0"))
+    except ValueError:
+        return 0
+
+
+def _cap_markets(managed: list, cap: int) -> list:
+    """First `cap` managed markets (cap<=0 → all). The dashboard still READS the whole fleet;
+    this only bounds what the engine builds estimators for and signs quotes on."""
+    return managed[:cap] if cap > 0 and len(managed) > cap else managed
+
+
 class TestnetKeeper:
     __test__ = False  # not a pytest class, despite the name
 
@@ -87,6 +103,7 @@ class TestnetKeeper:
             if not managed:
                 raise RuntimeError("no keeper_managed markets in the fleet registry — "
                                    "run scripts/deploy_fleet.py first")
+            managed = _cap_markets(managed, _max_markets_env())
             w3 = make_w3()
             self.clob = TestnetClob(managed, AmoySigner(w3), ChainReader(w3, abi),
                                     risk=self.risk,
@@ -99,6 +116,10 @@ class TestnetKeeper:
                 managed, confirmations=self.cfg.dispute_confirmations)
         if self.markets is None:
             self.markets = self.build_markets()
+            # the fleet build transiently loads the σ-prior corpus + dispute counts; release that
+            # scratch memory promptly so a constrained host (512MB free tier) doesn't get OOM-killed.
+            import gc
+            gc.collect()
 
     def build_markets(self) -> list:
         """MarketState fleet from the registry + REAL estimators (runner.build_markets pattern)."""
@@ -302,6 +323,7 @@ class TestnetKeeper:
               "last_tick_ts": self.last_tick_ts, "interval_s": self.interval_s,
               "out_path": self.out_path, "last_error": self.last_error,
               "n_markets": len(self.markets) if self.markets else 0,
+              "max_markets": int(os.environ.get("KEEPER_MAX_MARKETS", "0") or "0"),  # 0 = all
               # why the live keeper is (not) signing — both must be true in prod:
               "autostart": os.environ.get("KEEPER_AUTOSTART") == "1",
               "engine_ready": engine_key() is not None}

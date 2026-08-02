@@ -174,6 +174,25 @@ def _write_session(path, day_ts=None):
                               "per_market": [], "ticks_done": 1}) + "\n")
 
 
+def test_market_cap_helpers(monkeypatch):
+    from execution.testnet_keeper import _cap_markets, _max_markets_env
+    m = ["a", "b", "c", "d", "e", "f"]
+    # cap slicing
+    assert _cap_markets(m, 0) == m          # 0 = all
+    assert _cap_markets(m, 2) == ["a", "b"]  # trimmed to first N (deterministic order)
+    assert _cap_markets(m, 99) == m          # cap >= len is a no-op
+    assert _cap_markets(m, -1) == m          # negative = all
+    # env parsing
+    monkeypatch.delenv("KEEPER_MAX_MARKETS", raising=False)
+    assert _max_markets_env() == 0
+    monkeypatch.setenv("KEEPER_MAX_MARKETS", "1")
+    assert _max_markets_env() == 1
+    monkeypatch.setenv("KEEPER_MAX_MARKETS", "")     # empty → all
+    assert _max_markets_env() == 0
+    monkeypatch.setenv("KEEPER_MAX_MARKETS", "junk")  # invalid → all, never raises
+    assert _max_markets_env() == 0
+
+
 def test_session_date_from_path_parses_and_rejects():
     assert tk.session_date_from_path("x/session-testnet-20260721.jsonl") == "2026-07-21"
     assert tk.session_date_from_path("x/session-testnet-bogus.jsonl") is None
