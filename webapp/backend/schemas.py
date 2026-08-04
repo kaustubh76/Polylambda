@@ -15,19 +15,3 @@ class ScoreRequest(BaseModel):
 
 class KeeperRunRequest(BaseModel):
     ticks: int = Field(10, ge=1, le=10_000, description="burst length for the testnet keeper")
-
-
-class SessionRequest(BaseModel):
-    scenario: str = Field("dispute_defense", description="dispute_defense | live_quoting")
-    # dispute_defense knobs
-    category: str = "politics"
-    entry_price: float = Field(0.62, gt=0.0, lt=1.0)
-    inventory: float = Field(100.0, description="starting position both arms hold")
-    dispute_tick: int = Field(5, ge=1, le=40)
-    gap_logit: float = Field(-1.35, description="realized dispute jump size (logit)")
-    n_ticks: int = Field(13, ge=3, le=60)
-    # live_quoting knobs
-    n_markets: int = Field(4, ge=2, le=6)
-    seed: int = 7
-    source: str = Field("synthetic", description="synthetic | data (real disputed markets)")
-    hazard: bool = Field(False, description="drive λ from the hazard logistic (real-market runs)")

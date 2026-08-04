@@ -113,7 +113,6 @@ export function Hero({ q }: { q: { data: Overview | null; error: string | null; 
             <div className="mt-5 flex flex-wrap gap-2">
               <a href="#fleet" className="btn btn-primary">See the live engine →</a>
               <a href="#score" className="btn">Score a market</a>
-              <a href="#session" className="btn">Watch the engine defend</a>
             </div>
             <div className="mt-3 flex flex-wrap gap-2 text-2xs">
               <span className="chip">positioning · {d.positioning}</span>

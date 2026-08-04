@@ -123,5 +123,5 @@ else:
                 "note": "Frontend not built yet — run `cd webapp/frontend && npm run dev` (port 5173),"
                         " or `npm run build` to serve it here.",
                 "endpoints": ["/api/overview", "/api/baserates", "/api/lambda/score",
-                              "/api/session/run", "/api/ablation", "/api/hazard", "/api/disputes",
+                              "/api/ablation", "/api/hazard", "/api/disputes",
                               "/api/recon", "/api/sigma"]}

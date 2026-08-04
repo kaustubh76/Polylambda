@@ -188,7 +188,7 @@ function Outputs({ d }: { d: ScoreResp }) {
         <div className="mt-3">
           <Caveat kind="calibration">
             At an at-rest market the base-rate λ makes E[loss] tiny vs continuous reward income → the gate honestly
-            says <b>hold</b>. The exit fires when a live proposal is actually detected (λ_jump → posterior≈1) — see the paper engine below.
+            says <b>hold</b>. The exit fires when a live proposal is actually detected (λ_jump → posterior≈1) — watch it run on the live testnet engine above.
           </Caveat>
         </div>
       </Panel>

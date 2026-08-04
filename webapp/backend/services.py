@@ -9,7 +9,6 @@ import time
 
 from . import cache
 from . import constants as K
-from . import scenario
 
 
 # ---------------------------------------------------------------------------------------------
@@ -256,23 +255,6 @@ def _gate_reason(lam, lam_star, e_loss, forgone, spread, inventory) -> str:
     if e_loss > forgone + spread:
         return f"E[jump loss] ${e_loss:.2f} > forgone rewards ${forgone:.2f} + haircut ${spread:.2f} → EXIT."
     return f"E[jump loss] ${e_loss:.2f} ≤ forgone ${forgone:.2f} + haircut ${spread:.2f} — rewards worth more; hold."
-
-
-# ---------------------------------------------------------------------------------------------
-# forward-test scenarios (centerpiece)
-# ---------------------------------------------------------------------------------------------
-def run_session(*, scenario_name: str = "dispute_defense", **kw) -> dict:
-    if scenario_name == "live_quoting":
-        return scenario.run_live_quoting(n_ticks=int(kw.get("n_ticks", 40)),
-                                         n_markets=int(kw.get("n_markets", 4)),
-                                         seed=int(kw.get("seed", 7)),
-                                         source=str(kw.get("source", "synthetic")),
-                                         hazard=bool(kw.get("hazard", False)))
-    cache.install_offline_di()
-    return scenario.run_dispute_defense(
-        category=kw.get("category", "politics"), entry_price=float(kw.get("entry_price", 0.62)),
-        inventory=float(kw.get("inventory", 100.0)), dispute_tick=int(kw.get("dispute_tick", 5)),
-        gap_logit=float(kw.get("gap_logit", -1.35)), n_ticks=int(kw.get("n_ticks", 13)))
 
 
 # ---------------------------------------------------------------------------------------------

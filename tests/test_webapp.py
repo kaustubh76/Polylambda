@@ -93,33 +93,6 @@ def test_score_exit_gate_flat_when_no_inventory(client):
     assert "flat" in d["exit_gate"]["reason"].lower()
 
 
-def test_dispute_defense_scenario_protects_capital(client):
-    d = client.post("/api/session/run", json={"scenario": "dispute_defense"}).json()
-    assert d["simulated"] is True
-    on = d["series"]["lambda_on"]
-    off = d["series"]["lambda_off"]
-    assert len(on) == len(off) >= 8
-    # identical hold before the dispute (tick 0)
-    assert on[0]["equity"] == pytest.approx(off[0]["equity"], abs=1e-6)
-    s = d["summary"]
-    # the λ-ON arm ends with a strictly smaller loss (capital protected) and the exit gate fired
-    assert s["on_final_equity"] > s["off_final_equity"]
-    assert s["protected"] > 0
-    assert s["n_exits"] >= 1
-
-
-def test_live_quoting_session_is_simulated_and_pnl_honest(client):
-    d = client.post("/api/session/run", json={"scenario": "live_quoting", "n_ticks": 20, "n_markets": 4}).json()
-    assert d["simulated"] is True
-    totals = d["summary"]["per_arm_totals"]
-    assert set(totals) == {"lambda_on", "lambda_off"}
-    # honesty invariant (matches tests/test_runner): reported P&L == cash + inventory·mark and the
-    # accrued sim reward score is tracked SEPARATELY, never folded into P&L.
-    for arm in totals.values():
-        assert arm["pnl"] == pytest.approx(arm["equity_mark"], abs=1e-6)
-        assert arm["sim_reward_score"] >= 0.0
-
-
 def test_ablation_shape(client):
     d = client.get("/api/ablation").json()
     assert d["meta"]["n_disputes"] == 1409

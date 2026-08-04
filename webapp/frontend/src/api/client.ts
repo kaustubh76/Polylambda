@@ -45,7 +45,6 @@ export const api = {
   overview: () => req<Overview>('/overview'),
   baserates: () => req<BaseRates>('/baserates'),
   score: (body: ScoreReq) => req<ScoreResp>('/lambda/score', { method: 'POST', body: JSON.stringify(body) }),
-  session: (body: SessionReq) => req<SessionResp>('/session/run', { method: 'POST', body: JSON.stringify(body) }),
   ablation: (live = false) => req<Ablation>(`/ablation${live ? '?live=1' : ''}`),
   hazard: () => req<Hazard>('/hazard'),
   disputes: (qs: string) => req<Disputes>(`/disputes${qs}`),
@@ -153,22 +152,6 @@ export interface ScoreResp {
   lambda: { lambda_select: number; lambda_jump: number; jump_drift: number; e_loss: number; ci_low: number; ci_high: number; model: string }
   quote: { mid: number; bid: number; ask: number; spread: number; sigma: number; diffusion_logit: number; jump_logit: number; jump_share: number }
   exit_gate: { lambda_jump: number; lambda_star: number; e_jump_loss_usd: number; forgone_rewards: number; spread_cost: number; would_exit: boolean; reason: string }
-}
-
-export interface SessionReq { scenario: string; category?: string; entry_price?: number; inventory?: number; dispute_tick?: number; gap_logit?: number; n_ticks?: number; n_markets?: number; seed?: number; source?: string; hazard?: boolean }
-export interface DDPoint { i: number; mid: number; inventory: number; equity: number; cash: number }
-export interface ExitEvent { cid: string; trigger: string; inventory_before: number; inventory_after: number; exit_price: number; haircut_paid: number; lambda_jump: number; lambda_star: number; e_jump_loss: number; forgone_rewards: number }
-export interface SessionResp {
-  simulated: boolean; scenario: string
-  params?: Record<string, number | string>
-  series: Record<string, any[]> | { lambda_on: DDPoint[]; lambda_off: DDPoint[] }
-  exits?: ExitEvent[]
-  summary?: any
-  narrative?: string
-  quotes?: Record<string, any[]>
-  n_fills?: number
-  market_source?: string
-  hazard?: boolean
 }
 
 export interface AblationArm { arm: string; arm_label: string; points: { lambda_star: number; pnl_net_of_rewards: number; sharpe: number }[] }

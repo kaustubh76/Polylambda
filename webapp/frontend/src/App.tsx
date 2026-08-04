@@ -7,7 +7,6 @@ import { Hero } from './sections/Hero'
 // scroll, not up front (see DeferSection). Named exports → default-shaped for React.lazy.
 const FleetStatus = lazy(() => import('./sections/FleetStatus').then((m) => ({ default: m.FleetStatus })))
 const ScoreMarket = lazy(() => import('./sections/ScoreMarket').then((m) => ({ default: m.ScoreMarket })))
-const PaperSession = lazy(() => import('./sections/PaperSession').then((m) => ({ default: m.PaperSession })))
 const Ablation = lazy(() => import('./sections/Ablation').then((m) => ({ default: m.Ablation })))
 const HazardCard = lazy(() => import('./sections/HazardCard').then((m) => ({ default: m.HazardCard })))
 const Disputes = lazy(() => import('./sections/Disputes').then((m) => ({ default: m.Disputes })))
@@ -27,7 +26,6 @@ const NAV = [
   { id: 'fleet', label: 'Fleet & keeper' },
   { id: 'baserates', label: 'λ signal' },
   { id: 'score', label: 'Score a market' },
-  { id: 'session', label: 'Paper engine' },
   { id: 'ablation', label: 'Edge proof' },
   { id: 'hazard', label: 'Model card' },
   { id: 'disputes', label: 'Disputes' },
@@ -39,7 +37,7 @@ const NAV = [
 ]
 // `g`-then-letter jump keys (shown as hints in the command palette)
 const GOTO_KEYS: Record<string, string> = {
-  overview: 'o', fleet: 'k', baserates: 'b', score: 's', session: 'e', ablation: 'a',
+  overview: 'o', fleet: 'k', baserates: 'b', score: 's', ablation: 'a',
   hazard: 'h', disputes: 'd', live: 'i', recon: 'r', sigma: 'v', hfdata: 'f', hfmarkets: 'm',
 }
 
@@ -131,7 +129,6 @@ function ScrollToTop() {
 function AppInner() {
   const overview = useApi(api.overview, [])
   const active = useScrollSpy(NAV.map((n) => n.id))
-  const mode = overview.data?.mode ?? 'paper'
   const navRef = useRef<HTMLUListElement>(null)
 
   // keep the active nav tab scrolled into view (matters on mobile where the row overflows)
@@ -189,7 +186,7 @@ function AppInner() {
             <LivePill />
             <span className="chip hidden sm:inline-flex">
               <span className="h-1.5 w-1.5 animate-pulse2 rounded-full bg-sig" />
-              MODE · {mode}
+              MODE · testnet
             </span>
           </div>
         </div>
@@ -221,7 +218,6 @@ function AppInner() {
         <BaseRates />
         {/* below the fold: code-split + viewport-deferred (recharts loads on scroll) */}
         <DeferSection id="score" lines={7}><ScoreMarket /></DeferSection>
-        <DeferSection id="session" lines={8}><PaperSession /></DeferSection>
         <DeferSection id="ablation" lines={6}><Ablation /></DeferSection>
         <DeferSection id="hazard" lines={6}><HazardCard /></DeferSection>
         <DeferSection id="disputes" lines={8}><Disputes /></DeferSection>
@@ -236,10 +232,10 @@ function AppInner() {
         <div className="mx-auto max-w-7xl px-5 py-8 text-2xs leading-relaxed text-muted">
           <p className="mb-1">
             <span className="font-mono text-sig">λ PolyLambda</span> — a thin, read-only dashboard wired to the
-            real engine (estimators · execution · forward-test). Every figure is computed by the actual
-            code or read from a shipped artifact; the paper engine is deterministic and network-free.
+            real engine (estimators · execution · risk). Every figure is computed by the actual code or read
+            from a shipped artifact over real on-chain history.
           </p>
-          <p>Mainnet trading is jurisdiction-gated and out of scope for v1 — paper figures are stamped <span className="font-mono">simulated: true</span>. The <b>testnet execution engine</b> runs live on Polygon Amoy: the production loop signs its own quotes/fills from a server-side engine wallet (play-money testnet), stamped <span className="font-mono">simulated: false</span> — this dashboard is a read-only monitor of it.</p>
+          <p>Mainnet trading is jurisdiction-gated and out of scope for v1. This dashboard runs <b>testnet execution only</b> — no paper mode: the production loop signs its own quotes/fills on Polygon Amoy from a server-side engine wallet (play-money testnet), stamped <span className="font-mono">simulated: false</span>, and this page is a read-only monitor of it.</p>
           <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-line pt-4 text-ink-2">
             <a className="link-underline hover:text-sig" href="https://github.com/kaustubh76/Polylambda" target="_blank" rel="noreferrer">GitHub ↗</a>
             <a className="link-underline hover:text-sig" href="https://huggingface.co/datasets/moose-code/polymarket-onchain-v1" target="_blank" rel="noreferrer">HF dataset ↗</a>

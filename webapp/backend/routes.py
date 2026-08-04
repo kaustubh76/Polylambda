@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from starlette.concurrency import run_in_threadpool
 
 from . import chain, live, services
-from .schemas import KeeperRunRequest, ScoreRequest, SessionRequest
+from .schemas import KeeperRunRequest, ScoreRequest
 
 api = APIRouter(prefix="/api")
 
@@ -15,7 +15,6 @@ api = APIRouter(prefix="/api")
 # client wait (or, on a constrained single-worker host, starve the threadpool). On timeout we serve
 # the fast published fallback instead.
 LIVE_TIMEOUT_S = 12.0
-SESSION_TIMEOUT_S = 30.0
 
 
 async def _with_timeout(fn, timeout: float):
@@ -41,21 +40,6 @@ def post_score(req: ScoreRequest):
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"scoring failed: {e}")
 
-
-@api.post("/session/run")
-async def post_session(req: SessionRequest):
-    def _run():
-        return services.run_session(
-            scenario_name=req.scenario, category=req.category, entry_price=req.entry_price,
-            inventory=req.inventory, dispute_tick=req.dispute_tick, gap_logit=req.gap_logit,
-            n_ticks=req.n_ticks, n_markets=req.n_markets, seed=req.seed,
-            source=req.source, hazard=req.hazard)
-    try:
-        return await _with_timeout(_run, SESSION_TIMEOUT_S)
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="session timed out")
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"session failed: {e}")
 
 
 @api.get("/ablation")
