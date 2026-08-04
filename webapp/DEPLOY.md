@@ -1,7 +1,7 @@
 # Deploying the PolyLambda dashboard
 
 The whole app (FastAPI backend + React SPA) ships as **one Docker image** that serves the SPA and the
-`/api` routes from a single `uvicorn` process. Paper-mode only — no secrets, no live-trade path.
+`/api` routes from a single `uvicorn` process. Read-only analytics + a live on-chain testnet keeper (Polygon Amoy, engine-signed); the mainnet live-trade path stays jurisdiction-gated.
 
 The image is self-contained: the frontend is built inside it, the engine + backend are copied in, and
 the small model/prior artifacts are bundled from `webapp/deploy/cache/` (the 470MB+ `.data_cache/` is
@@ -44,8 +44,9 @@ gcloud run deploy polylambda --source . --port 8000 --allow-unauthenticated --me
 ## Notes
 
 - **Memory:** ~256–512MB idle; 512MB–1GB is comfortable (numpy/pandas load lazily on first use).
-- **Mode:** defaults to `MODE=paper`. Live trading stays jurisdiction-gated and out of scope; the
-  container never installs `web3`/`polymarket-client`, so the write path can't even be constructed.
+- **Mode:** `MODE=testnet` — the app runs the on-chain Amoy keeper (engine-signed `postQuote`/
+  `flagDispute` via `web3`, gated on `ENGINE_PRIVATE_KEY`). MAINNET live trading stays jurisdiction-gated
+  and out of scope; the mainnet CLOB write path (`execution.clob.place_order`) is never imported.
 - **Live dispute feed:** the "Live dispute stream" panel scans OOv2 `DisputePrice` logs straight from
   Polygon over a **keyless public RPC** (`POLYGON_RPC_URL`, stdlib `urllib`, no dep, no paid service) —
   needs only outbound HTTPS. The old hosted Envio dev deploy is **gone** (free tier ended), so there is
@@ -66,5 +67,6 @@ gcloud run deploy polylambda --source . --port 8000 --allow-unauthenticated --me
   `python -m webapp.backend.precompute --ablation` where the full deps exist and commit
   `webapp/deploy/cache/webapp/ablation_full.json`. Live recon also wants an RPC: set `AMOY_RPC_URL`
   (already in the deploy configs) or any of `POLYGON_RPC` / `RPC_URL` / `POLYGON_RPC_URL`.
-- **Real-market paper session:** the "real markets" toggle (`source=data`) runs fully offline over the
-  shipped `disputes.parquet` — no env needed; it's timeout-guarded like the other heavy calls.
+- **On-chain testnet session:** `/api/testnet/*` reads the keeper-managed Amoy fleet and (with
+  `ENGINE_PRIVATE_KEY`) signs quotes/disputes; the last session's λ-edge is surfaced from the committed
+  `forwardtest/results/session-testnet-*.jsonl`, so a cold deploy shows a real dated on-chain P&L.

@@ -92,7 +92,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="PolyLambda Dashboard API",
-              description="A thin, read-only layer over the real PolyLambda engine (paper-mode).",
+              description="A dashboard over the real PolyLambda engine — read-only analytics + a live "
+                          "on-chain testnet execution monitor (Polygon Amoy). The mainnet CLOB write "
+                          "path stays jurisdiction-gated and is never imported.",
               version="0.1.0", lifespan=lifespan)
 
 # dev CORS: the Vite dev server origin. Same-origin in the built single-process deployment.

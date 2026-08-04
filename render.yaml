@@ -18,6 +18,12 @@ services:
         value: "1"
       - key: KEEPER_INTERVAL_S
         value: "60"
+      # cap how many fleet markets the keeper builds estimators for + signs on (0/unset = all 6). The
+      # 512MB starter host OOMs on the full fleet, so bound it here; raise on a bigger plan for a live
+      # multi-arm (λ-on vs λ-off) edge. The dashboard still READS the whole fleet, and the displayed
+      # λ-edge comes from the committed session-testnet-*.jsonl regardless of this cap.
+      - key: KEEPER_MAX_MARKETS
+        value: "2"
       # Live dispute feed = keyless Polygon RPC eth_getLogs scan (no indexer, no paid service).
       # The old Envio dev deploy ended; leave INDEXER_GRAPHQL_URL UNSET to use the RPC path. Set it
       # only if you stand up your own hosted indexer.

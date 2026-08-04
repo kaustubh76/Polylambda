@@ -22,7 +22,8 @@ min_trades_for_sigma: 20  # volume/trade-count floor (below this, use the prior)
 lambda_star: 0.002     # exit threshold for lambda_jump (reward-aware gate still applies)
 lambda_v1: base_rate   # v1 scope: category base-rate + a few point-in-time-safe features
 # E[loss|jump] scaling: CALIBRATED from the released dispute layer's realizedJumpLogit (mean |Δlogit|
-# = 0.76 over 1,149 disputes, data/calibrate.py) — replaces the old 0.05 placeholder.
+# = 0.760 over 1,146 disputes with non-null realizedJumpLogit, data/calibrate.py — matches the shipped
+# kappa_by_category.json global {kappa: 0.76047, n: 1146}) — replaces the old 0.05 placeholder.
 kappa_loss: 0.76
 
 # --- execution sizing + inventory (execution/loop.py tick) ---

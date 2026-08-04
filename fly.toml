@@ -9,7 +9,7 @@ primary_region = "iad"
   dockerfile = "Dockerfile"
 
 [env]
-  MODE = "paper"
+  MODE = "testnet"
   # Live dispute feed = keyless Polygon RPC eth_getLogs scan (the old Envio dev deploy ended). Leave
   # INDEXER_GRAPHQL_URL unset to use the RPC path; set it only for your own hosted indexer.
   POLYGON_RPC_URL = "https://polygon.gateway.tenderly.co"

@@ -2,11 +2,12 @@
 
 A polished, local **quant-terminal dashboard wired to the real PolyLambda engine**. Nothing here is
 a mockup: every figure is either computed live by the actual estimator / execution / forward-test
-code, or read from a shipped artifact. The paper engine is deterministic and network-free.
+code, or read from a shipped artifact. Analytics are deterministic and network-free; on-chain
+execution is live on the Polygon Amoy testnet.
 
 ```
 webapp/
-  backend/          FastAPI app that imports the real modules (paper-mode only)
+  backend/          FastAPI app that imports the real modules (analytics + on-chain testnet; mainnet CLOB gated)
     main.py         app assembly · CORS · serves the built SPA · lifespan installs the offline DI
     routes.py       9 JSON endpoints → services.py
     services.py     thin wrappers around estimate_lambda / compute_quote / runner.run / …

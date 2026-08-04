@@ -1,0 +1,59 @@
+# CI test-gate — runs the Python + frontend suites (and the legacy Envio indexer, best-effort) on every
+# push and PR to main. There was no CI before this, so a red build could autodeploy. NOTE: Render
+# autoDeploy is independent of this workflow — this is the regression / PR gate; wiring deploy-on-green
+# is a later Render-config change (turn off autoDeploy + add a deploy hook on CI success).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: webapp/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: webapp/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+
+  indexer:
+    # legacy/optional Envio indexer — best-effort (needs `envio codegen`, no lockfile); never blocks the ship.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: indexer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install
+      - run: npx envio codegen || true
+      - run: npm test

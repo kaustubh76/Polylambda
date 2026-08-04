@@ -292,7 +292,7 @@ POLYGON_RPC_URL=https://...
 CLOB_API_KEY=
 CLOB_API_SECRET=
 CLOB_API_PASSPHRASE=
-MODE=paper            # paper | paper-live | live
+MODE=paper            # paper | paper-live | testnet | live  (the dashboard deploys with MODE=testnet)
 MAX_CAPITAL_USDC=50   # hard cap — keep tiny until edge is validated
 ```
 

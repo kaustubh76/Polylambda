@@ -1,6 +1,7 @@
 # PolyLambda MVP dashboard — full BE+FE in one image.
 # One uvicorn process serves the built React SPA AND the /api routes (same origin, no CORS).
-# Paper-mode only: the gated CLOB write path is never installed or imported.
+# On-chain execution is the Amoy testnet keeper; the MAINNET CLOB write path stays jurisdiction-gated
+# and is never installed or imported.
 
 # ---- stage 1: build the React frontend -------------------------------------------------------
 FROM node:20-slim AS frontend
@@ -17,7 +18,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     HF_HUB_DISABLE_PROGRESS_BARS=1 \
-    MODE=paper
+    MODE=testnet
 # Live dispute feed defaults to the keyless Polygon RPC scan (data/disputes.py picks the endpoint;
 # override with POLYGON_RPC_URL). Set INDEXER_GRAPHQL_URL only for your own hosted Envio indexer —
 # the old baked-in dev deploy ended 2026-07 and must NOT be baked here again.

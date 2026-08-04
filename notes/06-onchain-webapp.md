@@ -58,19 +58,19 @@ Units: prices are 6-decimal fractions of 1 USDC (`0..1e6`); 1 YES share redeems 
 **The wire to the engine:** `chain.post_quote()` → `services.score_market()` runs the **real estimators**
 (`estimate_lambda`, σ via `category_price_prior`, `pricing.quote.compute_quote`) → converts to 6-dec
 bid/ask + λ/σ in bps → signs `market.postQuote(...)`. So on-chain quotes are literally produced by the
-same engine as the paper research dashboard.
+same engine as the research dashboard.
 
 ## 4. The webapp
 
 **One Docker image, one process.** A FastAPI backend (`uvicorn webapp.backend.main:app`) that also serves
-the built React/Vite SPA from the same origin. Paper-mode only — the gated CLOB write path is never
-imported.
+the built React/Vite SPA from the same origin. On-chain execution is the Amoy testnet keeper; the
+gated MAINNET CLOB write path is never imported.
 
 ### Backend (`webapp/backend/`)
 - `main.py` — app assembly; mounts `/assets` + a catch-all SPA route; lifespan warms caches and installs
   "offline DI" so estimators run network-free.
 - `routes.py` — `APIRouter(prefix="/api")`. Two families:
-  - **Research/paper:** `/overview`, `/baserates`, `/lambda/score`, `/session/run`, `/ablation`,
+  - **Research:** `/overview`, `/baserates`, `/lambda/score`, `/ablation`, `/backtest`,
     `/hazard`, `/disputes`, `/recon`(+`/recon/live`), `/sigma`, `/proposers`, `/quote-curve`, and the
     indexer `/live/status` + `/live/disputes`.
   - **Testnet on-chain:** reads `GET /testnet/{status,market,position,events}`; engine-signed writes
@@ -91,8 +91,8 @@ imported.
 - `src/App.tsx` — single-page, hash-anchored sections; providers `Theme / Wallet / Toast / LiveStatus`;
   header LivePill (indexer latency), PendingIndicator (in-flight tx), AccountMenu (connect / switch Amoy),
   ⌘K palette.
-- `src/sections/` — `Hero`, **`LiveTestnet`** (the on-chain trading UI), `BaseRates`, `ScoreMarket`,
-  `PaperSession`, `Ablation`, `HazardCard`, `Disputes`, **`LiveIndexer`** (the live dispute feed —
+- `src/sections/` — `Hero`, **`FleetStatus`** (the live on-chain keeper P&L), `BaseRates`, `ScoreMarket`,
+  `Ablation` (the Edge-proof: real clean-USD backtest P&L), `HazardCard`, `Disputes`, **`LiveIndexer`** (the live dispute feed —
   keyless-RPC-sourced by default; the copy is source-aware), `Recon`,
   `SigmaSurface`.
 - `src/lib/wallet.tsx` — viem + injected-provider context (public reads + user-signed writes).
@@ -129,7 +129,7 @@ market address above, and the live on-chain quote.
 Both targets use the **same Docker image** (2-stage: node:20 builds the SPA → python:3.12 runs uvicorn on
 port 8000; health check `GET /api/health`).
 
-- **`fly.toml`** — app `polylambda`, region `iad`, `internal_port=8000`. `[env]`: `MODE=paper`,
+- **`fly.toml`** — app `polylambda`, region `iad`, `internal_port=8000`. `[env]`: `MODE=testnet`,
   `POLYGON_RPC_URL` (tenderly — the live dispute plane), `AMOY_RPC_URL=https://polygon-amoy.drpc.org`,
   `AMOY_USDC_ADDRESS`, `MARKET_ADDRESS=0x1dBF…8b496`. `ENGINE_PRIVATE_KEY` via `fly secrets set`.
 - **`render.yaml`** — Render Blueprint, same non-secret env + `ENGINE_PRIVATE_KEY` with `sync:false`.
