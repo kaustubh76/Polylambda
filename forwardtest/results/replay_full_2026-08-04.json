@@ -1,0 +1,180 @@
+{
+ "run_date": "2026-08-04",
+ "command": "DATA_SOURCE=hf python -m forwardtest.replay_full",
+ "meta": {
+  "n_disputes_with_paths": 29,
+  "n_controls_with_paths": 120,
+  "lambda_star_grid": [
+   0.0005,
+   0.002,
+   0.01
+  ],
+  "lambda_star_frozen": 0.002,
+  "quote_size": 10.0,
+  "fill_limit": 5000,
+  "power_calc_expected_disputes": 1.76,
+  "accounting": "pnl = cash + inventory*mark; NO reward income; USD units",
+  "fill_model": "queue-pessimistic tape fills (strict price-through only)",
+  "exit_gate": "expected-loss gate (no hindsight); no historical reward params -> gate reduces to E[jump loss] > spread cost"
+ },
+ "results": [
+  {
+   "arm": "diffusion_only",
+   "lambda_star": 0.0005,
+   "pnl_usd": -2665.9,
+   "sharpe_cross": -0.357,
+   "sharpe_daily_ann": -5.097,
+   "max_drawdown_usd": 2692.05,
+   "win_rate": 0.1477,
+   "n_exits": 0,
+   "n_fills": 14843,
+   "turnover_usd": 63359.37
+  },
+  {
+   "arm": "lambda_jump",
+   "lambda_star": 0.0005,
+   "pnl_usd": -624.62,
+   "sharpe_cross": -0.414,
+   "sharpe_daily_ann": -3.104,
+   "max_drawdown_usd": 649.83,
+   "win_rate": 0.1678,
+   "n_exits": 38,
+   "n_fills": 13311,
+   "turnover_usd": 36463.15
+  },
+  {
+   "arm": "lambda_select",
+   "lambda_star": 0.0005,
+   "pnl_usd": 0.0,
+   "sharpe_cross": 0.0,
+   "sharpe_daily_ann": 0.0,
+   "max_drawdown_usd": 0.0,
+   "win_rate": 0.0,
+   "n_exits": 0,
+   "n_fills": 0,
+   "turnover_usd": 0.0
+  },
+  {
+   "arm": "lambda_jump_hazard",
+   "lambda_star": 0.0005,
+   "pnl_usd": -767.72,
+   "sharpe_cross": -0.488,
+   "sharpe_daily_ann": -3.662,
+   "max_drawdown_usd": 792.92,
+   "win_rate": 0.1409,
+   "n_exits": 29,
+   "n_fills": 13533,
+   "turnover_usd": 37868.01
+  },
+  {
+   "arm": "diffusion_only",
+   "lambda_star": 0.002,
+   "pnl_usd": -2665.9,
+   "sharpe_cross": -0.357,
+   "sharpe_daily_ann": -5.097,
+   "max_drawdown_usd": 2692.05,
+   "win_rate": 0.1477,
+   "n_exits": 0,
+   "n_fills": 14843,
+   "turnover_usd": 63359.37
+  },
+  {
+   "arm": "lambda_jump",
+   "lambda_star": 0.002,
+   "pnl_usd": -624.62,
+   "sharpe_cross": -0.414,
+   "sharpe_daily_ann": -3.104,
+   "max_drawdown_usd": 649.83,
+   "win_rate": 0.1678,
+   "n_exits": 38,
+   "n_fills": 13311,
+   "turnover_usd": 36463.15
+  },
+  {
+   "arm": "lambda_select",
+   "lambda_star": 0.002,
+   "pnl_usd": -19.93,
+   "sharpe_cross": -0.022,
+   "sharpe_daily_ann": -0.674,
+   "max_drawdown_usd": 59.16,
+   "win_rate": 0.0134,
+   "n_exits": 0,
+   "n_fills": 1149,
+   "turnover_usd": 5152.05
+  },
+  {
+   "arm": "lambda_jump_hazard",
+   "lambda_star": 0.002,
+   "pnl_usd": -767.72,
+   "sharpe_cross": -0.488,
+   "sharpe_daily_ann": -3.662,
+   "max_drawdown_usd": 792.92,
+   "win_rate": 0.1409,
+   "n_exits": 29,
+   "n_fills": 13533,
+   "turnover_usd": 37868.01
+  },
+  {
+   "arm": "diffusion_only",
+   "lambda_star": 0.01,
+   "pnl_usd": -2665.9,
+   "sharpe_cross": -0.357,
+   "sharpe_daily_ann": -5.097,
+   "max_drawdown_usd": 2692.05,
+   "win_rate": 0.1477,
+   "n_exits": 0,
+   "n_fills": 14843,
+   "turnover_usd": 63359.37
+  },
+  {
+   "arm": "lambda_jump",
+   "lambda_star": 0.01,
+   "pnl_usd": -624.62,
+   "sharpe_cross": -0.414,
+   "sharpe_daily_ann": -3.104,
+   "max_drawdown_usd": 649.83,
+   "win_rate": 0.1678,
+   "n_exits": 38,
+   "n_fills": 13311,
+   "turnover_usd": 36463.15
+  },
+  {
+   "arm": "lambda_select",
+   "lambda_star": 0.01,
+   "pnl_usd": -128.62,
+   "sharpe_cross": -0.113,
+   "sharpe_daily_ann": -2.415,
+   "max_drawdown_usd": 126.88,
+   "win_rate": 0.0134,
+   "n_exits": 0,
+   "n_fills": 2385,
+   "turnover_usd": 11791.6
+  },
+  {
+   "arm": "lambda_jump_hazard",
+   "lambda_star": 0.01,
+   "pnl_usd": -838.73,
+   "sharpe_cross": -0.488,
+   "sharpe_daily_ann": -3.852,
+   "max_drawdown_usd": 863.93,
+   "win_rate": 0.1409,
+   "n_exits": 22,
+   "n_fills": 13524,
+   "turnover_usd": 38562.34
+  }
+ ],
+ "bootstrap_frozen_lambda_star": {
+  "lambda_jump_minus_diffusion": {
+   "delta": 2041.278087960349,
+   "ci_low": 1048.181031758186,
+   "ci_high": 3296.497664130403,
+   "n_bootstrap": 1000
+  },
+  "lambda_jump_hazard_minus_diffusion": {
+   "delta": 1898.1863864724248,
+   "ci_low": 916.8029612401639,
+   "ci_high": 3141.4500249051753,
+   "n_bootstrap": 1000
+  }
+ }
+}

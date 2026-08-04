@@ -46,6 +46,7 @@ export const api = {
   baserates: () => req<BaseRates>('/baserates'),
   score: (body: ScoreReq) => req<ScoreResp>('/lambda/score', { method: 'POST', body: JSON.stringify(body) }),
   ablation: (live = false) => req<Ablation>(`/ablation${live ? '?live=1' : ''}`),
+  backtest: () => req<Backtest>('/backtest'),
   hazard: () => req<Hazard>('/hazard'),
   disputes: (qs: string) => req<Disputes>(`/disputes${qs}`),
   recon: () => req<Recon>('/recon'),
@@ -156,6 +157,23 @@ export interface ScoreResp {
 
 export interface AblationArm { arm: string; arm_label: string; points: { lambda_star: number; pnl_net_of_rewards: number; sharpe: number }[] }
 export interface Ablation { source: string; meta: Record<string, number | string>; lambda_star_grid: number[]; arms: AblationArm[]; headline: string; caveat: string; live_error?: string }
+
+// the REAL clean-USD strategy backtest (forwardtest.replay_full → pnl_usd), led by the Δ edge + CI
+export interface BacktestRow {
+  arm: string; arm_label?: string; lambda_star: number; pnl_usd: number
+  sharpe_cross: number; sharpe_daily_ann: number; max_drawdown_usd: number
+  win_rate: number; n_fills: number; n_exits: number
+}
+export interface BacktestArm { arm: string; arm_label: string; points: BacktestRow[] }
+export interface BacktestDelta { pnl_usd: number; ci_low?: number; ci_high?: number; n_bootstrap?: number }
+export interface Backtest {
+  available: boolean; note?: string; run_date?: string
+  meta?: Record<string, number | string>
+  lambda_star_grid?: number[]
+  arms?: BacktestArm[]
+  headline?: { lambda_star_frozen: number; at_frozen: BacktestRow[]; delta_jump_minus_diffusion: BacktestDelta | null; best_arm: string | null }
+  caveat?: string
+}
 
 export interface HazardCardT { label: string; coef: number[]; intercept: number; offset: number; feature_order: string[]; holdout_auc: number; brier: number; n: number; positives: number; natural_rate: number; discriminates: boolean; trained_at?: string }
 export interface Hazard { deployed: HazardCardT | null; matched: HazardCardT | null; matched_eval: HazardCardT | null; caveat: string; null_finding: string }

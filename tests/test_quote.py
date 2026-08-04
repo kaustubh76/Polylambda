@@ -17,6 +17,22 @@ def test_logit_roundtrip():
         assert abs(to_prob(to_logit(p)) - p) < 1e-9
 
 
+def test_to_prob_extreme_no_overflow():
+    """The stable sigmoid must saturate (not raise OverflowError) for large-magnitude logits, and
+    stay monotone. Regression for the replay_full crash: a pathological spread pushed a quote
+    endpoint to a large-negative logit and the naive 1/(1+exp(-x)) overflowed."""
+    assert to_prob(-5000.0) == 0.0        # exp(+5000) would overflow the naive form
+    assert to_prob(5000.0) == 1.0
+    assert 0.0 <= to_prob(-40.0) < to_prob(0.0) == 0.5 < to_prob(40.0) <= 1.0
+
+
+def test_compute_quote_survives_pathological_sigma():
+    """A huge belief-vol makes the logit-space spread enormous; the quote must degrade to a
+    maximally-wide (but valid) band, never raise. This is the exact path that crashed replay_full."""
+    bid, ask = compute_quote(0.5, q=0.0, sigma=500.0, T_t=5.0, lam=0.5, e_loss=1.0)
+    assert 0.0 < bid < ask < 1.0
+
+
 def test_quote_bounds():
     """0 < bid < ask < 1 across the probability range and inventory signs."""
     for p in (0.05, 0.5, 0.9):

@@ -35,8 +35,17 @@ def to_logit(p: float) -> float:
 
 
 def to_prob(x: float) -> float:
-    """log-odds -> probability (logistic sigmoid)."""
-    return 1.0 / (1.0 + math.exp(-x))
+    """log-odds -> probability (logistic sigmoid). Overflow-safe for extreme |x|.
+
+    The naive 1/(1+exp(-x)) overflows when x is very negative (exp of a large positive number). A
+    pathologically wide spread (huge sigma on the historical tape) can push a quote endpoint to a
+    large-negative logit; branching on the sign of x keeps exp's argument <= 0, so it saturates to
+    0/1 instead of raising. Identical to the naive form for every value in the normal quoting range.
+    """
+    if x >= 0.0:
+        return 1.0 / (1.0 + math.exp(-x))
+    z = math.exp(x)
+    return z / (1.0 + z)
 
 
 # --- Avellaneda-Stoikov terms (all in LOG-ODDS units) ----------------------

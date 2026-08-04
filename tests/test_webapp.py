@@ -104,6 +104,50 @@ def test_ablation_shape(client):
     assert jump["points"][0]["pnl_net_of_rewards"] > diff["points"][0]["pnl_net_of_rewards"]
 
 
+_BACKTEST_FIXTURE = {
+    "run_date": "2026-08-04",
+    "meta": {"n_disputes_with_paths": 1200, "n_controls_with_paths": 3600, "lambda_star_frozen": 0.002},
+    "results": [
+        {"arm": "diffusion_only", "lambda_star": 0.002, "pnl_usd": -900.0, "sharpe_cross": -0.3,
+         "sharpe_daily_ann": -1.0, "max_drawdown_usd": 950.0, "win_rate": 0.2, "n_fills": 40, "n_exits": 0},
+        {"arm": "lambda_jump", "lambda_star": 0.002, "pnl_usd": -700.0, "sharpe_cross": -0.2,
+         "sharpe_daily_ann": -0.8, "max_drawdown_usd": 720.0, "win_rate": 0.25, "n_fills": 40, "n_exits": 6},
+        {"arm": "diffusion_only", "lambda_star": 0.01, "pnl_usd": -900.0, "sharpe_cross": -0.3,
+         "sharpe_daily_ann": -1.0, "max_drawdown_usd": 950.0, "win_rate": 0.2, "n_fills": 40, "n_exits": 0},
+        {"arm": "lambda_jump", "lambda_star": 0.01, "pnl_usd": -820.0, "sharpe_cross": -0.25,
+         "sharpe_daily_ann": -0.9, "max_drawdown_usd": 840.0, "win_rate": 0.22, "n_fills": 40, "n_exits": 3},
+    ],
+    "bootstrap_frozen_lambda_star": {
+        "lambda_jump_minus_diffusion": {"delta": 200.0, "ci_low": 60.0, "ci_high": 340.0, "n_bootstrap": 1000}},
+}
+
+
+def test_backtest_endpoint_leads_with_delta_edge(client, monkeypatch):
+    """/api/backtest surfaces the clean-USD strategy P&L: absolute pnl_usd per arm (negatives kept
+    honest) AND the Δ(λ-jump − diffusion) edge with its bootstrap CI, selected at the frozen λ*."""
+    from webapp.backend import services
+    monkeypatch.setattr(services, "_backtest_artifact", lambda: _BACKTEST_FIXTURE)
+    d = client.get("/api/backtest").json()
+    assert d["available"] is True and d["run_date"] == "2026-08-04"
+    h = d["headline"]
+    assert h["lambda_star_frozen"] == 0.002
+    # the edge = jump(-700) - diffusion(-900) = +200, at the FROZEN threshold (not the 0.01 row)
+    assert h["delta_jump_minus_diffusion"]["pnl_usd"] == 200.0
+    assert h["delta_jump_minus_diffusion"]["ci_low"] == 60.0  # CI carried from the bootstrap block
+    # absolute P&L is shown honestly (negative), not hidden
+    jump = next(r for r in h["at_frozen"] if r["arm"] == "lambda_jump")
+    assert jump["pnl_usd"] == -700.0
+    # the λ* grid curve is present for both arms
+    assert d["lambda_star_grid"] == [0.002, 0.01]
+
+
+def test_backtest_endpoint_graceful_without_artifact(client, monkeypatch):
+    from webapp.backend import services
+    monkeypatch.setattr(services, "_backtest_artifact", lambda: None)
+    d = client.get("/api/backtest").json()
+    assert d["available"] is False and "replay_full" in d["note"]
+
+
 def test_hazard_deployed_vs_matched_null(client):
     d = client.get("/api/hazard").json()
     assert d["deployed"]["holdout_auc"] > 0.65          # deployed discriminates

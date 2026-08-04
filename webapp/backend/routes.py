@@ -54,6 +54,13 @@ async def get_ablation(live: bool = False):
         return out
 
 
+@api.get("/backtest")
+def get_backtest():
+    """The clean-USD strategy backtest (forwardtest.replay_full → pnl_usd): the real 'what would this
+    have made' figure over the historical tape, led by the Δ(λ-jump − diffusion) edge + bootstrap CI."""
+    return services.backtest_full()
+
+
 @api.get("/hazard")
 def get_hazard():
     return services.hazard()

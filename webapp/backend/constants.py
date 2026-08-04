@@ -50,6 +50,10 @@ DISPUTE_COUNTS_FALLBACK = {r["category"]: r["disputes"] for r in BASE_RATES_PUBL
 # rewards. pnl in USD, sharpe unitless. "surgical exit > blanket avoidance."
 ABLATION_META = {"n_disputes": 1409, "n_controls": 2856, "lambda_star_frozen": 0.002,
                  "span": "2022-2026", "adapters": "all"}
+# LAST-RESORT FALLBACK ONLY — services.ablation() serves the committed replay artifact
+# (forwardtest/results/replay_ablation_*.json, ~$22.7k) whenever it exists, which it always does in
+# the shipped image; these ~$42k numbers predate that artifact and must never be presented as current.
+# The headline P&L is now the clean-USD backtest (services.backtest_full / replay_full), not this.
 ABLATION_PUBLISHED = [
     # arm, lambda_star, pnl_net_of_rewards, sharpe
     {"arm": "lambda_jump",   "lambda_star": 0.0005, "pnl_net_of_rewards": 46975.0, "sharpe": 0.334},
@@ -66,6 +70,7 @@ ARM_LABELS = {
     "lambda_jump":   "λ-jump · reward-aware surgical exit",
     "diffusion_only": "diffusion · always hold",
     "lambda_select": "λ-select · blanket avoid",
+    "lambda_jump_hazard": "λ-jump+hazard · learned dispute odds",
 }
 
 # --- dataset headline (dataset_release/.../stats.json) — fallback if the file is missing ---------

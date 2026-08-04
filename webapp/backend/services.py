@@ -404,6 +404,89 @@ def _ablation_rows_from_replay(res) -> list[dict] | None:
 
 
 # ---------------------------------------------------------------------------------------------
+# backtest P&L — the FULL-USD historical simulation (forwardtest.replay_full → pnl_usd)
+# ---------------------------------------------------------------------------------------------
+_BACKTEST_ARM_ORDER = ("lambda_jump_hazard", "lambda_jump", "diffusion_only", "lambda_select")
+
+
+def _backtest_artifact() -> dict | None:
+    """The committed full-PnL backtest artifact (forwardtest.replay_full), in priority order:
+      1. .data_cache/webapp/replay_full.json (a precompute drop, if present),
+      2. the newest forwardtest/results/replay_full_*.json (committed, ships in the image).
+    Returns the raw artifact dict, or None if neither exists."""
+    for path in (cache.WEBAPP_CACHE / "replay_full.json", None):
+        try:
+            if path is None:
+                files = sorted((cache.PROJECT_ROOT / "forwardtest" / "results").glob("replay_full_*.json"))
+                if not files:
+                    continue
+                path = files[-1]  # newest by dated name
+            data = cache._load_json(path)
+            if isinstance(data, dict) and isinstance(data.get("results"), list) and data["results"]:
+                return data
+        except Exception:
+            continue
+    return None
+
+
+def backtest_full() -> dict:
+    """The real clean-USD strategy backtest from forwardtest.replay_full: pnl = cash + inventory·mark,
+    NO reward income folded in, queue-pessimistic tape fills, exit gate fed only EXPECTED loss (no
+    hindsight). Unlike ablation()'s counterfactual `pnl_net_of_rewards`, this is the actual product
+    simulated over the historical tape — the honest 'what would this have made' number.
+
+    Absolute P&L can be NEGATIVE (a maker with no reward income loses on spread / adverse selection);
+    the edge is Δ(λ-jump − diffusion), reported with a market-level bootstrap 95% CI. We surface the
+    absolute number honestly and lead the UI with the edge."""
+    data = _backtest_artifact()
+    if not data:
+        return {"available": False,
+                "note": "no committed backtest artifact yet — run "
+                        "`DATA_SOURCE=hf python -m forwardtest.replay_full "
+                        "--out forwardtest/results/replay_full_<date>.json`"}
+    rows = [dict(r) for r in data["results"]]
+    for r in rows:
+        r["arm_label"] = K.ARM_LABELS.get(r["arm"], r["arm"])
+    meta = data.get("meta") or {}
+    frozen = meta.get("lambda_star_frozen") or cache.frozen_config()[0].get("lambda_star", 0.002)
+    grid = sorted({r["lambda_star"] for r in rows})
+
+    # per-arm pnl_usd curves across the λ* grid (for the chart)
+    arms: dict[str, dict] = {}
+    for r in rows:
+        a = arms.setdefault(r["arm"], {"arm": r["arm"], "arm_label": r["arm_label"], "points": []})
+        a["points"].append({k: r.get(k) for k in ("lambda_star", "pnl_usd", "sharpe_cross",
+                                                  "sharpe_daily_ann", "max_drawdown_usd", "win_rate",
+                                                  "n_fills", "n_exits")})
+    for a in arms.values():
+        a["points"].sort(key=lambda p: p["lambda_star"])
+    ordered = [arms[a] for a in _BACKTEST_ARM_ORDER if a in arms]
+    ordered += [a for k, a in arms.items() if k not in _BACKTEST_ARM_ORDER]
+
+    # headline rows at the frozen λ*
+    at_frozen = {r["arm"]: r for r in rows if abs(r["lambda_star"] - frozen) < 1e-9}
+    jump, diff = at_frozen.get("lambda_jump"), at_frozen.get("diffusion_only")
+    delta = None
+    if jump and diff:
+        delta = {"pnl_usd": round(jump["pnl_usd"] - diff["pnl_usd"], 2)}
+        boot = (data.get("bootstrap_frozen_lambda_star") or {}).get("lambda_jump_minus_diffusion")
+        if boot:
+            delta.update({"ci_low": boot.get("ci_low"), "ci_high": boot.get("ci_high"),
+                          "n_bootstrap": boot.get("n_bootstrap")})
+    best = max(at_frozen.values(), key=lambda r: r["pnl_usd"]) if at_frozen else None
+    headline = {"lambda_star_frozen": frozen,
+                "at_frozen": [at_frozen[a] for a in _BACKTEST_ARM_ORDER if a in at_frozen],
+                "delta_jump_minus_diffusion": delta,
+                "best_arm": best["arm"] if best else None}
+    return {"available": True, "run_date": data.get("run_date"), "meta": meta,
+            "lambda_star_grid": grid, "arms": ordered, "headline": headline,
+            "caveat": ("Clean-USD P&L: cash + inventory·mark, NO reward income folded in, queue-"
+                       "pessimistic tape fills, and the exit gate sees only EXPECTED loss (no "
+                       "hindsight). Absolute P&L understates a rewards-live deployment — the signal is "
+                       "the Δ edge (λ-jump − diffusion), with its bootstrap 95% CI.")}
+
+
+# ---------------------------------------------------------------------------------------------
 # live reconciliation — recon/check.run_recon against the indexer + on-chain payout vectors
 # ---------------------------------------------------------------------------------------------
 def recon_live() -> dict:
