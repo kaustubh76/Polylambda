@@ -29,41 +29,45 @@ def test_reads_runner_output_and_splits_arms(tmp_path):
     assert "UNDERPOWERED" in ab["caveat"] and "replay" in ab["caveat"]
 
 
-def test_delta_and_dispute_count_from_session_end(tmp_path):
+def test_delta_and_dispute_count_from_flagged_records(tmp_path):
     per_market = [
         {"cid": "0x1", "arm": "lambda_on", "equity_mark": 12.0, "cash": 12.0,
          "inventory": 0.0, "sim_reward_score": 3.0},
         {"cid": "0x2", "arm": "lambda_off", "equity_mark": 5.0, "cash": 5.0,
          "inventory": 0.0, "sim_reward_score": 4.0},
     ]
+    # n_disputes counts REAL on-chain dispute flags (proposal-triggered), NOT the exit total — a
+    # λ-hazard exit with no dispute must not inflate the count. Here: one proposal exit that flags a
+    # dispute (counted) + one plain λ exit (a defensive exit, NOT a dispute).
     path = _write(tmp_path / "e.jsonl", [
         ("session_start", {"markets": []}),
         ("fill", {"cid": "0x1", "arm": "lambda_on", "side": "BUY", "price": 0.4, "size": 10}),
-        ("exit", {"cid": "0x1", "arm": "lambda_on", "trigger": "lambda"}),
+        ("exit", {"cid": "0x1", "arm": "lambda_on", "trigger": "proposal"}),
+        ("dispute_flagged", {"cid": "0x1", "tx": "0xaa", "block": 1}),
         ("fill", {"cid": "0x2", "arm": "lambda_off", "side": "SELL", "price": 0.6, "size": 10}),
-        ("dispute_witnessed", {"cid": "0x1", "source": "test", "note": "n/a"}),
+        ("exit", {"cid": "0x2", "arm": "lambda_off", "trigger": "lambda"}),   # defensive, no dispute
         ("session_end", {"per_market": per_market, "per_arm_totals": {},
-                         "n_disputes_witnessed": 2, "uptime_fraction": 1.0}),
+                         "n_disputes_witnessed": 1, "n_defensive_exits": 2}),
     ])
     ab = run_live_ablation(path)
     assert ab["lambda_on"]["pnl"] == pytest.approx(12.0)
     assert ab["lambda_off"]["pnl"] == pytest.approx(5.0)
     assert ab["lambda_on"]["n_fills"] == 1 and ab["lambda_on"]["n_exits"] == 1
-    assert ab["lambda_off"]["n_fills"] == 1 and ab["lambda_off"]["n_exits"] == 0
+    assert ab["lambda_off"]["n_fills"] == 1 and ab["lambda_off"]["n_exits"] == 1
     assert ab["delta_on_minus_off"]["pnl"] == pytest.approx(7.0)
-    assert ab["delta_on_minus_off"]["n_exits"] == 1
     # sim_reward_score is reported in the delta but is NEVER part of pnl
     assert ab["delta_on_minus_off"]["sim_reward_score"] == pytest.approx(-1.0)
-    assert ab["n_disputes"] == 2
+    # exactly ONE real dispute (the dispute_flagged record), NOT 2 exits
+    assert ab["n_disputes"] == 1
     assert ab["underpowered"] is True
 
 
 def test_underpowered_flips_when_enough_disputes(tmp_path):
-    path = _write(tmp_path / "p.jsonl", [
-        ("session_start", {"markets": []}),
-        ("session_end", {"per_market": [], "per_arm_totals": {},
-                         "n_disputes_witnessed": MIN_DISPUTES_FOR_SIGNAL, "uptime_fraction": 1.0}),
-    ])
+    recs = [("session_start", {"markets": []})]
+    recs += [("dispute_flagged", {"cid": f"0x{i}", "tx": f"0x{i:02x}", "block": i})
+             for i in range(MIN_DISPUTES_FOR_SIGNAL)]
+    recs.append(("session_end", {"per_market": [], "per_arm_totals": {}}))
+    path = _write(tmp_path / "p.jsonl", recs)
     ab = run_live_ablation(path)
     assert ab["n_disputes"] == MIN_DISPUTES_FOR_SIGNAL
     assert ab["underpowered"] is False

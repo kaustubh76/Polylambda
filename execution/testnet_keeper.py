@@ -76,6 +76,7 @@ class TestnetKeeper:
         self.horizon_days = horizon_days
         self.markets: list | None = None
         self.ticks_done = 0
+        self.n_disputes = 0                    # confirmed disputes flagged on-chain (proposal exits)
         self.last_tick_ts: float = 0.0
         self.last_error: str = ""
         self._fh = None
@@ -196,6 +197,7 @@ class TestnetKeeper:
             if out is not None:
                 session_log.append(self._log_fh(), "dispute_flagged", mode="testnet",
                                    simulated=False, cid=fields["cid"], **out)
+                self.n_disputes += 1     # a REAL confirmed dispute (not a λ-hazard defensive exit)
         return rec
 
     def _session_start(self) -> None:
@@ -284,8 +286,12 @@ class TestnetKeeper:
                 if i < n_ticks - 1 and self.interval_s > 0:
                     stop.wait(self.interval_s)
             roll = self._rollup()
+            # confirmed disputes flagged on-chain — NOT sum(n_exits) (which also counts λ-hazard
+            # defensive exits that witnessed no dispute); the ablation reader keys its power/underpowered
+            # verdict off this, so it must mean real disputes.
             self._log("session_end", **roll,
-                      n_disputes_witnessed=sum(m.n_exits for m in self.markets),
+                      n_disputes_witnessed=self.n_disputes,
+                      n_defensive_exits=sum(m.n_exits for m in self.markets),
                       ticks_done=self.ticks_done)
             return {"mode": "testnet", "ticks_done": self.ticks_done,
                     "out_path": self.out_path, **roll}

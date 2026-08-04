@@ -65,10 +65,13 @@ def run_live_ablation(session_log_path: str) -> dict:
     on = _arm_rollup(records, "lambda_on")
     off = _arm_rollup(records, "lambda_off")
 
-    n_disputes = sum(1 for r in records if r.get("type") == "dispute_witnessed")
-    end = next((r for r in reversed(records) if r.get("type") == "session_end"), None)
-    if end is not None:
-        n_disputes = end.get("n_disputes_witnessed", n_disputes)
+    # confirmed disputes the engine ACTUALLY flagged on-chain: a proposal-triggered exit writes a
+    # `dispute_flagged` record + signs a real flagDispute() tx. This is DISTINCT from defensive exits
+    # (n_exits, below), which also include λ-hazard exits that witnessed no dispute. Counting the real
+    # `dispute_flagged` records — not the exit total — is what makes "N disputes witnessed" honest.
+    # (Prior bug: this counted a phantom `dispute_witnessed` type nothing emits, then the session_end
+    # override fed it `sum(n_exits)`, so an exit count masqueraded as a dispute count.)
+    n_disputes = sum(1 for r in records if r.get("type") == "dispute_flagged")
 
     underpowered = n_disputes < MIN_DISPUTES_FOR_SIGNAL
     delta = {"pnl": on["pnl"] - off["pnl"], "n_exits": on["n_exits"] - off["n_exits"],

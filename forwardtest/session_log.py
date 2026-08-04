@@ -15,8 +15,10 @@ Record types (fields set by the runner/loop; the ablation is a pure reader of th
   fill            cid, arm, side, price, size, order_id, queue_model, inventory_after, cash_after
   exit            cid, arm, trigger, lambda_jump, lambda_star, e_jump_loss, forgone_rewards,
                   spread_cost, inventory_before, inventory_after, exit_price, haircut_paid
-  dispute_witnessed  cid, source, note
-  session_end     per_market{...}, per_arm_totals{...}, n_disputes_witnessed, uptime_fraction
+  dispute_flagged   cid, tx, block, gas_pol   (a CONFIRMED dispute the engine flagged on-chain;
+                    written only on a proposal-triggered exit — this is the real dispute count)
+  session_end     per_market{...}, per_arm_totals{...}, n_disputes_witnessed (= # dispute_flagged),
+                  n_defensive_exits (Σ n_exits, incl. λ-hazard exits), ticks_done
 """
 from __future__ import annotations
 
