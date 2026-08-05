@@ -1,0 +1,180 @@
+{
+ "run_date": "2026-08-05",
+ "command": "DATA_SOURCE=hf python -m forwardtest.replay_full",
+ "meta": {
+  "n_disputes_with_paths": 1395,
+  "n_controls_with_paths": 552,
+  "lambda_star_grid": [
+   0.0005,
+   0.002,
+   0.01
+  ],
+  "lambda_star_frozen": 0.002,
+  "quote_size": 10.0,
+  "fill_limit": 5000,
+  "power_calc_expected_disputes": 66.97,
+  "accounting": "pnl = cash + inventory*mark; NO reward income; USD units",
+  "fill_model": "queue-pessimistic tape fills (strict price-through only)",
+  "exit_gate": "expected-loss gate (no hindsight); no historical reward params -> gate reduces to E[jump loss] > spread cost"
+ },
+ "results": [
+  {
+   "arm": "diffusion_only",
+   "lambda_star": 0.0005,
+   "pnl_usd": -55318.46,
+   "sharpe_cross": -0.325,
+   "sharpe_daily_ann": -13.534,
+   "max_drawdown_usd": 55326.22,
+   "win_rate": 0.1587,
+   "n_exits": 0,
+   "n_fills": 343383,
+   "turnover_usd": 1412932.62
+  },
+  {
+   "arm": "lambda_jump",
+   "lambda_star": 0.0005,
+   "pnl_usd": -31591.08,
+   "sharpe_cross": -0.278,
+   "sharpe_daily_ann": -12.219,
+   "max_drawdown_usd": 31600.6,
+   "win_rate": 0.1859,
+   "n_exits": 301,
+   "n_fills": 333011,
+   "turnover_usd": 1104411.34
+  },
+  {
+   "arm": "lambda_select",
+   "lambda_star": 0.0005,
+   "pnl_usd": 0.0,
+   "sharpe_cross": 0.0,
+   "sharpe_daily_ann": 0.0,
+   "max_drawdown_usd": 0.0,
+   "win_rate": 0.0,
+   "n_exits": 0,
+   "n_fills": 0,
+   "turnover_usd": 0.0
+  },
+  {
+   "arm": "lambda_jump_hazard",
+   "lambda_star": 0.0005,
+   "pnl_usd": -13375.69,
+   "sharpe_cross": -0.363,
+   "sharpe_daily_ann": -10.357,
+   "max_drawdown_usd": 13384.44,
+   "win_rate": 0.2178,
+   "n_exits": 624,
+   "n_fills": 324762,
+   "turnover_usd": 838683.05
+  },
+  {
+   "arm": "diffusion_only",
+   "lambda_star": 0.002,
+   "pnl_usd": -55318.46,
+   "sharpe_cross": -0.325,
+   "sharpe_daily_ann": -13.534,
+   "max_drawdown_usd": 55326.22,
+   "win_rate": 0.1587,
+   "n_exits": 0,
+   "n_fills": 343383,
+   "turnover_usd": 1412932.62
+  },
+  {
+   "arm": "lambda_jump",
+   "lambda_star": 0.002,
+   "pnl_usd": -31591.08,
+   "sharpe_cross": -0.278,
+   "sharpe_daily_ann": -12.219,
+   "max_drawdown_usd": 31600.6,
+   "win_rate": 0.1859,
+   "n_exits": 301,
+   "n_fills": 333011,
+   "turnover_usd": 1104411.34
+  },
+  {
+   "arm": "lambda_select",
+   "lambda_star": 0.002,
+   "pnl_usd": -19682.35,
+   "sharpe_cross": -0.191,
+   "sharpe_daily_ann": -9.382,
+   "max_drawdown_usd": 19721.02,
+   "win_rate": 0.0786,
+   "n_exits": 0,
+   "n_fills": 137550,
+   "turnover_usd": 581270.14
+  },
+  {
+   "arm": "lambda_jump_hazard",
+   "lambda_star": 0.002,
+   "pnl_usd": -13375.69,
+   "sharpe_cross": -0.363,
+   "sharpe_daily_ann": -10.357,
+   "max_drawdown_usd": 13384.44,
+   "win_rate": 0.2178,
+   "n_exits": 624,
+   "n_fills": 324762,
+   "turnover_usd": 838683.05
+  },
+  {
+   "arm": "diffusion_only",
+   "lambda_star": 0.01,
+   "pnl_usd": -55318.46,
+   "sharpe_cross": -0.325,
+   "sharpe_daily_ann": -13.534,
+   "max_drawdown_usd": 55326.22,
+   "win_rate": 0.1587,
+   "n_exits": 0,
+   "n_fills": 343383,
+   "turnover_usd": 1412932.62
+  },
+  {
+   "arm": "lambda_jump",
+   "lambda_star": 0.01,
+   "pnl_usd": -35959.83,
+   "sharpe_cross": -0.285,
+   "sharpe_daily_ann": -12.808,
+   "max_drawdown_usd": 35969.35,
+   "win_rate": 0.1834,
+   "n_exits": 240,
+   "n_fills": 335412,
+   "turnover_usd": 1150929.05
+  },
+  {
+   "arm": "lambda_select",
+   "lambda_star": 0.01,
+   "pnl_usd": -35334.67,
+   "sharpe_cross": -0.261,
+   "sharpe_daily_ann": -11.926,
+   "max_drawdown_usd": 35342.43,
+   "win_rate": 0.1356,
+   "n_exits": 0,
+   "n_fills": 240020,
+   "turnover_usd": 975589.71
+  },
+  {
+   "arm": "lambda_jump_hazard",
+   "lambda_star": 0.01,
+   "pnl_usd": -13774.68,
+   "sharpe_cross": -0.369,
+   "sharpe_daily_ann": -10.419,
+   "max_drawdown_usd": 13783.07,
+   "win_rate": 0.2152,
+   "n_exits": 566,
+   "n_fills": 325021,
+   "turnover_usd": 841756.86
+  }
+ ],
+ "bootstrap_frozen_lambda_star": {
+  "lambda_jump_minus_diffusion": {
+   "delta": 23727.384037528154,
+   "ci_low": 18174.562803399782,
+   "ci_high": 29414.664005851253,
+   "n_bootstrap": 1000
+  },
+  "lambda_jump_hazard_minus_diffusion": {
+   "delta": 41942.76889565783,
+   "ci_low": 34578.09657786431,
+   "ci_high": 49287.419328371616,
+   "n_bootstrap": 1000
+  }
+ }
+}

@@ -286,15 +286,17 @@ End-of-session marks: λ-on **+0.012**, λ-off **+0.00025**, Δ **+0.01175 USDC*
 
 The §4.1 ablation measures the exit *policy* in proxy units. [forwardtest/replay_full.py](forwardtest/replay_full.py) closes the loop the roadmap flagged (§7 #2/#3): it simulates the **actual product** over the same historical tape — the production quoter (`pricing.quote.compute_quote`), the production exit gate (fed only *expected* loss, **no hindsight**), and **queue-pessimistic tape fills** (a resting quote fills only when a print goes strictly through it) — and scores **clean USD** P&L (`cash + inventory·mark`, **no reward income folded in**) plus time-series Sharpe, max drawdown, win rate, and **market-level bootstrap 95% CIs**. Served live at `/api/backtest`; the dashboard's Edge-proof section now leads with it.
 
-Committed run ([forwardtest/results/replay_full_2026-08-04.json](forwardtest/results/), a **bounded** 29-disputed + 120-control sample — the full ~1,500-dispute universe is a multi-hour offline job), at the frozen λ\*=0.002:
+Committed run ([forwardtest/results/replay_full_2026-08-05.json](forwardtest/results/), the **full universe**: 1,395 disputed + 552 control markets with fills), at the frozen λ\*=0.002:
 
 | Arm | Clean-USD P&L | reading |
 |---|---|---|
-| diffusion (always hold) | **−$2,666** | eats the full dispute jump |
-| λ-jump (surgical exit) | **−$625** | the exit avoids most of it |
-| **Δ (λ-jump − hold)** | **+$2,041**, 95% CI **[+$1,048, +$3,296]** | the edge — CI excludes zero |
+| diffusion (always hold) | **−$55,318** | eats the full dispute jump |
+| λ-jump (surgical exit) | **−$31,591** | the exit avoids ~$24k of it |
+| λ-jump + hazard (learned timing) | **−$13,376** | best absolute — the hazard model times exits sharpest |
+| lambda-select (blanket avoid) | **−$19,682** | avoids by not trading disputed markets |
+| **Δ (λ-jump − hold)** | **+$23,727**, 95% CI **[+$18,175, +$29,415]** | the edge — CI far above zero |
 
-**Absolute P&L is negative by design** — a maker with *no reward income* loses on spread/adverse-selection over a dispute-enriched universe; on Amoy the reward brake is genuinely absent (§4.5). The **signal is the Δ edge**: the λ-jump term avoids ~$2k of directional loss vs always-holding, significantly (the bootstrap CI stays above zero). This is the honest fillable-PnL analogue of the §4.1 ordering, and it agrees: the surgical exit earns its keep.
+**Absolute P&L is negative by design** — a maker with *no reward income* loses on spread/adverse-selection over a dispute-enriched universe; on Amoy the reward brake is genuinely absent (§4.5). The **signal is the Δ edge**: the λ-jump term avoids **$23,727** of directional loss vs always-holding, decisively (the bootstrap 95% CI [+$18k, +$29k] sits far above zero), and the hazard-timed variant does better still. This is the honest fillable-PnL analogue of the §4.1 ordering, and it agrees: the surgical exit earns its keep.
 
 ---
 
@@ -334,7 +336,7 @@ An honest benchmark against what strong market-making / prediction-market resear
 | Pre-registration & honesty rails | Rare in practice | λ\* grid, success gate, and power calc committed before the run; matched-null published; every payload tagged live/published | **Ahead** |
 | Risk & production controls | Risk limits, kill switches | Risk governor gating every signed tx, frozen limits, jurisdiction gate | **Ahead** |
 
-The candid summary: on the *specific question it targets* — is a reward-aware λ-triggered exit worth more than the rewards it forfeits? — this work is more carefully bounded and better pre-registered than most public prediction-market MM research. The loop to a full economic PnL simulation is now **closed** by `replay_full` (§4.6): clean-USD mark-to-market P&L, queue-pessimistic fills, no hindsight, time-series Sharpe / drawdown / bootstrap CIs — an external reader can treat it as a trading-system backtest (currently over a bounded sample; the full-universe run is the remaining scale-up).
+The candid summary: on the *specific question it targets* — is a reward-aware λ-triggered exit worth more than the rewards it forfeits? — this work is more carefully bounded and better pre-registered than most public prediction-market MM research. The loop to a full economic PnL simulation is now **closed** by `replay_full` (§4.6): clean-USD mark-to-market P&L, queue-pessimistic fills, no hindsight, time-series Sharpe / drawdown / bootstrap CIs — an external reader can treat it as a trading-system backtest, run over the full ~1,400-dispute universe (Δ +$23,727, 95% CI [+$18,175, +$29,415]).
 
 ---
 
@@ -343,7 +345,7 @@ The candid summary: on the *specific question it targets* — is a reward-aware 
 Each item names the concrete repo hook, so this is an engineering queue, not a wish list:
 
 1. **Full-economics replay (v2).** Apply the `p(1−p)` Jacobian to the replay's jump loss ([forwardtest/replay_ablation.py](forwardtest/replay_ablation.py):137 — the live gate at `execution/loop.py:168` already applies it), replace the volume proxy with the live quadratic reward-score model (`_reward_score` in [execution/loop.py](execution/loop.py)), and charge the 5¢ haircut + taker half-spread in *every* arm. Publish the corrected run as a clearly-labeled **v2 table alongside the pinned v1** — the pre-registered 2026-07-11 result of record stays untouched, and the report shows methodological progression instead of silently restating history.
-2. ✅ **DELIVERED — Full PnL simulation arm.** [forwardtest/replay_full.py](forwardtest/replay_full.py) scores true mark-to-market clean-USD PnL, inventory paths, time-series Sharpe, and max drawdown under the four arms over queue-pessimistic historical tape fills — the proper strategy backtest (§4.6). *Remaining: scale the committed run from the bounded sample to the full ~1,500-dispute universe.*
+2. ✅ **DELIVERED — Full PnL simulation arm.** [forwardtest/replay_full.py](forwardtest/replay_full.py) scores true mark-to-market clean-USD PnL, inventory paths, time-series Sharpe, and max drawdown under the four arms over queue-pessimistic historical tape fills — the proper strategy backtest (§4.6), run over the **full 1,395-disputed + 552-control universe** (Δ +$23,727, CI [+$18,175, +$29,415]).
 3. ✅ **DELIVERED — Bootstrap confidence intervals.** `replay_full` block-bootstraps the λ-jump − diffusion PnL delta (1,000 resamples, market-level); the ordering gate now ships with a significance statement (Δ CI excludes zero, §4.6).
 4. ✅ **DELIVERED — Regression test on the ablation.** [tests/test_backtest_artifacts.py](tests/test_backtest_artifacts.py) pins the counterfactual arm ordering and the backtest Δ>0 / CI-excludes-zero against the committed artifacts, closing the gap [notes/05-forwardtest-ablation.md](notes/05-forwardtest-ablation.md) documented.
 5. **Matched controls.** Reuse the CEM matching machinery already in [estimators/hazard.py](estimators/hazard.py) to draw size/liquidity-matched controls for the replay, replacing the stratified deterministic sample.
