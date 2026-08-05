@@ -23,8 +23,8 @@ beats both naive diffusion quoting and blanket dispute-avoidance.
   card with its honest fair-controls null, and a methodology that documents its own corrected
   premises.
 - **The public face:** the quant-terminal dashboard — live at
-  <https://polylambda-9lu2.onrender.com> (Git-backed Render deploy, push-to-deploy, keepalive) —
-  extended with the live P&L / attribution panel (ROADMAP Phase 5).
+  <https://polylambda.vercel.app> (Vercel-hosted frontend proxying to the Git-backed Render backend,
+  push-to-deploy, keepalive) — extended with the live P&L / attribution panel (ROADMAP Phase 5).
 - **The volume generator:** the live bot itself, operated by the non-US entity
   (see [JURISDICTION.md](JURISDICTION.md) resolution log).
 

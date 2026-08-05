@@ -6,7 +6,7 @@ PolyLambda reads the Polymarket → UMA resolution lifecycle and CLOB fills from
 
 > **Status:** research / forward-test. This is not financial advice. It places real orders only in explicit live mode, and is designed to be run with *tiny* capital (or paper-live) until the edge is validated. Custody/vault is intentionally **out of scope** for v1. See [Safety](#safety--disclaimers).
 
-> **Live demo:** **<https://polylambda-9lu2.onrender.com>** — the research dashboard plus the
+> **Live demo:** **<https://polylambda.vercel.app>** — the research dashboard plus the
 > **continuous on-chain testnet engine**: the production loop drives a fleet of engine-signed
 > PolyLambdaMarket contracts on Polygon Amoy (chainId 80002), quoting from the live estimators with
 > every fill a decoded on-chain `Traded` event (the **Fleet & keeper** section shows it live).

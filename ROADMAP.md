@@ -11,8 +11,8 @@
 > HF-joinable**, and is now maintainable without any indexer (`data/export_disputes.py` over RPC)
 > with a **scheduled GitHub Actions refresh** committing regenerated artifacts; κ is calibrated
 > **per-category** (`kappa_by_category.json`, scalar 0.76 fallback); the dashboard was rebuilt as a
-> **Git-backed Render deploy** — live at <https://polylambda-9lu2.onrender.com>, push-to-deploy +
-> keepalive — and gained the HF-backbone sections and the interactive dispute-anatomy explorer.
+> **Git-backed deploy** — live at <https://polylambda.vercel.app> (Vercel frontend → Render backend),
+> push-to-deploy + keepalive — and gained the HF-backbone sections and the interactive dispute-anatomy explorer.
 > None of this moves Phases 0–7 (they are all live-trading work); it hardens the "already built"
 > column below and Phase 7's legs 2–4.
 >
@@ -257,8 +257,8 @@ The submission stands on four legs, three of which already exist:
    λ\*-sensitivity curve (publish the curve, not a tuned point — `config/model.yaml` mandates this).
 3. **Public good** — the released dataset `dataset_release/polymarket-oov2-disputes-v1/`
    (1,848 disputes to chain head, 100% HF-joinable, CC-BY-4.0).
-4. **Live product** — the quant terminal (live at <https://polylambda-9lu2.onrender.com>, Git-backed
-   auto-deploy) with the Phase-5 live panel, the keyless-RPC live dispute feed, the HF-backbone +
+4. **Live product** — the quant terminal (live at <https://polylambda.vercel.app>, Vercel frontend →
+   Git-backed Render backend) with the Phase-5 live panel, the keyless-RPC live dispute feed, the HF-backbone +
    dispute-anatomy sections, and the testnet lifecycle proof (`contracts/PolyLambdaMarket.sol`,
    `scripts/e2e_onchain.py`).
 
