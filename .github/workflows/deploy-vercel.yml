@@ -1,0 +1,47 @@
+# Auto-deploy the Vercel `polylambda` frontend on push. The frontend was first shipped with a manual
+# `vercel --prod`; this keeps polylambda.vercel.app in sync on every webapp/frontend change without a
+# manual step. Deploys FROM webapp/frontend (the correct subdir), reusing the committed vercel.json
+# (which proxies /api/* to the Render backend). ORG/PROJECT IDs are non-secret identifiers; only
+# VERCEL_TOKEN is a secret — add it once (Vercel → Account Settings → Tokens → Create), then:
+#   gh secret set VERCEL_TOKEN
+# Until the secret exists the job SKIPS cleanly (green) — the live site stays on the last good deploy.
+name: deploy-vercel
+
+on:
+  push:
+    branches: [main]
+    paths: ["webapp/frontend/**"]
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VERCEL_ORG_ID: team_zPsrrkCnFi6oNMUiN38NlXIw
+      VERCEL_PROJECT_ID: prj_J5VlVPSVSVoNCBKRp1TkPm1YtwLM
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    defaults:
+      run:
+        working-directory: webapp/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gate on VERCEL_TOKEN (skip cleanly if unset)
+        id: gate
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "::warning::VERCEL_TOKEN secret not set — skipping the Vercel deploy. Add it with 'gh secret set VERCEL_TOKEN' to enable auto-deploy."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.go == 'true'
+        with:
+          node-version: "20"
+      - name: Install Vercel CLI
+        if: steps.gate.outputs.go == 'true'
+        run: npm i -g vercel@latest
+      - name: Deploy to production (polylambda.vercel.app)
+        if: steps.gate.outputs.go == 'true'
+        run: vercel deploy --prod --yes --token="$VERCEL_TOKEN"
