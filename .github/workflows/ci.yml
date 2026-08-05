@@ -1,7 +1,8 @@
-# CI test-gate — runs the Python + frontend suites (and the legacy Envio indexer, best-effort) on every
-# push and PR to main. There was no CI before this, so a red build could autodeploy. NOTE: Render
-# autoDeploy is independent of this workflow — this is the regression / PR gate; wiring deploy-on-green
-# is a later Render-config change (turn off autoDeploy + add a deploy hook on CI success).
+# CI test-gate — runs the Python + frontend suites on every push and PR to main. There was no CI
+# before this, so a red build could autodeploy. NOTE: Render autoDeploy is independent of this workflow
+# — this is the regression / PR gate; wiring deploy-on-green is a later Render-config change (turn off
+# autoDeploy + add a deploy hook on CI success). The legacy Envio indexer's test needs `envio codegen`
+# (not reliably runnable headless) — run `cd indexer && npm test` locally; it's dormant/optional.
 name: ci
 
 on:
@@ -21,6 +22,10 @@ jobs:
           python-version: "3.13"
           cache: pip
       - run: pip install -r requirements.txt
+      # replicate the Dockerfile's offline-cache step (Dockerfile:36) so the backend tests see the same
+      # committed artifacts the deployed image does — else the fresh-checkout .data_cache is empty and
+      # the hazard/recon/scoring endpoints degrade (3 tests fail that pass in the built image).
+      - run: mkdir -p .data_cache && cp -r webapp/deploy/cache/. .data_cache/
       - run: pytest -q
 
   frontend:
@@ -40,20 +45,3 @@ jobs:
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
-
-  indexer:
-    # legacy/optional Envio indexer — best-effort (needs `envio codegen`, no lockfile); never blocks the ship.
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: indexer
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - run: npm install
-      - run: npx envio codegen || true
-      - run: npm test
