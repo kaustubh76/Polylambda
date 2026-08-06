@@ -136,7 +136,7 @@ export interface LiveEdge {
   n_disputes?: number; underpowered?: boolean
 }
 export interface Overview {
-  thesis: string; thesis_nuance: string; jump_diffusion: string; mode: string; positioning: string
+  thesis: string; thesis_title: string; jump_diffusion: string; mode: string; positioning: string
   tiles: Tile[]; frozen_params: Record<string, number | string>; frozen_params_source: string
   live_edge?: LiveEdge
   dataset: { total_disputes: number; hf_joinable_pct: number; by_year: Record<string, number>

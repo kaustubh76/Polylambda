@@ -48,7 +48,7 @@ decision** that gates live mode rather than decided now. Full detail in
 | 8 | A-S spread used directly in price space | Add **logit→price Jacobian** `δ_p ≈ p(1−p)·δ_x`; near-boundary **spread floor**; **inventory cap** `|q_max| ~ 1/max(p(1−p), ε)`; **(T−t)→0 collapse guard** (spread collapses exactly when jump risk peaks); make jump term **directional** (skew the *reservation price*). Note notation: `k` = order-arrival/liquidity vs `κ` = jump-premium weight. | arXiv 2510.15205; arXiv 1105.3115; original A-S paper |
 | 9 | naive EWMA σ | EWMA on wash prints measures **manipulation**, not belief (and spread ∝ σ² → over-wide quotes → under-fill on reward markets). Add a **trade-quality/wash filter** (drop self-crosses, sub-min-size prints), a robust/trimmed estimator, a volume floor; condition the shrinkage prior on **category AND price level** (logit σ is heteroskedastic in price space). | quant critique |
 | 10 | reconciliation "= 100%" flat gate | **100% on the ELIGIBLE set** (settled + past confirmation depth + supported adapter), with **counted exclusion buckets** (pending / in-dispute / reorg-window / unsupported-adapter) reported as first-class metrics. Configure Envio confirmed-block depth / reorg handling for chain 137. | engineering critique |
-| 11 | live λ-ablation = the edge proof | **Underpowered** in 18 days (~0–3 disputes witnessed, ≈0 DVM hard-locks). Make **historical counterfactual replay over the ~184 indexed disputes + matched controls** the *primary* edge proof; keep the live ablation as a **pre-registered, explicitly-underpowered** sanity check. Pre-register the power calc. | quant/edge critique |
+| 11 | live λ-ablation = the edge proof | **Underpowered** in 18 days (~0–3 disputes witnessed, ≈0 DVM hard-locks). Make **historical counterfactual replay over the released dispute layer + matched controls** the *primary* edge proof; keep the live ablation as a **pre-registered, explicitly-underpowered** sanity check. Pre-register the power calc. *(As shipped: 1,794 in-window disputes of 1,848 released, 1,409 with usable fill tapes, + 2,856 matched controls — see `constants.ABLATION_META`.)* | quant/edge critique |
 | 12 | "Builders Program submission / deadline / judging" | **Continuous & permissionless** (Builder Codes, bytes32 via CLOB V2 SDK). **No deadline / rubric / demo-day.** Weekly USDC rewards (Sun–Sat UTC epochs since Nov 2 2025); grants are **traction-gated** (working product + active users). The "$100–$75K" range is the older Microgrants, not Builders grants. **Bots welcomed**; jurisdiction is the binding constraint. | builders.polymarket.com; docs.polymarket/developers/builders |
 | 13 | "OrderFilled tape needs dynamic-contract indexing" | **Over-engineering.** Token IDs / outcome tokens are uint256 ERC-1155 `positionId`s = **event params on fixed addresses** → normal handlers + id-keyed entities. `contractRegister` is address-based, reserved for genuine factory deployments (FPMM pools), which binary-only v1 likely doesn't need. | Envio docs; enviodev/polymarket-indexer |
 
@@ -87,3 +87,38 @@ decision** that gates live mode rather than decided now. Full detail in
   orders (GTC/GTD, post-only), batch order/cancel, `streams/` WebSocket.
 - **arXiv 2510.15205** (logit jump-diffusion A-S for prediction markets), **arXiv 1105.3115**
   (GLFT perpetual horizon), **original A-S paper** (Cornell-hosted PDF).
+
+---
+
+## F. Canon — one home per concept
+
+Every concept is stated **in full in exactly one place**. Everywhere else gets one line and a
+link. `tests/test_docs_canon.py` enforces this: restating a canon string verbatim outside its
+home fails CI, as does reintroducing a banned paraphrase.
+
+Prose tiers — every piece of prose in the repo is exactly one of these:
+
+| Tier | Definition | Length rule |
+|---|---|---|
+| **Canon** | The one authoritative statement of a concept | whatever it takes |
+| **Echo** | A reference to canon from anywhere else | **one sentence, then a link — no re-explanation** |
+| **Archive** | Historical record of what was believed and when | confined to `DECISIONS.md §C`, `ANALYSIS.md`, `LEDGER.md` |
+
+| # | Concept | Canon home | Echo string |
+|---|---|---|---|
+| C1 | Thesis + title | `webapp/backend/constants.py` `THESIS` / `THESIS_TITLE` | quoted verbatim in `Readme.md` + `REPORT.md` only |
+| C2 | Dispute ≠ freeze (mechanism, bimodality, ~5¢ haircut) | **§C.1–C.2 above**, expanded once in `REPORT.md §1` | one clause + link |
+| C3 | Exit-gate inequality | `constants.EXIT_GATE`; full formula in `REPORT.md §2.4` | `E[jump loss] > forgone rewards + spread` |
+| C4 | Exit pseudocode | `execution/loop.py` docstring | link only |
+| C5 | Glossary | `notes/10-glossary.md` | `REPORT.md` App. A keeps report-only terms |
+| C6 | Jump-diffusion gloss | `constants.JUMP_DIFFUSION` + `notes/04-model-pricing.md §1` | bare equation, no gloss |
+| C7 | "Surgical > blanket" + numbers | `REPORT.md §4`, sourced from the committed replay artifact | `constants.EDGE_ONE_LINER` |
+| C8 | Hazard calibration caveat | `constants.HAZARD_CAVEAT` | referenced, not restated |
+| C9 | Underpowered live vs powered replay | `constants.POWER_CAVEAT` + §C.11 above | one line + link |
+| C10 | Recon eligible-set | `constants.RECON_CAVEAT` + §C.10 above | one line + link |
+| C11 | Dataset headline numbers | `constants.DATASET_STATS_FALLBACK` + `dataset_release/…/README.md` | `constants.DATASET_ONE_LINER` |
+| C12 | Corrections record | **§C above** + `ANALYSIS.md` narrative | nothing else narrates history |
+
+**Known exception:** `quant-implementation-full.excalidraw` panels K/M duplicate ~600 words of
+glossary. They are diagram canvases, not prose files — out of scope for text edits, and skipped
+by the lint.

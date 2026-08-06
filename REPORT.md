@@ -1,6 +1,6 @@
 # PolyLambda — Market-Making Strategy & Backtest Report
 
-> **Thesis.** A belief-volatility market-making bot for Polymarket that treats UMA disputes as *jumps* — and exits before they lock your capital. A dispute doesn't freeze the order book, only redemption; so it is a directional price jump with degraded-but-present exit liquidity (~5¢ haircut), not a lock. The engine folds that jump intensity (λ) directly into the pricing math, and pulls liquidity only when the expected jump loss exceeds the liquidity rewards it would forgo.
+> **Thesis — disputes are jumps, not locks, priced into the spread.** A dispute doesn't freeze the order book — only redemption. So it's a directional price jump you can model and defend against, not a lock. The engine folds that jump intensity (λ) straight into the pricing math, and only pulls liquidity when E[jump loss] > forgone rewards.
 
 | | |
 |---|---|
@@ -358,14 +358,13 @@ Each item names the concrete repo hook, so this is an engineering queue, not a w
 
 ### A. Glossary
 
-| Term | Meaning |
+The full plain-English vocabulary lives at [notes/10-glossary.md](notes/10-glossary.md). Only the
+terms this report leans on beyond their ordinary meaning are restated here:
+
+| Term | Meaning in this report |
 |---|---|
-| **λ (lambda)** | Jump intensity — instantaneous probability of a dispute/resolution jump; base signal is the category dispute rate, optionally sharpened by the hazard model |
-| **λ\* (lambda_star)** | The exit threshold: when `lambda_jump > λ*`, the reward-aware exit gate is evaluated (frozen at 0.002) |
-| **λ-edge** | Realized PnL delta between the λ-ON and λ-OFF arms of the identical engine — what the λ-driven behavior is worth, net of forgone rewards |
-| **Jump premium** | `κ·λ·E[loss\|jump]` added to the spread (with `e_loss = κ_cat·λ`, effectively `κ·κ_cat·λ²` — second-order; see §2.2); the directional counterpart skews the reservation price |
-| **Exit-on-risk** | Cancel + taker-reduce 50% of inventory + re-quote at 30% size (testnet: flagDispute + light re-quote, no reduce), fired only when E[jump loss] > forgone rewards + spread cost |
-| **Belief-vol (σ)** | EWMA volatility of logit returns — how fast the market's belief moves, as opposed to price volatility |
+| **λ-edge** | Realized PnL delta between the λ-ON and λ-OFF arms of the *identical* engine — what the λ-driven behavior is worth, net of forgone rewards |
+| **Jump premium** | `κ·λ·E[loss\|jump]` added to the spread. Since `e_loss = κ_cat·λ`, this is effectively `κ·κ_cat·λ²` — second-order, hence §2.2's magnitude caveat |
 
 ### B. Code map
 

@@ -5,18 +5,12 @@
 > pointer to the code so claims stay checkable. These notes describe current state only — no roadmap
 > (see `../ROADMAP.md` for that).
 
-## What PolyLambda is (one paragraph)
+## What PolyLambda is
 
-PolyLambda is a Polymarket market-making engine built on one thesis: **quote two-sided liquidity with
-Avellaneda-Stoikov in log-odds space, and use an OOv2 dispute-hazard signal (λ) to do reward-aware
-exit-on-risk** — because on Polymarket a resolution/dispute is a *directional jump* you can trade out of
-at a haircut (the CLOB stays open), not a freeze. The engine estimates σ (belief-volatility), λ (jump
-intensity), and a fair-value mid, prices A-S quotes augmented with a jump premium + directional skew,
-and pulls/reduces inventory only when `E[jump loss] > forgone rewards + spread`. It ships with a
-**historical replay-ablation as the primary edge proof**, a paper/paper-live forward-test harness, a
-released dispute dataset (labelled from **keyless RPC** — no indexer required), and a FastAPI+React
-dashboard that also drives a live **on-chain testnet market on Polygon Amoy**. Everything defaults to
-paper-only; the live mainnet CLOB write path is hard-gated by jurisdiction.
+A Polymarket market-making engine that prices UMA dispute risk as the jump term of its quoting
+model. The thesis is stated once in [../Readme.md](../Readme.md), the model in
+[../REPORT.md §2](../REPORT.md). These notes are the structural developer reference for what is
+*actually implemented today*.
 
 ## How to navigate
 

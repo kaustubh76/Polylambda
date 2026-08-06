@@ -1,7 +1,7 @@
 """
 clob — Polymarket CLOB V2 wrapper: ungated public READ path + hard-gated WRITE path.
 
-Corrected design (see ../DECISIONS.md #4-#7):
+Design (see ../DECISIONS.md #4-#7):
   * Use the official Polymarket py-sdk (CLOB V2), pinned as `polymarket-client==0.1.0b13`
     (import name `polymarket`; see requirements.txt). ⚠ NOT py-clob-client (archived / V1 / dead).
   * Auth: L1 EIP-712 wallet sig derives creds; L2 HMAC for order ops.

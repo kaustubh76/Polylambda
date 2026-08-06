@@ -1,7 +1,7 @@
 """
 sigma — belief-volatility estimator (LOGIT-space, robust EWMA, category x price shrinkage).
 
-Corrected design (see ../DECISIONS.md #9):
+Design (see ../DECISIONS.md #9):
   * Compute logit returns of the fill/mid tape; EWMA with memory knob `b` (config: ewma_b).
   * WASH FILTER FIRST: drop self-crosses (maker == taker) and sub-min-size prints. EWMA on wash
     prints measures MANIPULATION, not belief; and spread proportional to sigma^2, so inflated

@@ -122,7 +122,7 @@ def overview() -> dict:
          "fmt": "pct", "sub": f"{recon.get('eligible', 27238):,} eligible matched"},
     ]
     return {
-        "thesis": K.THESIS, "thesis_nuance": K.THESIS_NUANCE, "jump_diffusion": K.JUMP_DIFFUSION,
+        "thesis": K.THESIS, "thesis_title": K.THESIS_TITLE, "jump_diffusion": K.JUMP_DIFFUSION,
         "mode": frozen.get("mode", "paper"), "positioning": frozen.get("positioning", "both"),
         "tiles": tiles, "frozen_params": frozen, "frozen_params_source": frozen_src,
         "live_edge": _live_edge(),

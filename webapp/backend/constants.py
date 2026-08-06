@@ -7,19 +7,39 @@ each payload with `source: "live" | "published"` so the UI is never silently sta
 """
 from __future__ import annotations
 
-# --- one-line product identity (Readme.md:3) --------------------------------------------------
+# ═════════════════ CANON: prose of record. Every string below is single-sourced. ═══════════════
+# Each string is stated IN FULL here and nowhere else; other sites carry one line and a link.
+# tests/test_docs_canon.py fails CI if any of these is restated verbatim outside its declared
+# home, or if one of the pre-correction paraphrases it bans (the "a dispute locks your position"
+# family) reappears anywhere outside the archive. Homes: DECISIONS.md §F.
+
+# --- C1 · product identity ---------------------------------------------------------------------
+# Home for the title: also webapp/frontend/src/lib/canon.ts + index.html (lint-checked equal).
+THESIS_TITLE = "Disputes are jumps, not locks — priced into the spread."
 THESIS = (
-    "A belief-volatility market-making bot for Polymarket that treats disputes as jumps — "
-    "and exits before they lock your capital."
-)
-# the corrected thesis of record (Readme.md:9-26, DECISIONS.md): a dispute is a directional price
-# JUMP with degraded-but-present exit liquidity (~5c haircut), NOT an un-hedgeable lock.
-THESIS_NUANCE = (
     "A dispute doesn't freeze the order book — only redemption. So it's a directional price jump "
     "you can model and defend against, not a lock. The engine folds that jump intensity (λ) "
     "straight into the pricing math, and only pulls liquidity when E[jump loss] > forgone rewards."
 )
-JUMP_DIFFUSION = "dX = μ·dt + σ·dW + J·dN"  # log-odds jump-diffusion (METHODOLOGY.md)
+# --- C6 · the model ----------------------------------------------------------------------------
+JUMP_DIFFUSION = "dX = μ·dt + σ·dW + J·dN"  # log-odds jump-diffusion; glossed in notes/04 §1
+
+# --- C3 · the exit gate (full formula + terms: REPORT.md §2.4) ---------------------------------
+EXIT_GATE = "Exit only when E[jump loss] > forgone rewards + spread."
+
+# --- C7 · the edge (numbers: REPORT.md §4, from the committed replay artifact) ------------------
+EDGE_ONE_LINER = "The edge is the surgical jump-exit, not blanket avoidance."
+
+# --- C9 · statistical power (detail: notes/05-forwardtest-ablation.md) -------------------------
+POWER_CAVEAT = (
+    "The 18-day live ablation is pre-registered and explicitly underpowered (~0–3 disputes "
+    "expected); the powered historical replay is the edge proof."
+)
+# --- C10 · reconciliation (detail: recon/check.py, DECISIONS.md §C.10) -------------------------
+RECON_CAVEAT = (
+    "100% on the eligible set (settled · past confirmation depth · supported adapter), with "
+    "counted exclusion buckets — not a flat, unexamined 100%."
+)
 
 # --- category dispute base rates: THE λ_select signal (DATASET.md §5b) -----------------------
 # all adapters, 1,527 disputed markets over HF resolved denominators, Wilson 95% CI.
@@ -95,6 +115,13 @@ DATASET_STATS_FALLBACK = {
     # limit/offset scan. recon needs an indexer to recompute; this block is the last such result.
     "recon": {"pass_rate": 1.0, "eligible": 27238, "matched": 27238, "no_ground_truth": 115221},
 }
+
+# --- C11 · dataset headline. Interpolated, never retyped, so it cannot drift from the stats. ----
+DATASET_ONE_LINER = (
+    f"{DATASET_STATS_FALLBACK['total_disputes']:,} OOv2 disputes to chain head · "
+    f"{DATASET_STATS_FALLBACK['in_window_disputes']:,} in the HF window · "
+    f"{DATASET_STATS_FALLBACK['hf_joinable_pct']:.0f}% joinable · CC-BY-4.0."
+)
 
 # the honest calibration caveat that must ride alongside the hazard AUC (DECISIONS.md #9).
 HAZARD_CAVEAT = (

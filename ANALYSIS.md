@@ -54,66 +54,32 @@ the README implies.
 
 ---
 
-## 3. The three other critical findings
+## 3. The other findings
 
-| Finding | Status | Why it matters |
-|---|---|---|
-| **`py-clob-client` is archived & dead** | build-breaking | CLOB **V2** launched Apr 28 2026. The pinned SDK cannot place an order against production. Must use `Polymarket/py-sdk` (official but **BETA**), drop all nonce logic (V2 uses ms timestamps), add a **pUSD** collateral on-ramp, and integrate **Builder Codes**. |
-| **The λ-ablation is statistically powerless in 18 days** | edge-proof-breaking | Disputes are ~1% of markets (184 / 18,427); DVM escalations ~1.5% of those. A solo MM cycling 30–60 markets expects **~0–3 disputes, ≈0 hard-locks** in 18 days — you cannot compute a Sharpe on n≈1. The original "live λ-ablation = edge proof" is wall-clock- and sample-impossible. Fix: make a **historical counterfactual replay over the ~184 indexed disputes** the primary edge proof. |
-| **Jurisdiction can zero out the live leg** | existential | Polymarket ToS bars **US persons (and their bots) from trading via UI AND API**. If the operator is US-based, the entire live forward-test is prohibited. See [JURISDICTION.md](JURISDICTION.md). |
+Three more were critical — a dead SDK on the build path (`py-clob-client` archived; CLOB V2
+launched Apr 2026), a live λ-ablation that is statistically powerless at a ~1% dispute rate, and
+a jurisdiction gate that can zero out the live leg entirely. Alongside them sat a set of smaller
+corrections: the Builders Program's actual shape, two income programs rather than one, an
+open-source reference indexer worth adapting, several math gaps in the pricing map, and σ
+measuring manipulation rather than belief on wash-traded markets.
 
----
-
-## 4. Smaller but valuable corrections
-
-- **Builders Program is continuous & permissionless** (Builder Codes) — no deadline, no
-  judging panel. Grants are **traction-gated** (working product + active users), so near-term
-  income is the **automatic rails**: weekly USDC builder rewards + Maker Rebates + Liquidity
-  Rewards. **Bots are explicitly welcomed** — jurisdiction is the only binding constraint.
-- **Two income programs, not one:** Maker Rebates (~20–50% of taker fees, by category) *and*
-  standalone Liquidity Rewards (size × uptime × *quadratic* midpoint-proximity; single-sided
-  penalized ~⅓ in [0.10,0.90], **zero outside it**). Model both.
-- **A near-exact open-source reference indexer exists** — `enviodev/polymarket-indexer`
-  (~4B events / 6 days on Polygon). Biggest available time-saver; adapt rather than greenfield.
-  *Gap:* it covers UmaSportsOracle, **not** generic OOv2 — that's the one net-new indexing piece.
-- **Math gaps (not errors):** add the logit→price Jacobian `δ_p ≈ p(1−p)·δ_x`, a near-boundary
-  spread floor, an inventory cap, a `(T−t)→0` spread-collapse guard, and make the jump term
-  **directional** (skew the reservation price, not just widen a symmetric spread).
-- **σ on thin/wash markets** measures manipulation, not belief → add a trade-quality filter and
-  condition the shrinkage prior on category **and** price level.
-
-Full detail and sources: [DECISIONS.md](DECISIONS.md).
+**All thirteen, with sources and the corrected fact to build on, are the table in
+[DECISIONS.md §C](DECISIONS.md).** That table is the record; this document does not duplicate it.
 
 ---
 
-## 5. What's solid (keep it)
+## 4. What survived the pass
 
-- The **A-S diffusion engine** and the log-odds approach — correct and defensible; the
-  finite `(T−t)` horizon is **economically real** here (markets have a true resolution date).
-- The **scope-lock** (binary-only, no custody, no heavy ML, no historical book reconstruction)
-  — the single most schedule-protective decision. Keep verbatim.
-- The **paper → paper-live → live** discipline and the **ablation-as-falsification** instinct —
-  good science; the ablation just needs the historical replay to have statistical power.
-- **Envio multi-contract on Polygon** — correct architecture, fully confirmed.
-
----
-
-## 6. Top risks (ranked)
-
-1. **Edge built on a false mechanic** (no trading lock) → re-derive the thesis first.
-2. **λ-ablation powerless live** → historical replay becomes the primary edge proof.
-3. **Dead SDK on the critical path** → CLOB V2 migration spike in week 1.
-4. **OOv2 indexing is the one unproven, safety-critical path** (reference repo only covers
-   UmaSportsOracle).
-5. **Jurisdiction** can kill the live leg ([JURISDICTION.md](JURISDICTION.md)).
-6. **Exit-on-risk forfeits the dominant income line** (rewards require uptime / two-sided
-   depth) → exit must be **reward-aware**: flatten only when `E[jump loss] > forgone rewards + spread`.
-7. **100% reconciliation is infeasible as a flat gate** → "100% on the *eligible* set" with
-   counted exclusion buckets.
+The **A-S diffusion engine** and the log-odds approach — correct and defensible, with a finite
+`(T−t)` horizon that is economically real here because markets have a true resolution date. The
+**scope-lock** (binary-only, no custody, no heavy ML, no order-book reconstruction), which was
+the single most schedule-protective decision made. The **paper → paper-live → live** discipline
+and the **ablation-as-falsification** instinct — good science; the ablation only needed the
+historical replay to have statistical power.
 
 ---
 
-## 7. Honest bottom line
+## 5. Honest bottom line
 
 In **18 days solo (~90h)** PolyLambda **can** ship: a working Envio indexer (adapted from the
 reference) + eligible-set reconciliation + robust σ/fair-value + a base-rate λ-v1 (with

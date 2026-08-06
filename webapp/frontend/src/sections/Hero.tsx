@@ -1,7 +1,8 @@
 import type { LiveEdge, Overview } from '../api/client'
 import { int, num, pct1 } from '../lib/format'
 import { AnimatedNumber, Reveal, Stagger } from '../lib/motion'
-import { Async, Caveat, Panel, PanelSkeleton, Pill, Section, SourceTag, Skeleton } from '../components/ui'
+import { Async, Panel, PanelSkeleton, Pill, Section, SourceTag, Skeleton } from '../components/ui'
+import { THESIS_TITLE } from '../lib/canon'
 
 function fmtTile(v: number, fmt: string) {
   if (fmt === 'int') return int(v)
@@ -87,7 +88,7 @@ function LiveEdgeStrip({ edge }: { edge: LiveEdge }) {
 export function Hero({ q }: { q: { data: Overview | null; error: string | null; loading: boolean } }) {
   return (
     <Section id="overview" kicker="Polymarket Builders Program · research MVP"
-      title="Treat disputes as jumps — and exit before they lock your capital.">
+      title={THESIS_TITLE}>
       <Async q={q} skeleton={<HeroSkeleton />}>{(d) => (
         <div className="space-y-5">
         {d.live_edge?.available && <LiveEdgeStrip edge={d.live_edge} />}
@@ -108,7 +109,6 @@ export function Hero({ q }: { q: { data: Overview | null; error: string | null; 
                 </span>
                 <span className="text-2xs text-muted">log-odds jump-diffusion:<br />drift + belief-vol σ + dispute jumps λ</span>
               </div>
-              <Caveat kind="note">{d.thesis_nuance}</Caveat>
             </div>
             <div className="mt-5 flex flex-wrap gap-2">
               <a href="#fleet" className="btn btn-primary">See the live engine →</a>

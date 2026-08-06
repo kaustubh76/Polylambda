@@ -1,7 +1,7 @@
 """
 fair_value — model mid (depth-weighted book mid + light, tapered favorite-longshot tilt).
 
-Corrected design (see ../DECISIONS.md):
+Design (see ../DECISIONS.md):
   * Depth-weighted mid (NOT last trade — wash-prone).
   * Light favorite-longshot tilt: favorites (p>0.5) are mildly underpriced, longshots (p<0.5)
     mildly overpriced -> nudge toward the extreme, SMALL magnitude, and TAPER to ~0 near

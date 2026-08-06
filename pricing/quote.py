@@ -1,11 +1,11 @@
 """
 PolyLambda pricing core — Avellaneda-Stoikov in LOG-ODDS space + jump augmentation.
 
-This module is pure math (no data, no I/O) and is fully implemented + unit-tested, because the
-A-S formulas are verified correct (see ../DECISIONS.md #8; arXiv 2510.15205, GLFT 1105.3115,
-and the original Avellaneda-Stoikov 2008 paper).
+Pure math (no data, no I/O), fully unit-tested. The A-S formulas are transcribed exactly (see
+../DECISIONS.md #8; arXiv 2510.15205, GLFT 1105.3115, and the original Avellaneda-Stoikov 2008
+paper).
 
-Design decisions baked in from the verification (DECISIONS.md):
+Design (DECISIONS.md #8):
   * Work in log-odds  X = ln(p/(1-p))  so the diffusion never pushes probability past 0/1.
   * Map quotes back to price space by pushing the logit ENDPOINTS through the sigmoid — this is
     the exact, boundary-safe transform (the local Jacobian dp/dx = p(1-p) is provided separately

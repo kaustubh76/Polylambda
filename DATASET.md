@@ -202,41 +202,21 @@ indexer to key the tradeable conditionId — an indexer change, out of recon's s
 
 ### 5b′. Powered NegRisk-era replay (the Day 04 goal, now unblocked)
 
-With the map, the ablation runs on **real HF fills** for the liquid NegRisk era (2024 slice materialized
-locally; 26 disputed + 132 control markets processed). The ordering **holds in the liquid era**, matching
-the earlier V2-era result:
-
-| arm | λ*=0.0005 pnl (Sharpe) | at λ*=0.01 |
-|---|---|---|
-| **λ_jump** (surgical exit) | **+1888.7 (0.375)** | converges to diffusion |
-| diffusion (always hold) | +1882.2 (0.373) | +1882.2 |
-| λ_select (blanket avoid) | +0.0 (0.000) — forgoes 1895 reward to avoid 13 loss | +1073.6 |
-
-λ_jump's reward-aware surgical exit beats always-hold (avoids 8.0 jump-loss for 1.45 forgone reward) and
-crushes blanket-avoidance; arms converge at λ*=0.01 (|jump−diffusion| = 1.2), so the λ*-sensitivity is
-real. Small N (surgical, not a headline Sharpe), but the **conclusion — surgical exit > avoidance —
-holds on real liquid-era NegRisk data**, no longer just the thin V2 era.
+With the map, the ablation runs on **real HF fills** for the liquid NegRisk era (2024 slice
+materialized locally; 26 disputed + 132 control markets processed) — the first evidence the
+result was not an artifact of the thin V2 era.
 
 ### 5b″. Broader multi-year powered replay (all adapters, 2022–2026)
 
-Widening §5b′ from the thin 2024 slice to the **full release universe** — every joinable disputed market
-with a usable fill tape plus matched controls, off the local 15.2M-fill slice, with **true block-time**
-dispute timestamps (`DATA_SOURCE=graphql`): **1,409 disputed + 2,856 control markets**. The ordering
-**λ_jump > diffusion > λ_select holds at every point on the λ\* grid**, net of forgone rewards:
+Widening §5b′ from the thin 2024 slice to the **full release universe** — every joinable disputed
+market with a usable fill tape plus matched controls, off the local 15.2M-fill slice, with **true
+block-time** dispute timestamps (`DATA_SOURCE=graphql`): **1,409 disputed + 2,856 control
+markets**. That join is what this document is responsible for; the **results it produced live in
+[REPORT.md §4](REPORT.md)** and are not restated here.
 
-| arm | λ*=0.0005 pnl (Sharpe) | λ*=0.002 (frozen) | λ*=0.01 |
-|---|---|---|---|
-| **λ_jump** (surgical exit) | **+46,975.1 (0.3335)** | **+41,975.5 (0.2891)** | **+41,544.7 (0.2856)** |
-| diffusion (always hold) | +40,064.9 (0.2738) | +40,064.9 (0.2738) | +40,064.9 (0.2738) |
-| λ_select (blanket avoid) | +0.0 (0.000) | +23,911.5 (0.1947) | +29,458.5 (0.226) |
-
-At n=1,409 this is a **powered** result, not the surgical §5b′ check. λ_jump's edge over always-hold is
-largest where exits fire most (λ*=0.0005: **+6,910 pnl / +0.060 Sharpe**, avoiding 7,550 jump-loss for 640
-forgone reward) and **narrows monotonically** as the threshold rises (frozen λ*=0.002: +1,911 / +0.015;
-λ*=0.01: +1,480 / +0.012) — publish the **whole sensitivity curve, not the single tuned point** (the
-frozen `lambda_star=0.002` is one mid-grid operating point, DECISIONS.md #11). λ_select forfeits so much
-reward income (48,554 forgone at λ*=0.0005) that blanket avoidance never beats diffusion anywhere on the
-grid. Conclusion at scale: **reward-aware surgical exit is the edge; blanket avoidance destroys it.**
+The one methodological point that belongs with the data: publish the **whole λ\* sensitivity
+curve, not the single tuned point** — the frozen `lambda_star=0.002` is one mid-grid operating
+point (DECISIONS.md #11), and the λ_jump edge narrows monotonically as the threshold rises.
 
 ### 5c. Released artifact — `polymarket-oov2-disputes-v1` (the missing dispute layer)
 

@@ -17,10 +17,10 @@ dX = μ·dt  +  σ·dW  +  J·dN
 - **σ dW** diffusion — news-driven belief drift ("belief-vol").
 - **J dN** jumps — resolution / dispute / shock.
 
-**Load-bearing insight (Panel C):** classic MM assumes you can trade out continuously. On Polymarket a
-dispute freezes only *redemption* (~4–6 days); **the CLOB stays open.** So a dispute is a *directional
-jump toward 0/1 + thin exit liquidity* (~5c haircut) — **hedgeable at a cost, not a lock.** The engine's
-resolution logic therefore *is* the jump term λ (plus a slow market-selection filter), not a screen.
+**Load-bearing insight (Panel C):** classic MM assumes you can trade out continuously; a dispute
+is where that breaks — but as a *directional jump*, not a halt. Mechanism and the bimodal
+timing: [../DECISIONS.md §C.1–C.2](../DECISIONS.md). The consequence for this module is that the
+resolution logic *is* the jump term λ (plus a slow selection filter), not a screen.
 
 ## 2. The three estimators
 
@@ -73,20 +73,11 @@ base is the rigorous part.
 - **QUOTE** — `bid/ask = r ∓ d_total/2`; refresh on σ / λ / inventory / time.
 - **SIZE** — ∝ 1/risk (`risk_scale = clamp(σ_ref/σ, size_floor, 1) / (1 + size_lambda_k·λ_jump)`); hard
   time-to-resolution position cap (`pos_cap = base_cap · min(1, (T−t)/horizon)`) → ~0 at resolution.
-- **EXIT-ON-RISK** (the defining move) — `execution/loop.py:should_exit`:
-
-  ```
-  if (proposal_detected OR lambda_jump > lambda_star)
-     and E[jump_loss] > forgone_rewards + spread:
-         cancel/replace resting orders
-         REDUCE inventory (reduce_fraction=0.5, taker at touch) before the window
-         re-quote LIGHTER (light_factor=0.3), not zero, until resolved
-  ```
-
-  It is **reward-aware** — it trims only when the expected jump loss beats the liquidity rewards you'd
-  forgo by pulling. `E[jump_loss] = |inventory| · e_loss · mid · (1−mid)`. No hard lock — you exit a ~5c
-  haircut, not a freeze. `proposal_detected` is a v2 stub today (always-False), so live the trigger is
-  `lambda_jump > lambda_star` only.
+- **EXIT-ON-RISK** (the defining move) — reward-aware: it trims only when the expected jump loss
+  beats the rewards and haircut given up. Pseudocode and constants live at their canon home,
+  the `execution/loop.py` module docstring; the full formula with every term spelled out is
+  [../REPORT.md §2.4](../REPORT.md). Note for readers of this module: `proposal_detected` is
+  live only in testnet/keeper mode, so in paper and replay the trigger is `lambda_jump > λ*` alone.
 
 ## 5. Worked example (Panel G, political market, p=0.85, 10 days left)
 

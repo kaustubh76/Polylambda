@@ -4,7 +4,7 @@ lambda_engine — dispute jump model. Emits TWO signals so the engine serves BOT
   * lambda_select : slow per-market dispute-proneness -> market SELECTION / sizing (reward-farmer)
   * lambda_jump   : jump intensity -> DIRECTIONAL jump premium + reward-aware exit (jump-avoidance)
 
-Corrected design (DECISIONS.md #9, #11):
+Design (DECISIONS.md #9, #11):
   * Disputes are ~1% of markets -> CALIBRATION-LIMITED. v1 = category base-rate + a FEW
     point-in-time-safe features. Report WITH a confidence interval, not a point.
   * Drop subjective 'ambiguity'. EXCLUDE 'voter concentration' (only known AFTER a dispute ->

@@ -1,13 +1,14 @@
 """
 loop — the quoting loop + REWARD-AWARE exit-on-risk.
 
-Corrected design (see ../DECISIONS.md #1, and Panel L of the diagram):
+Design (see ../DECISIONS.md #1, and Panel L of the diagram):
   read book -> estimate sigma/fair/lambda -> compute_quote -> place/cancel maker orders ->
   manage inventory -> EXIT-ON-RISK.
 
-Exit-on-risk (the defining move), CORRECTED:
-  There is NO trading lock during a dispute (redemption freezes; the CLOB stays open; exit costs
-  a ~5c haircut into thinner liquidity). So do NOT blindly flatten. Exit is REWARD-AWARE:
+Exit-on-risk (the defining move) — CANON HOME for the exit pseudocode (DECISIONS.md §F, C4):
+  A dispute does not halt trading; redemption freezes while the CLOB stays open, so exiting costs
+  a ~5c haircut into thinner liquidity rather than being impossible. Never blindly flatten — and
+  because resting depth is what earns Liquidity Rewards, exit is REWARD-AWARE:
 
       if proposal_detected(market) or lambda_jump > lambda_star:
           if E[jump loss] > forgone_rewards + spread:      # only when it actually pays

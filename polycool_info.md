@@ -216,8 +216,8 @@ the point.
 | | **PolyLambda core (dispute/λ)** | **Weather markets** |
 |---|---|---|
 | Resolution | UMA optimistic oracle, **disputable** | Deterministic weather observation (NWS/METAR) |
-| Core risk | Dispute jump + redemption freeze + degraded exit | Forecast error; **no** dispute-lock dynamic |
-| Edge | Price adverse selection (jump-intensity **λ**) + avoid the lock | **Forecast-vs-market** mispricing on convex tails |
+| Core risk | Dispute jump + redemption freeze + degraded exit | Forecast error; **no** dispute dynamic at all |
+| Edge | Price adverse selection (jump-intensity **λ**) + reward-aware exit | **Forecast-vs-market** mispricing on convex tails |
 | Right tool | Avellaneda–Stoikov quoting + jump premium | Lottery/EV sizing on a forecast probability |
 
 So most of PolyLambda's *pricing* machinery does **not** transfer — but a lot of its

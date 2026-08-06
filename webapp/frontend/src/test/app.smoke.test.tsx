@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
+import { THESIS_TITLE } from '../lib/canon'
 
 // The app is gated on /api/health (HealthGate defers all data fetches until the backend is up).
 // Resolve /api/health so the gate opens; reject every other endpoint — each consumer
@@ -22,7 +23,10 @@ describe('<App/> smoke', () => {
     expect(await screen.findByText('PolyLambda')).toBeInTheDocument()
     // the section nav renders every entry
     expect(await screen.findByRole('link', { name: 'Disputes' })).toBeInTheDocument()
-    // an eager, above-the-fold section header is present (the Hero)
-    expect(await screen.findByText(/Treat disputes as jumps/i)).toBeInTheDocument()
+    // an eager, above-the-fold section header is present (the Hero). The title is IMPORTED from
+    // the canon module rather than typed as a literal — a hard-coded copy assertion here is what
+    // let a stale thesis ride green CI for months. tests/test_docs_canon.py owns whether the copy
+    // is correct; this test only owns whether it mounts.
+    expect(await screen.findByRole('heading', { name: THESIS_TITLE })).toBeInTheDocument()
   })
 })

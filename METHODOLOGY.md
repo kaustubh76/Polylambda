@@ -5,25 +5,11 @@
 > (ideation post-mortem), [DECISIONS.md](DECISIONS.md) (corrections of record), [DATASET.md](DATASET.md)
 > (the dataset dossier + all reproducible numbers), [JURISDICTION.md](JURISDICTION.md) (the ToS gate).
 
-## 1. The model (unchanged core, verified)
+## 1. The model
 
-PolyLambda quotes a Polymarket binary market by modeling its implied probability `p` in log-odds
-`X = ln(p/(1−p))` as a jump-diffusion `dX = μdt + σdW + J·dN`, and prices with Avellaneda–Stoikov +
-a jump term. Three estimators feed one pricing core (all pure, unit-tested):
-
-- **σ** ([estimators/sigma.py](estimators/sigma.py)) — logit-return robust EWMA + hierarchical
-  shrinkage toward a (category × price-level) prior; wash filter first.
-- **λ** ([estimators/lambda_engine.py](estimators/lambda_engine.py)) — dispute jump model emitting
-  `λ_select` (market-selection) and `λ_jump` (directional jump premium + reward-aware exit), with a
-  Wilson CI (disputes are ~1% → calibration-limited by design).
-- **fair value** ([estimators/fair_value.py](estimators/fair_value.py)) — depth-weighted mid + tapered
-  favorite-longshot tilt.
-
-Pricing ([pricing/quote.py](pricing/quote.py)): A-S in logit space, directional jump skew on the
-reservation price, boundary-safe sigmoid mapping, (T−t)→0 guard, inventory cap. Exit is **reward-aware**
-([execution/loop.py](execution/loop.py) `should_exit`): flatten only when `E[jump loss] > forgone
-rewards + spread`. The corrected thesis (DECISIONS.md #1): a dispute is a **directional jump with
-degraded-but-present liquidity**, not a trading lock.
+Stated in full in [REPORT.md §2](REPORT.md) — A-S in log-odds with a directional jump term and a
+reward-aware exit gate. This document does not restate it; it covers what is *methodologically*
+load-bearing and how to reproduce the numbers.
 
 ## 2. The data backbone (the enabling change)
 
@@ -138,43 +124,22 @@ historical counterfactual ([forwardtest/replay_ablation.py](forwardtest/replay_a
 indexed disputes + matched controls, replay arms **A** (diffusion-only, λ off), **B** (+λ_jump exit),
 **C** (+λ_select filter), net of forgone rewards, across a λ*-grid, with a pre-registered power calc.
 
-**Result (56 disputed + 223 control markets, 2022–2023, fill-tape counterfactual).** The λ signal is
-the **category dispute base rate**, so `λ*` is scaled to that range (~0.0003–0.009). Corrected pnl_net /
-sharpe across the grid:
+**The numbers live in [REPORT.md §4](REPORT.md)** — pinned run, published run, and the full
+4-arm × 5-λ\* grid, sourced from the committed artifact. They are not restated here.
 
-| arm | λ*=0.0005 | λ*=0.005 | λ*=0.01 |
-|---|---:|---:|---:|
-| diffusion_only | 1408.6 / 0.167 | 1408.6 / 0.167 | 1408.6 / 0.167 |
-| **lambda_jump** (surgical exit) | **1536.8 / 0.183** | 1502.9 / 0.179 | 1408.6 / 0.167 |
-| lambda_select (blanket avoidance) | 620.6 / 0.112 | 1102.4 / 0.138 | 1408.6 / 0.167 |
+**What is methodologically load-bearing is the *scale-invariance*.** The same ordering
+(`lambda_jump > diffusion_only > lambda_select`) and the same λ\*-curve shape reproduce at every
+scale the replay has been run at — a 56-market 2022–23 slice, a NegRisk-2024 liquid-era slice,
+and the full 1,409-dispute universe. Absolute PnL is *not* comparable across those runs (it
+scales with how many sampled controls have a joinable fill tape), so the ordering and the curve
+shape are the claim; the level is not. Arms converge to diffusion at λ\*=0.01 — above every
+category base rate, so no exits fire — which is the clean sanity check that the machinery is
+wired correctly.
 
-The arms **converge to diffusion at λ*=0.01** (above every base rate → no exits → a clean sanity check),
-and the λ*-sensitivity is real. **λ_jump beats diffusion by ~9% at low λ*** (avoided directional loss
-> its cost); **λ_select is worst** — at λ*=0.0005 it forfeits ~977 of reward to avoid ~189 of loss.
-**The edge is the surgical jump-exit, not blanket market-selection avoidance** (DECISIONS.md §A). This
-result was corrected after an adversarial review found the first pass had a hardcoded
-`proposal_detected=True` (which bypassed the λ* threshold) and filtered arm C on volatility instead of
-the category rate. **This is a positive signal, not a proof:** see §5.
-
-**Liquid-era confirmation (2026-07-05, NegRisk 2024 slice, 26 disputed + 132 controls).** With the
-NegRisk map unblocking the fill join, the same ablation on the *liquid* NegRisk era reproduces the
-ordering: at λ*=0.0005, **λ_jump 1888.7 / 0.375 > diffusion 1882.2 / 0.373 > λ_select 0.0** (λ_select
-forfeits ~1895 reward to avoid ~13 loss), converging at λ*=0.01 (|λ_jump − diffusion| = 1.2). Small-N
-and surgical, but the conclusion — surgical exit > avoidance — now holds on real 2024 NegRisk fills, not
-only the thin V2 era.
-
-**Full-scale re-verification (2026-07-11, 1,409 disputed + 741 controls with fills, all adapters
-2022–2026).** A fresh end-to-end run for the pre-submission audit — pinned as a committed artifact in
-[forwardtest/results/replay_ablation_2026-07-11.json](forwardtest/results/replay_ablation_2026-07-11.json)
-— reproduces the pre-registered conclusion at every λ\* in the grid: at λ\*=0.0005,
-**λ_jump +27,668 / 0.37 > diffusion +20,746 / 0.26 > λ_select 0.0 / 0.00** (λ_select forfeits ~29,232 of
-reward to avoid ~8,486 of loss), with the B_hazard arm matching arm B at low λ\*. Absolute PnL is not
-comparable across runs — it scales with how many sampled controls have a joinable fill tape on that run
-(741 here vs 2,856 in the full-scale run the dashboard serves from
-`webapp/backend/constants.py:ABLATION_PUBLISHED`, whose λ_jump 46,975 > diffusion 40,065 > λ_select 0 at
-λ\*=0.0005 shows the same ordering). The invariant across every scale — 56-market slice, NegRisk-2024
-slice, published full-scale, and this re-run — is the **ordering B > A > C and the shape of the λ\*
-curve**, not the absolute PnL level.
+One correction of record worth keeping visible: the first pass of this replay was wrong. An
+adversarial review found a hardcoded `proposal_detected=True` (bypassing the λ\* threshold
+entirely) and arm C filtering on volatility instead of the category rate. The published results
+post-date that fix.
 
 ## 5. Honest limitations
 
@@ -199,7 +164,7 @@ curve**, not the absolute PnL level.
    replay needs no live trading and is the always-valid headline.
 
 ## 6. Reproduce
-See [DATASET.md](DATASET.md) §8. `pytest tests/` (**101 green**) covers deriveFill/deriveConditionId
+See [DATASET.md](DATASET.md) §8. `pytest tests/` covers deriveFill/deriveConditionId
 parity, the data-layer contracts, the indexer dispute source + recon buckets, the pure cores, the
 paper forward-test engine, the wired sizing/inventory-cap, and the hazard model;
 `python -m data.dossier` reproduces the numbers; the dispute + replay pipeline runs end-to-end with
