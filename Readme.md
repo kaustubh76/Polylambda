@@ -24,7 +24,7 @@ replay says that distinction is the whole edge: surgical exits earn, blanket avo
 > **Where things are written down.** Each concept is stated in full in exactly one place and
 > linked from everywhere else — the map is [DECISIONS.md §F](DECISIONS.md). For what the project
 > believed before its June 2026 verification pass and why it changed, see
-> [DECISIONS.md §C](DECISIONS.md) (13 corrections of record) and [ANALYSIS.md](ANALYSIS.md).
+> [DECISIONS.md §C](DECISIONS.md) (16 corrections of record) and [ANALYSIS.md](ANALYSIS.md).
 
 ---
 
@@ -164,8 +164,8 @@ The historical *dispute* replay is not order-book reconstruction and is explicit
 - **Resolution is not a risk-free oracle read.** The UMA DVM has been governance-attacked
   (Mar 2025) and an adapter key-compromise was investigated (Jun 2026) — price these on
   contentious markets ([DECISIONS.md §D](DECISIONS.md)).
-- **Jurisdiction gates live mode.** Polymarket's ToS bars US persons — and their bots — from
-  trading via UI and API ([JURISDICTION.md](JURISDICTION.md)). Default to paper / paper-live.
+- **Jurisdiction: RESOLVED (non-US operator).** Polymarket's ToS bars US persons and their bots
+  from trading via UI/API; the live leg runs under a non-US entity ([JURISDICTION.md](JURISDICTION.md)).
 - **Credentials:** never commit `.env`; sanitize logs; re-audit API scope regularly.
 
 ## License

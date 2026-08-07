@@ -76,6 +76,22 @@ def test_read_trades_filters_since_and_sorts():
         clob._http_get = orig
 
 
+def test_read_trades_sends_server_side_start():
+    seen = {}
+
+    def fake(url, params=None, timeout=15):
+        seen.update(params or {})
+        return []
+
+    orig = _swap_http(fake)
+    try:
+        clob.read_trades("tok", since_ts=1234)
+        assert seen.get("start") == 1234        # server-side filter — hedges the /trades cache removal
+        assert seen.get("asset") == "tok"
+    finally:
+        clob._http_get = orig
+
+
 # --- write path: the gate --------------------------------------------------------------------
 
 def test_write_path_gated_by_default():
@@ -357,6 +373,34 @@ def test_place_order_retry_is_exactly_once_and_releases_on_definite_rejection(mo
         assert len(posts) == 2                                  # exactly one retry, never a loop
         # both attempts were DEFINITE exchange-side rejections → the reservation is fully released
         assert clob._live_notional_spent == 0.0
+    finally:
+        clob._live_notional_spent = orig_spent
+        _restore_env(saved)
+
+
+def test_place_order_backs_off_on_429_then_succeeds(monkeypatch):
+    saved = _clear_env()
+    sleeps = []
+
+    class Throttled:
+        n = 0
+
+        def post_order(self, order):
+            Throttled.n += 1
+            if Throttled.n < 3:
+                raise RuntimeError("HTTP 429 too many requests")
+            return {"order_id": "oid-7"}
+
+    orig_spent = clob._live_notional_spent
+    try:
+        os.environ.update(LIVE_ENV)
+        monkeypatch.setattr(clob, "_live_client", lambda: Throttled())
+        monkeypatch.setattr(clob.time, "sleep", sleeps.append)
+        clob._live_notional_spent = 0.0
+        oid = clob.place_order("123", "buy", 0.45, 10.0, tick_size=0.01)
+        assert oid == "oid-7"
+        assert Throttled.n == 3 and sleeps == [0.5, 1.0]        # ORDER-tier backoff, then resumes
+        assert clob._live_notional_spent == pytest.approx(4.5)  # reserved once, not per 429 retry
     finally:
         clob._live_notional_spent = orig_spent
         _restore_env(saved)

@@ -9,7 +9,11 @@ pytest.importorskip("eth_utils")
 from data.negrisk_map import (
     CANARY_TRADEABLE_CID,
     CANARY_UMA_QID,
+    NEGRISK_ADAPTER,
+    NEGRISK_ADAPTER_V2,
+    NEGRISK_V2_START_BLOCK,
     QPREP_TOPIC0,
+    _adapter_for_block,
     derive_negrisk_cid,
 )
 
@@ -56,3 +60,34 @@ def test_get_logs_resilient_splits_on_error(monkeypatch):
     assert any(to - frm <= 25_000 for frm, to in calls)
     covered = sorted(c for c in calls if c[1] - c[0] <= 25_000)
     assert covered[0][0] == 0 and covered[-1][1] == 100_000
+
+
+# --- CLOB-v2 adapter era-switch (DECISIONS.md §C.16) --------------------------------------------
+
+def test_derive_defaults_to_v1_historical_key():
+    # The default adapter is the v1 NegRiskAdapter — the immutable historical derivation key. Passing
+    # it explicitly must reproduce the default so the historical build stays byte-identical.
+    qid_d91e = "0xea795ebc33b30185f3bf95f194afa970ae7aea64ea288ff636776b17ddf7b902"
+    assert (derive_negrisk_cid(qid_d91e, NEGRISK_ADAPTER)
+            == derive_negrisk_cid(qid_d91e) == CANARY_TRADEABLE_CID)
+
+
+def test_v2_adapter_derivation_differs_from_v1():
+    # CLOB-v2-era markets prepare under a different adapter → a different (non-colliding) tradeable cid.
+    qid_d91e = "0xea795ebc33b30185f3bf95f194afa970ae7aea64ea288ff636776b17ddf7b902"
+    v2 = derive_negrisk_cid(qid_d91e, NEGRISK_ADAPTER_V2)
+    assert v2 != CANARY_TRADEABLE_CID and len(v2) == 66
+
+
+def test_adapter_for_block_switches_at_cutover():
+    assert _adapter_for_block(NEGRISK_V2_START_BLOCK - 1) == NEGRISK_ADAPTER      # pre-cutover → v1
+    assert _adapter_for_block(NEGRISK_V2_START_BLOCK) == NEGRISK_ADAPTER_V2        # at/after → v2
+    assert _adapter_for_block(NEGRISK_V2_START_BLOCK + 10) == NEGRISK_ADAPTER_V2
+
+
+def test_historical_build_window_precedes_v2_cutover():
+    # build_negrisk_map() ends at HF_CUTOFF_BLOCK; it must sit strictly below the v2 cutover so every
+    # historical question derives under v1 — the released artifact + canary stay byte-identical.
+    import data.negrisk_map as nm
+
+    assert nm.MAP_END_BLOCK < NEGRISK_V2_START_BLOCK

@@ -119,7 +119,9 @@ def get_market_microstructure(token_id: str) -> dict:
 def read_trades(token_id: str, since_ts: int = 0, *, limit: int = 500) -> list[dict]:
     """Recent public prints for one token: [{price, size, side, timestamp}], oldest-first.
     Feeds the paper-live ConservativeFillModel (and the sigma tape)."""
-    raw = _http_get(f"{DATA_API}/trades", {"asset": token_id, "limit": limit})
+    # start= filters server-side (docs.polymarket data-api) — hedges the announced /trades cache
+    # removal; the client-side ts<=since_ts filter below stays as belt-and-suspenders.
+    raw = _http_get(f"{DATA_API}/trades", {"asset": token_id, "start": since_ts, "limit": limit})
     rows = raw if isinstance(raw, list) else raw.get("trades", [])
     out = []
     for t in rows:
@@ -142,10 +144,10 @@ class LiveGateError(RuntimeError):
 
 def _require_live_gate() -> None:
     if os.environ.get("MODE") != "live":
-        raise LiveGateError("real-order path requires MODE=live (JURISDICTION.md: paper-only default)")
+        raise LiveGateError("real-order path requires MODE=live (default stays paper/paper-live)")
     if os.environ.get("JURISDICTION_ACK") != "RESOLVED_SEE_JURISDICTION_MD":
-        raise LiveGateError("set JURISDICTION_ACK=RESOLVED_SEE_JURISDICTION_MD only after updating "
-                            "JURISDICTION.md's resolution log")
+        raise LiveGateError("set JURISDICTION_ACK=RESOLVED_SEE_JURISDICTION_MD to confirm you are the "
+                            "eligible non-US operator on this host (JURISDICTION.md resolved — option 1)")
     cap = os.environ.get("MAX_CAPITAL_USDC")
     if not cap:
         raise LiveGateError("MAX_CAPITAL_USDC must be set (tiny) for any live order")
@@ -238,6 +240,20 @@ def _round_to_tick(price: float, tick: float, side: str) -> float:
     return (math.floor(steps) if side == "BUY" else math.ceil(steps)) * tick
 
 
+def _post_with_rate_backoff(order: dict) -> dict:
+    """post_order with 429 exponential backoff (mirrors cancel_orders). Non-429 errors propagate
+    unchanged so place_order's INVALID_TICK re-read still fires. Tiered ORDER limits: DECISIONS.md §C.15."""
+    delay = 0.5
+    for attempt in range(5):
+        try:
+            return _live_client().post_order(order)
+        except Exception as e:  # noqa: BLE001 - backoff only on rate-limit, re-raise the rest
+            if "429" not in str(e) or attempt == 4:
+                raise
+            time.sleep(delay)
+            delay *= 2
+
+
 def place_order(token_id: str, side: str, price: float, size: float, *, post_only: bool = True,
                 builder_code: str | None = None, tick_size: float = 0.01,
                 min_order_size: float = 5.0) -> str:
@@ -267,7 +283,7 @@ def place_order(token_id: str, side: str, price: float, size: float, *, post_onl
     # rejection (INVALID_TICK, retried below) releases the reservation; any other error keeps it.
     _live_notional_spent += notional
     try:
-        resp = _live_client().post_order(order)
+        resp = _post_with_rate_backoff(order)
     except Exception as e:  # noqa: BLE001 - single retry ONLY for a stale tick (DECISIONS.md #7)
         if "INVALID_TICK" not in str(e):
             raise  # post_only_would_cross / ambiguous errors: no retry, reservation kept
@@ -281,7 +297,7 @@ def place_order(token_id: str, side: str, price: float, size: float, *, post_onl
             raise LiveGateError(f"order notional {notional:.2f} would exceed MAX_CAPITAL_USDC={cap}")
         _live_notional_spent += notional
         try:
-            resp = _live_client().post_order(order)
+            resp = _post_with_rate_backoff(order)
         except Exception as e2:  # noqa: BLE001 - release only on another definite rejection
             if "INVALID_TICK" in str(e2):
                 _live_notional_spent -= notional

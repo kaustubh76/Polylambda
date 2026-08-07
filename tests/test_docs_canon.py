@@ -201,13 +201,13 @@ BUDGETS: dict[str, int] = {
     "ANALYSIS.md": 833,
     "BUSINESS_PLAN.md": 1428,
     "DATASET.md": 3341,
-    "DECISIONS.md": 1569,  # grew: absorbed the canon table other files shed
-    "JURISDICTION.md": 570,
+    "DECISIONS.md": 1748,  # grew: canon table + §C #14-16 (CLOB-v2) + §D NegRisk-adapter rows (2026-08-07)
+    "JURISDICTION.md": 460,  # shrank: RESOLVED (option 1) — condensed the now-decided deliberation
     "LEDGER.md": 5484,      # archive tier — the build log is allowed to be long
     "METHODOLOGY.md": 1829,
     "REPORT.md": 6332,
-    "ROADMAP.md": 2432,
-    "Readme.md": 1216,
+    "ROADMAP.md": 2454,  # + the 2026-08-07 CLOB-v2-alignment shipped entry (net of condensing 07-12)
+    "Readme.md": 1215,
     "WEATHER_COPYTRADE.md": 2011,
     "dataset_release/polymarket-oov2-disputes-v1/README.md": 1014,
     "indexer/DEPLOY.md": 555,
@@ -232,7 +232,7 @@ BUDGETS: dict[str, int] = {
     "webapp/DEPLOY.md": 624,
     "webapp/README.md": 466,
 }
-TOTAL_WORD_BUDGET = 49449
+TOTAL_WORD_BUDGET = 49539  # +90 net: CLOB-v2 corrections-of-record (§C #14-16, §D), offset by the resolved-JURISDICTION condense
 
 
 def _markdown_files() -> dict[str, int]:

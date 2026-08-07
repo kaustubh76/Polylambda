@@ -25,44 +25,31 @@ Separately, the ToS bars scraping/reproducing site content without written permi
 
 ---
 
-## Why it's existential for this project
+## Why it matters
 
-The MVP's most credible evidence is a **live (or tiny-capital) forward-test**. If the operator
-is a US person:
-
-- **Live / real-order trading on the main venue is ToS-prohibited** — the live leg cannot
-  legally run, and the edge proof can never exceed paper.
-- This does **not** reduce the engineering value, but it **changes what "forward-test" can
-  mean** and the project's positioning.
-
-A US-typical email is on file for this session, which is a flag to clarify the *operating*
-jurisdiction/entity before relying on the live path.
+The MVP's most credible evidence is a **live (or tiny-capital) forward-test**, which is ToS-legal
+only for a non-US / eligible operator (**option 1**, resolved below). The engineering value and the
+**historical-replay edge proof stand regardless** of whether the live leg ever runs. The operating
+entity must be confirmed non-US and recorded (log below) **before the first real order**.
 
 ---
 
-## The options (pick before any real order is placed)
+## The decision — RESOLVED: option 1
 
-1. **Non-US / eligible operator** → full `paper → paper-live → live` path is open; run a
-   tiny-capital live forward-test (`MAX_CAPITAL_USDC` tiny).
-2. **US person** → do **not** trade the main venue via UI/API. Either:
-   - scope the entire effort to **paper / paper-live** and reposition as a research / tooling
-     MVP (still demonstrates the model, indexer, estimators, and a historical-replay ablation), or
-   - target the **CFTC-registered Polymarket US** venue and its Market Maker Program instead.
-3. **Paper-only regardless** (safe default) → `paper` + `paper-live` only; defer the live
-   decision entirely. **This is the assumed default until this file is updated.**
+**Option 1 — non-US / eligible operator** (resolution log below): full `paper → paper-live → live`
+is open; the live forward-test runs tiny (`MAX_CAPITAL_USDC` small), sequenced by ROADMAP Phase 0.
+The alternatives were option 2 (US person → paper/paper-live only, or the CFTC-registered Polymarket
+US venue) and option 3 (paper-only default) — both superseded.
 
 ---
 
-## Consequences baked into the plan regardless of choice
+## Consequences baked in regardless
 
-- The forward-test harness is built **paper-live-first** (public, no-auth WebSocket book +
-  REST book/price), so it works under any jurisdiction outcome.
-- Paper-live is **logic / microstructure validation only** — it cannot observe true queue
-  position, fill probability, or realized rewards/rebates; those require real resting orders.
-  Never report simulated rewards as P&L.
-- The **historical counterfactual replay** (over the ~184 indexed disputes) is the primary
-  edge proof and needs **no live trading at all** — so the headline result survives even if the
-  live leg is permanently off.
+- The forward-test harness is **paper-live-first** (public no-auth book/price), so it works under any
+  jurisdiction outcome; paper-live validates **logic/microstructure only** (no true queue position,
+  fill probability, or rewards — never report simulated rewards as P&L).
+- The **historical counterfactual replay** (1,848 released disputes) is the primary edge proof and
+  needs **no live trading** — the headline survives even if the live leg stays off.
 
 ---
 

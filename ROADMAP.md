@@ -5,16 +5,12 @@
 > resolution log), so the live leg is open. This document sequences the work; every phase has a
 > numeric exit gate. When in doubt on facts, [DECISIONS.md](DECISIONS.md) wins.
 >
-> **Shipped since planning (2026-07-12 → 07-19), all pre-live infrastructure:** the live dispute
-> feed pivoted to a **keyless Polygon RPC scan** (hosted Envio retired; NegRisk disputes labeled
-> on-chain); the released dataset was corrected + extended to **1,848 disputes at chain head, 100%
-> HF-joinable**, and is now maintainable without any indexer (`data/export_disputes.py` over RPC)
-> with a **scheduled GitHub Actions refresh** committing regenerated artifacts; κ is calibrated
-> **per-category** (`kappa_by_category.json`, scalar 0.76 fallback); the dashboard was rebuilt as a
-> **Git-backed deploy** — live at <https://polylambda.vercel.app> (Vercel frontend → Render backend),
-> push-to-deploy + keepalive — and gained the HF-backbone sections and the interactive dispute-anatomy explorer.
-> None of this moves Phases 0–7 (they are all live-trading work); it hardens the "already built"
-> column below and Phase 7's legs 2–4.
+> **Shipped since planning (2026-07-12 → 07-19), all pre-live infrastructure:** live dispute feed
+> pivoted to a **keyless Polygon RPC scan** (Envio retired; NegRisk labeled on-chain); the released
+> dataset was corrected + extended to **1,848 disputes at chain head, 100% HF-joinable**, indexer-free
+> (`data/export_disputes.py`) with a scheduled GH-Actions refresh; κ **per-category** (scalar 0.76
+> fallback); the dashboard is a **Git-backed deploy** at <https://polylambda.vercel.app>. Hardens the
+> "already built" column below and Phase 7's legs 2–4, not Phases 0–7.
 >
 > **Shipped 2026-07-19 — testnet execution mode (the continuous engine).** `testnet` is now a
 > first-class execution mode: the REAL production loop (`execution/loop.py`, byte-identical
@@ -61,6 +57,13 @@
 > scripts, so a rate-limited keyless endpoint slows a tick but never kills it. (e) **Keeper
 > observability**: `/api/testnet/keeper` reports `autostart`/`engine_ready` (surfaced on the dashboard),
 > and the watchdog cron tightened 6h→`*/15`. 222 pytest green.
+>
+> **Shipped 2026-08-07 — CLOB-v2 platform-change alignment.** Reconciled the Jul–Aug 2026 Polymarket
+> changes against canon (DECISIONS §C #14–16, §D NegRisk-adapter rows): `tradeIDs`-not-`transactionHashes`
+> (our pinned `polymarket-client` already parses it — unaffected), tiered ORDER/CANCEL rate limits
+> (`place_order` now shares `cancel_orders`' 429 backoff), and the NegRisk **v1→v2** adapter + pUSD split.
+> Code: `negrisk_map` live-labeling is v2-adapter-aware; `read_trades` sends `start=`. The gate and the
+> absent `LiveClob` stay untouched — live still needs Phases 0–2.
 
 ---
 

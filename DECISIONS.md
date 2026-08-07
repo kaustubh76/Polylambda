@@ -26,11 +26,11 @@ chosen from that result.
 
 ---
 
-## B. Jurisdiction decision — documented, deferred
+## B. Jurisdiction decision — RESOLVED (option 1, non-US operator)
 
-Per instruction, the Polymarket ToS / US-person constraint is **documented as an open
-decision** that gates live mode rather than decided now. Full detail in
-[JURISDICTION.md](JURISDICTION.md). Until resolved, assume **paper / paper-live only**.
+**RESOLVED — option 1:** the live leg runs under a non-US / eligible entity, sequenced by
+[ROADMAP.md](ROADMAP.md); the write-path gate (`_require_live_gate`) stays intact until Phase 0.
+Detail + the operator/entity log in [JURISDICTION.md](JURISDICTION.md).
 
 ---
 
@@ -51,19 +51,25 @@ decision** that gates live mode rather than decided now. Full detail in
 | 11 | live λ-ablation = the edge proof | **Underpowered** in 18 days (~0–3 disputes witnessed, ≈0 DVM hard-locks). Make **historical counterfactual replay over the released dispute layer + matched controls** the *primary* edge proof; keep the live ablation as a **pre-registered, explicitly-underpowered** sanity check. Pre-register the power calc. *(As shipped: 1,794 in-window disputes of 1,848 released, 1,409 with usable fill tapes, + 2,856 matched controls — see `constants.ABLATION_META`.)* | quant/edge critique |
 | 12 | "Builders Program submission / deadline / judging" | **Continuous & permissionless** (Builder Codes, bytes32 via CLOB V2 SDK). **No deadline / rubric / demo-day.** Weekly USDC rewards (Sun–Sat UTC epochs since Nov 2 2025); grants are **traction-gated** (working product + active users). The "$100–$75K" range is the older Microgrants, not Builders grants. **Bots welcomed**; jurisdiction is the binding constraint. | builders.polymarket.com; docs.polymarket/developers/builders |
 | 13 | "OrderFilled tape needs dynamic-contract indexing" | **Over-engineering.** Token IDs / outcome tokens are uint256 ERC-1155 `positionId`s = **event params on fixed addresses** → normal handlers + id-keyed entities. `contractRegister` is address-based, reserved for genuine factory deployments (FPMM pools), which binary-only v1 likely doesn't need. | Envio docs; enviodev/polymarket-indexer |
+| 14 | `POST /order[s]` returns `transactionHashes` inline on a match | Returns **`tradeIDs`**, not tx hashes (async commit pipeline, Jul 24 2026); resolve hashes by polling `/trades` if needed. Our pinned `polymarket-client` already parses `tradeIDs` and `place_order` reads only `order_id` → **unaffected**; WS fills unchanged. | docs.polymarket changelog; clob-client-v2#89 |
+| 15 | No CLOB order/cancel rate limits | **Tiered ORDER+CANCEL limits** (enforced Aug 6 2026) by trailing-30-day volume; watch the `Poly-RateLimit-Warning` header and back off. Live write path only; `place_order`/`cancel_orders` now share 429 backoff. | docs.polymarket/api-reference/trading-rate-limits |
+| 16 | NegRisk trades/settles under adapter `0xd91E80cF…` | `0xd91E80cF…` is **CLOB v1** (relayer redeems retired ~Jul 2026), now **only** the historical conditionId-derivation key. CLOB **v2** trades/settles via `0xadA2005600…` in **pUSD**. Never swap it in the dataset join; never use it for live v2. | docs.polymarket changelog#jul-14-2026 |
 
 ---
 
 ## D. Verified contract addresses (Polygon, chain 137)
 
-> Re-confirm on Polygonscan before any live use. Multiple adapter versions are live — pick the
-> correct one per market type or the conditionId/questionId join silently drops markets.
+> Re-confirm on Polygonscan before any live use. Multiple adapter versions are live (incl. NegRisk
+> **v1 vs v2**, §C.16) — pick the correct one per market type or the conditionId join silently drops markets.
 
 | Component | Address |
 |---|---|
 | OptimisticOracleV2 (OOv2) | `0xeE3Afe347D5C74317041E2618C49534dAf887c24` |
 | UMA CTF Adapter **V2** | `0x6A9D222616C90FcA5754cd1333cFD9b7fb6a4F74` |
 | Neg Risk UMA CTF Adapter | `0x2F5e3684cb1F318ec51b00Edba38d79Ac2c0aA9d` |
+| NegRisk Adapter — CLOB v1 (DEPRECATED; historical cid-derivation only, §C.16) | `0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296` |
+| NegRisk Adapter — CLOB v2 (pUSD) | `0xadA2005600Dec949baf300f4C6120000bDB6eAab` |
+| NegRiskOperator (QuestionPrepared → tradeable cid) | `0x71523d0f655B41E805Cec45b17163f528B59B820` |
 | Legacy UMA CTF Adapter | `0x71392E133063CC0D16F40E1F9B60227404Bc03f7` |
 | ConditionalTokens (CTF) | `0x4D97DCd97eC945f40cF65F87097ACe5EA0476045` |
 | CTF Exchange | `0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E` |

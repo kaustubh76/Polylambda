@@ -41,6 +41,15 @@ OPERATOR = "0x71523d0f655B41E805Cec45b17163f528B59B820"
 QPREP_TOPIC0 = "0xcdc45423ec79c60a3fe3de57272e598d71a4ec88822e822ac8e134184a8435aa"
 # NegRiskAdapter — the oracle under which NegRisk conditions are actually prepared/traded.
 NEGRISK_ADAPTER = bytes.fromhex("d91E80cF2E7be2e162c6513ceD06f1dD0dA35296".lower())
+# NegRisk adapter for CLOB v2 (pUSD collateral) — docs.polymarket changelog#jul-14-2026 (DECISIONS.md
+# §C.16). The v1 adapter above stays the HISTORICAL derivation key (a conditionId is fixed forever at
+# ConditionPreparation); v2-era NegRisk conditions are prepared under this one. Picking the wrong adapter
+# here is NON-REGRESSIVE: it yields a conditionId present nowhere → dropped as unresolved (None), as before.
+NEGRISK_ADAPTER_V2 = bytes.fromhex("adA2005600Dec949baf300f4C6120000bDB6eAab".lower())
+# First Polygon block on/after the CLOB-v2 cutover (~2026-04-28, DECISIONS.md §C.4); env-overridable.
+# QuestionPrepared logs at/after it derive under V2. The historical build ends at HF_CUTOFF_BLOCK
+# (< this block), so build_negrisk_map() is provably unaffected.
+NEGRISK_V2_START_BLOCK = int(os.environ.get("NEGRISK_V2_START_BLOCK", "86112000"))
 
 # Operator is live from ~late-2023; scan a margin below the first NegRisk dispute through the HF cutoff.
 MAP_START_BLOCK = int(os.environ.get("NEGRISK_MAP_START_BLOCK", "45000000"))
@@ -55,14 +64,22 @@ CANARY_UMA_QID = "0x7ccc42e2a48278d6e3c1f0532644891004ad9b40e782a6b6c906cdfe80eb
 CANARY_TRADEABLE_CID = "0xca92ec28e43948c3b41a87ea94c74aea851924e085ff624df9fb03d83e668109"
 
 
-def derive_negrisk_cid(question_id_d91e: str) -> str:
-    """tradeableConditionId = keccak(d91eAdapter ++ questionId_d91e ++ uint256(2)).
+def derive_negrisk_cid(question_id_d91e: str, adapter: bytes = NEGRISK_ADAPTER) -> str:
+    """tradeableConditionId = keccak(adapter ++ questionId_d91e ++ uint256(2)).
 
     Gnosis CTF getConditionId with the NegRiskAdapter as oracle. `question_id_d91e` is the 0x-hex
-    32-byte value carried in topic2 of the Operator's QuestionPrepared event.
+    32-byte value carried in topic2 of the Operator's QuestionPrepared event. `adapter` defaults to the
+    v1 NegRiskAdapter (the historical derivation key); pass NEGRISK_ADAPTER_V2 for CLOB-v2-era markets.
     """
     qid = bytes.fromhex(question_id_d91e[2:] if question_id_d91e.startswith("0x") else question_id_d91e)
-    return "0x" + keccak(NEGRISK_ADAPTER + qid + (2).to_bytes(32, "big")).hex()
+    return "0x" + keccak(adapter + qid + (2).to_bytes(32, "big")).hex()
+
+
+def _adapter_for_block(block_number: int) -> bytes:
+    """The NegRiskAdapter a condition prepared at `block_number` was derived under: v2 at/after the
+    CLOB-v2 cutover, v1 before. Keeps the historical join on v1 and lets the live feed label v2-era
+    NegRisk disputes. Block-keyed (not HF-membership) so it works on the slim deploy image."""
+    return NEGRISK_ADAPTER_V2 if block_number >= NEGRISK_V2_START_BLOCK else NEGRISK_ADAPTER
 
 
 def _get_logs_resilient(frm: int, to: int, *, timeout: int = 60, log=None) -> list:
@@ -174,7 +191,8 @@ def resolve_negrisk_cids(uma_question_ids, *, log=None) -> dict[str, str]:
             from .disputes import chain_head_block
             head = chain_head_block()
             logs = _batched_qprep(todo, MAP_START_BLOCK, head, log=log)
-            found = {lg["topics"][3]: derive_negrisk_cid(lg["topics"][2]) for lg in logs}
+            found = {lg["topics"][3]: derive_negrisk_cid(
+                lg["topics"][2], _adapter_for_block(int(lg["blockNumber"], 16))) for lg in logs}
             for q in todo:
                 cached[q] = found.get(q)       # None → remembered as unresolvable, not retried forever
             if log:
