@@ -30,8 +30,8 @@ export function Ablation() {
   const runLive = () => { setLive(true); setNonce((n) => n + 1) }
   return (
     <Section id="ablation" kicker="the edge proof · forwardtest.replay_full (clean USD)"
-      title="Backtested P&L — what the strategy would have made"
-      subtitle="The production quoter + exit gate simulated over the real historical tape with queue-pessimistic fills. Clean USD (cash + inventory·mark), no reward income folded in, no hindsight. The headline is the Δ edge: λ-jump vs always-hold."
+      title="Backtested P&L"
+      subtitle="Production quoter + exit gate replayed over the real tape with queue-pessimistic fills. Clean USD (cash + inventory·mark), no reward income, no hindsight."
       right={bt.data?.available && bt.data.run_date ? <Pill dot color="var(--sig)">backtest · {bt.data.run_date}</Pill> : undefined}>
       <div className="space-y-6">
         {/* ── PRIMARY: the real clean-USD backtest P&L ─────────────────────────────────── */}
@@ -41,7 +41,7 @@ export function Ablation() {
         <div>
           <div className="mb-2 flex items-center gap-2">
             <span className="text-sm font-semibold text-ink-2">Exit-policy sensitivity vs λ*</span>
-            <span className="text-2xs text-muted">— counterfactual, net of forgone rewards (not a fillable P&L)</span>
+            <span className="text-2xs text-muted">counterfactual, net of forgone rewards (not a fillable P&L)</span>
             <div className="ml-auto flex items-center gap-2">
               {q.data?.source && <SourceTag source={q.data.source} />}
               <button className="btn !py-1 text-2xs" disabled={q.loading} onClick={runLive}>
@@ -83,10 +83,10 @@ export function Ablation() {
                 </Panel>
                 {live && d.live_error && (
                   <Caveat kind="note">
-                    Live replay unavailable on this host — showing the {d.source === 'replay' ? 'committed real replay artifact' : 'published curve'} instead. Reason: <span className="font-mono">{d.live_error}</span>
+                    Live replay unavailable here; showing the {d.source === 'replay' ? 'committed real replay artifact' : 'published curve'} instead. Reason: <span className="font-mono">{d.live_error}</span>
                   </Caveat>
                 )}
-                <Caveat kind="underpowered">{d.caveat} The arms converge at high λ* — a clean sanity check that the exit threshold stops mattering once it never fires.</Caveat>
+                <Caveat kind="underpowered">{d.caveat} The arms converge at high λ*: a sanity check that the exit stops mattering once it never fires.</Caveat>
               </div>
             )
           }}</Async>
@@ -98,7 +98,7 @@ export function Ablation() {
 
 function BacktestPanel({ d, C, ARM_COLORS }: { d: Backtest; C: Colors; ARM_COLORS: Record<string, string> }) {
   if (!d.available || !d.headline) {
-    return <Caveat kind="null">{d.note || 'No committed backtest artifact yet — run forwardtest.replay_full to generate the clean-USD P&L.'}</Caveat>
+    return <Caveat kind="null">{d.note || 'No committed backtest artifact yet; run forwardtest.replay_full to generate the clean-USD P&L.'}</Caveat>
   }
   const h = d.headline
   const delta = h.delta_jump_minus_diffusion
@@ -119,7 +119,7 @@ function BacktestPanel({ d, C, ARM_COLORS }: { d: Backtest; C: Colors; ARM_COLOR
         <Panel>
           <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
             <div>
-              <div className="label">λ-jump − always-hold · the edge</div>
+              <div className="label">λ-jump minus always-hold · the edge</div>
               <div className={`num mt-1 text-4xl font-semibold ${delta.pnl_usd >= 0 ? 'text-profit' : 'text-loss'}`}>{usd(delta.pnl_usd)}</div>
               <div className="mt-1.5 flex flex-wrap items-center gap-2 text-2xs text-muted">
                 {delta.ci_low != null && delta.ci_high != null &&
@@ -131,8 +131,8 @@ function BacktestPanel({ d, C, ARM_COLORS }: { d: Backtest; C: Colors; ARM_COLOR
             </div>
             <p className="max-w-sm text-2xs leading-relaxed text-muted">
               {delta.pnl_usd >= 0
-                ? <>The reward-aware surgical exit avoids <b className="text-profit">{usd(delta.pnl_usd)}</b> of directional loss vs always holding{delta.ci_low != null && delta.ci_low > 0 ? ' — the 95% CI stays above zero, so the term earns its keep' : delta.ci_low != null && delta.ci_high != null && delta.ci_low <= 0 ? ' — but the 95% CI includes zero, so read the edge as directional, not proven' : ''}.</>
-                : <>In this run the surgical exit came out <b className="text-loss">{usd(delta.pnl_usd)}</b> vs always holding — the term did not pay for itself here; reported honestly rather than tuned away.</>}
+                ? <>The reward-aware exit avoids <b className="text-profit">{usd(delta.pnl_usd)}</b> of directional loss vs holding{delta.ci_low != null && delta.ci_low > 0 ? '; CI above zero, so the term earns its keep' : delta.ci_low != null && delta.ci_high != null && delta.ci_low <= 0 ? '; CI includes zero, so read the edge as directional, not proven' : ''}.</>
+                : <>This run: the exit came out <b className="text-loss">{usd(delta.pnl_usd)}</b> vs holding; the term didn't pay here, reported honestly rather than tuned away.</>}
             </p>
           </div>
         </Panel>

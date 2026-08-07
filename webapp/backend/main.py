@@ -92,9 +92,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="PolyLambda Dashboard API",
-              description="A dashboard over the real PolyLambda engine — read-only analytics + a live "
-                          "on-chain testnet execution monitor (Polygon Amoy). The mainnet CLOB write "
-                          "path stays jurisdiction-gated and is never imported.",
+              description="Read-only analytics over the real PolyLambda engine, plus a live on-chain "
+                          "testnet execution monitor (Polygon Amoy). The mainnet CLOB write path stays "
+                          "jurisdiction-gated and is never imported.",
               version="0.1.0", lifespan=lifespan)
 
 # dev CORS: the Vite dev server origin. Same-origin in the built single-process deployment.
@@ -122,7 +122,7 @@ else:
     @app.get("/")
     def root():
         return {"service": "PolyLambda Dashboard API", "docs": "/docs",
-                "note": "Frontend not built yet — run `cd webapp/frontend && npm run dev` (port 5173),"
+                "note": "Frontend not built yet; run `cd webapp/frontend && npm run dev` (port 5173),"
                         " or `npm run build` to serve it here.",
                 "endpoints": ["/api/overview", "/api/baserates", "/api/lambda/score",
                               "/api/ablation", "/api/hazard", "/api/disputes",

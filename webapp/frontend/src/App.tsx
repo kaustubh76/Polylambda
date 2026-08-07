@@ -231,11 +231,10 @@ function AppInner() {
       <footer className="border-t border-line">
         <div className="mx-auto max-w-7xl px-5 py-8 text-2xs leading-relaxed text-muted">
           <p className="mb-1">
-            <span className="font-mono text-sig">λ PolyLambda</span> — a thin, read-only dashboard wired to the
-            real engine (estimators · execution · risk). Every figure is computed by the actual code or read
-            from a shipped artifact over real on-chain history.
+            <span className="font-mono text-sig">λ PolyLambda</span>: a thin, read-only dashboard on the real
+            engine (estimators · execution · risk). Every figure is computed by the code or read from a shipped artifact.
           </p>
-          <p>Mainnet trading is jurisdiction-gated and out of scope for v1. This dashboard runs <b>testnet execution only</b> — no paper mode: the production loop signs its own quotes/fills on Polygon Amoy from a server-side engine wallet (play-money testnet), stamped <span className="font-mono">simulated: false</span>, and this page is a read-only monitor of it.</p>
+          <p>Mainnet trading is jurisdiction-gated, out of scope for v1. This runs <b>testnet execution only</b>, no paper mode: the production loop signs its own quotes/fills on Polygon Amoy (play-money), stamped <span className="font-mono">simulated: false</span>. This page is a read-only monitor.</p>
           <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-line pt-4 text-ink-2">
             <a className="link-underline hover:text-sig" href="https://github.com/kaustubh76/Polylambda" target="_blank" rel="noreferrer">GitHub ↗</a>
             <a className="link-underline hover:text-sig" href="https://huggingface.co/datasets/moose-code/polymarket-onchain-v1" target="_blank" rel="noreferrer">HF dataset ↗</a>
@@ -297,8 +296,8 @@ function HealthGate({ children }: { children: ReactNode }) {
         </div>
         <p className="text-2xs text-muted">
           {slow
-            ? 'Almost there — free hosts wake slowly. Still connecting…'
-            : 'This site runs on a free tier that sleeps when idle. The first visit after a nap takes ~30s to wake — then it’s instant.'}
+            ? 'Almost there; free hosts wake slowly. Still connecting…'
+            : 'Free tier sleeps when idle; the first visit takes ~30s to wake, then it’s instant.'}
         </p>
         {slow && (
           <button onClick={() => setNonce((n) => n + 1)}

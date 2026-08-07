@@ -46,7 +46,7 @@ function StrategyConfig({ frozen, source }: { frozen: Record<string, number | st
         ))}
       </div>
       <p className="mt-3 border-t border-line pt-2 text-2xs text-muted">
-        The exact params every estimate on this page runs under — read live from <span className="font-mono text-ink-2">config/model.yaml</span> when available.
+        The exact params every estimate here runs under, read live from <span className="font-mono text-ink-2">config/model.yaml</span> when available.
       </p>
     </Panel>
   )

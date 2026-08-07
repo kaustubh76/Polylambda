@@ -17,7 +17,7 @@ export function Recon() {
   return (
     <Section id="recon" kicker="data integrity · recon.check"
       title="Reconciliation & provenance"
-      subtitle="Every indexed resolution is checked against the on-chain payout vector. 100% is claimed on the ELIGIBLE set, with counted exclusion buckets — not a flat, unexamined 100%."
+      subtitle="Every resolution is checked against the on-chain payout vector: 100% on the eligible set, with counted exclusion buckets, not a flat 100%."
       right={
         <div className="flex items-center gap-2">
           {q.data?.source && <SourceTag source={q.data.source === 'live' ? 'live' : 'published'} />}
@@ -35,7 +35,7 @@ export function Recon() {
         return (
           <div className="space-y-4">
             {d.source === 'live' && <div className="text-2xs text-sig">✓ live reconciliation · {d.mismatches ?? 0} mismatches on the eligible set</div>}
-            {d.live_error && <div className="rounded-lg border border-warn/30 bg-warn/10 p-2.5 text-2xs text-warn">live check unavailable on this host ({d.live_error}) — showing the published artifact.</div>}
+            {d.live_error && <div className="rounded-lg border border-warn/30 bg-warn/10 p-2.5 text-2xs text-warn">live check unavailable here ({d.live_error}); showing the published artifact.</div>}
             <div className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
               <div className="grid grid-cols-2 gap-4 self-start">
                 <Stat label="Recon pass rate" value={`${((r.pass_rate ?? 1) * 100).toFixed(1)}%`} accent sub="eligible = matched" />

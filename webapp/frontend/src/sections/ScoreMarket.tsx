@@ -47,7 +47,7 @@ export function ScoreMarket() {
   return (
     <Section id="score" kicker="live λ engine · wired to estimate_lambda()"
       title="Score a market"
-      subtitle="Feed a market's point-in-time-safe features to the real estimator — it returns the two λ signals, an Avellaneda–Stoikov quote, and the reward-aware exit verdict. Nothing here is mocked. The category base rate and σ prior are grounded in the HF dataset (moose-code/polymarket-onchain-v1).">
+      subtitle="Feed point-in-time-safe features to the real estimator: it returns the two λ signals, an Avellaneda-Stoikov quote, and the reward-aware exit verdict. Nothing is mocked.">
       <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
         {/* --- inputs --- */}
         <Panel className="space-y-4 self-start">
@@ -118,7 +118,7 @@ function Outputs({ d }: { d: ScoreResp }) {
         {/* A-S quote */}
         <Panel className="md:col-span-2">
           <div className="mb-2 flex items-center justify-between">
-            <div className="label text-sig">Avellaneda–Stoikov quote</div>
+            <div className="label text-sig">Avellaneda-Stoikov quote</div>
             <div className="num text-2xs text-muted">σ={fixed(d.quote.sigma, 4)} · logit-space</div>
           </div>
           <QuoteBar mid={d.quote.mid} bid={d.quote.bid} ask={d.quote.ask} />
@@ -169,7 +169,7 @@ function Outputs({ d }: { d: ScoreResp }) {
           <div className="label text-sig">reward-aware exit gate · should_exit()</div>
           <span className={`chip ${d.exit_gate.would_exit ? 'border-warn/50 text-warn' : 'border-good/40 text-good'}`}>
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: d.exit_gate.would_exit ? C.warn : C.good }} />
-            {d.exit_gate.would_exit ? 'EXIT — flatten the danger window' : 'HOLD — keep farming rewards'}
+            {d.exit_gate.would_exit ? 'EXIT: flatten the danger window' : 'HOLD: keep farming rewards'}
           </span>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
@@ -187,8 +187,8 @@ function Outputs({ d }: { d: ScoreResp }) {
         </div>
         <div className="mt-3">
           <Caveat kind="calibration">
-            At an at-rest market the base-rate λ makes E[loss] tiny vs continuous reward income → the gate honestly
-            says <b>hold</b>. The exit fires when a live proposal is actually detected (λ_jump → posterior≈1) — watch it run on the live testnet engine above.
+            At rest, the base-rate λ makes E[loss] tiny vs reward income, so the gate says <b>hold</b>.
+            It fires on a live proposal (λ_jump → posterior≈1); watch it on the testnet engine above.
           </Caveat>
         </div>
       </Panel>
@@ -223,7 +223,7 @@ function QuoteCurvePanel({ category, price, horizon }: { category: string; price
             </LineChart>
           </ResponsiveContainer>
         </div>
-        <p className="mt-1 text-2xs text-muted">As inventory grows long the engine skews both quotes down (to shed risk) and vice-versa — the real <span className="font-mono text-ink-2">compute_quote</span> reservation-price skew.</p>
+        <p className="mt-1 text-2xs text-muted">As inventory grows long, the engine skews both quotes down (and vice-versa); the real <span className="font-mono text-ink-2">compute_quote</span> reservation-price skew.</p>
       </Panel>
     )}</Async>
   )

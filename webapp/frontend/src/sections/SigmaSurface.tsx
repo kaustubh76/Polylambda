@@ -15,8 +15,8 @@ export function SigmaSurface() {
 
   return (
     <Section id="sigma" kicker="belief-volatility · the σ estimator's prior"
-      title="σ surface — volatility by category × price"
-      subtitle="The shrink target for per-market belief-volatility: how fast log-odds move, stratified by category and price level. Drives the diffusion half of the spread.">
+      title="σ surface"
+      subtitle="The shrink target for per-market belief-volatility: how fast log-odds move by category and price. Drives the diffusion half of the spread.">
       <Async q={q}>{(d) => {
         const byCat: Record<string, SigmaPoint[]> = {}
         d.points.forEach((p) => { (byCat[p.category] ??= []).push(p) })

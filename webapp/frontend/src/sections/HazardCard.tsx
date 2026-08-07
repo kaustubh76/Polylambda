@@ -8,18 +8,18 @@ const FEAT_SHORT: Record<string, string> = {
   proposer_reliability: 'proposer rep', latency_anomaly: 'latency',
 }
 const FEAT_FULL: Record<string, string> = {
-  category_base_rate: 'category_base_rate — the category’s historical dispute rate',
-  market_size: 'market_size — fill count / liquidity proxy',
-  proposer_reliability: 'proposer_reliability — the proposer’s prior track record',
-  latency_anomaly: 'latency_anomaly — proposal timing anomaly (unbuildable here → 0)',
+  category_base_rate: 'category_base_rate: the category’s historical dispute rate',
+  market_size: 'market_size: fill count / liquidity proxy',
+  proposer_reliability: 'proposer_reliability: the proposer’s prior track record',
+  latency_anomaly: 'latency_anomaly: proposal timing anomaly (unbuildable here → 0)',
 }
 
 export function HazardCard() {
   const q = useApi(api.hazard, [])
   return (
     <Section id="hazard" kicker="the structural model · honest by construction"
-      title="Dispute hazard model — and the null we kept"
-      subtitle="A class-weighted logistic on point-in-time-safe features, prior-corrected to the ~1% natural rate. Reported by discrimination (held-out AUC), because disputes are too rare to calibrate.">
+      title="Dispute hazard model & the null we kept"
+      subtitle="Class-weighted logistic on point-in-time-safe features, prior-corrected to the ~1% base rate. Scored by held-out AUC (too rare to calibrate).">
       <Async q={q}>{(d: Hazard) => (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-3">

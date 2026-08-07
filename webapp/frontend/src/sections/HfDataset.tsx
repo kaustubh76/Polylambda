@@ -13,8 +13,8 @@ export function HfDataset() {
   const [barRef, barIn] = useInViewOnce<HTMLDivElement>()
   return (
     <Section id="hfdata" kicker="the data backbone · Hugging Face"
-      title="HF dataset — the on-chain substrate"
-      subtitle="Every base rate, σ prior and joinable market in this dashboard is derived from the moose-code/polymarket-onchain-v1 dataset (1.17B fills, 1.1M markets). This is that backbone made visible — resolution ground truth, market coverage, and category structure, computed straight from the on-chain tables."
+      title="HF dataset"
+      subtitle="Every base rate, σ prior and joinable market here comes from moose-code/polymarket-onchain-v1 (1.17B fills, 1.1M markets): resolution ground truth, coverage, and category structure, straight from the on-chain tables."
       right={q.data?.source && <SourceTag source={q.data.source === 'live' ? 'live' : 'published'} />}>
       <Async q={q}>{(d) => {
         const res = d.resolution
@@ -94,7 +94,7 @@ export function HfDataset() {
                 </div>
                 <p className="mt-1 text-2xs text-muted">
                   {fills.length
-                    ? 'Counted across the full order_filled tape on the Hub — the volume backbone the σ prior and replay are built from.'
+                    ? 'Counted across the full order_filled tape on the Hub: the volume backbone the σ prior and replay are built from.'
                     : 'Markets created per year (fill-tape counts need an HF token).'}
                 </p>
               </Panel>

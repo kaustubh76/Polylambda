@@ -14,7 +14,7 @@ export function BaseRates() {
   return (
     <Section id="baserates" kicker="the λ_select signal"
       title="Category dispute base rates"
-      subtitle="Disputes ÷ resolved markets per category, with Wilson 95% intervals — the honest per-market dispute prior that drives market selection & sizing. The resolved-market denominators come from the HF dataset (moose-code/polymarket-onchain-v1); see the HF dataset section below."
+      subtitle="Disputes ÷ resolved markets per category (Wilson 95%), the per-market dispute prior that drives selection & sizing."
       right={q.data && <SourceTag source={q.data.source} />}>
       <Async q={q}>{(d) => {
         const rows = d.rows
@@ -25,7 +25,7 @@ export function BaseRates() {
         return (
           <Panel>
             <div className="mb-4 text-sm text-ink-2">
-              <span className="font-semibold text-sig">{d.headline}</span> — the single most legible edge the strategy has.
+              <span className="font-semibold text-sig">{d.headline}</span>, the strategy's most legible edge.
             </div>
             {/* axis ticks */}
             <div className="relative mb-1 ml-[112px] mr-[64px] h-4 text-2xs text-muted">
@@ -41,8 +41,7 @@ export function BaseRates() {
             </div>
             {hover != null && <Tip r={rows[hover]} />}
             <p className="mt-3 text-2xs text-muted">
-              Bar length = point estimate; the inked whisker is the Wilson 95% interval; color follows the category
-              (stable), not its rank. Hover a row for exact counts.
+              Bar = point estimate; whisker = Wilson 95% interval; color = category. Hover a row for counts.
             </p>
           </Panel>
         )

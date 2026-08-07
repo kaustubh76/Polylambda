@@ -69,7 +69,7 @@ export function LiveIndexer() {
   return (
     <Section id="live" kicker={isRpc ? 'keyless Polygon RPC · eth_getLogs' : 'hosted Envio HyperIndex · GraphQL'}
       title="Live dispute stream"
-      subtitle="OOv2 DisputePrice events straight from Polygon — by default a keyless public-RPC log scan (no indexer, no paid service), or a hosted Envio indexer when one is configured. The LIVE badge reflects CHAIN-HEAD freshness (we're at tip); disputes are sparse, so the latest one can be days old while the feed is live."
+      subtitle="OOv2 DisputePrice events straight from Polygon: a keyless public-RPC scan by default, or a hosted Envio indexer. The LIVE badge tracks chain-head freshness; disputes are sparse, so the latest can be days old while the feed is live."
       right={
         <span className={`chip ${headFresh ? 'border-sig/40 text-sig' : connecting ? '' : up ? 'border-warn/50 text-warn' : 'border-warn/50 text-warn'}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${headFresh || connecting ? 'animate-pulse2' : ''}`} style={{ background: headFresh ? C.sig : connecting ? C.muted : C.warn }} />
@@ -82,7 +82,7 @@ export function LiveIndexer() {
         </span>
       }>
       {!connecting && !up && (
-        <ErrorBox error={`Indexer unreachable — the live feed is optional; the rest of the dashboard runs off the shipped snapshot. ${status?.error || ''}`}
+        <ErrorBox error={`Indexer unreachable; the live feed is optional, the dashboard runs off the shipped snapshot. ${status?.error || ''}`}
           onRetry={() => { tickRef.current?.(); live.refresh() }} />
       )}
 
@@ -90,7 +90,7 @@ export function LiveIndexer() {
         <div className="mb-4">
           <Caveat kind="underpowered">
             The source is reachable but its head is <span className="font-mono">{f.behind}</span> the chain tip
-            {isRpc ? ' — the RPC scan has not reached head yet' : ' — this indexer has stopped advancing'}. The
+            {isRpc ? '; the RPC scan has not reached head yet' : '; this indexer has stopped advancing'}. The
             disputes below are real but may not be current.
           </Caveat>
         </div>
@@ -144,8 +144,8 @@ export function LiveIndexer() {
       <div className="mt-4">
         <Caveat kind="note">
           {isRpc
-            ? <>Live reads scan OOv2 <span className="font-mono">DisputePrice</span> logs over a keyless public Polygon RPC — no indexer, no paid service. V2/Legacy conditionIds derive from the ancillary data; NegRisk ones are recovered on-chain via the NegRisk operator's <span className="font-mono">QuestionPrepared</span> event, so those markets resolve to real names too. Markets created after the HF snapshot have no name yet — HF has no record of them. The released parquet remains the audited source of record. Set <span className="font-mono">INDEXER_GRAPHQL_URL</span> to use a hosted indexer instead.</>
-            : <>Live reads hit the configured Envio indexer — the released parquet remains the audited source of record.</>}
+            ? <>Live reads scan OOv2 <span className="font-mono">DisputePrice</span> logs over a keyless public Polygon RPC; no indexer, no paid service. NegRisk conditionIds are recovered on-chain, so those markets resolve to real names too; markets newer than the HF snapshot have no name yet. The released parquet stays the audited source of record. Set <span className="font-mono">INDEXER_GRAPHQL_URL</span> for a hosted indexer.</>
+            : <>Live reads hit the configured Envio indexer; the released parquet stays the audited source of record.</>}
         </Caveat>
       </div>
     </Section>

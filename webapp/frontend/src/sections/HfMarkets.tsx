@@ -37,7 +37,7 @@ export function HfMarkets() {
   return (
     <Section id="hfmarkets" kicker="HF market_data ⋈ condition"
       title="Market browser"
-      subtitle="The biggest markets by traded volume (plus the most recently created), straight from the HF dataset — volume, trade count, category, and on-chain resolution. This is the market universe the dispute layer sits on top of.">
+      subtitle="The biggest markets by volume (plus newest), straight from the HF dataset: volume, trades, category, on-chain resolution. The universe the dispute layer sits on.">
       <Async q={q}>{(d) => {
         const rows = d.rows
         const from = d.total === 0 ? 0 : page * limit + 1

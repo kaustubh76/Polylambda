@@ -4,4 +4,4 @@
 // data-driving them would blank the header on cold load. They are mirrored here instead, and
 // tests/test_docs_canon.py fails CI if this file, index.html, and constants.THESIS_TITLE ever
 // disagree. Do not edit one without the others.
-export const THESIS_TITLE = 'Disputes are jumps, not locks — priced into the spread.'
+export const THESIS_TITLE = 'Disputes are jumps, not locks, priced into the spread.'

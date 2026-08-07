@@ -1,6 +1,6 @@
 # PolyLambda — Market-Making Strategy & Backtest Report
 
-> **Thesis — disputes are jumps, not locks, priced into the spread.** A dispute doesn't freeze the order book — only redemption. So it's a directional price jump you can model and defend against, not a lock. The engine folds that jump intensity (λ) straight into the pricing math, and only pulls liquidity when E[jump loss] > forgone rewards.
+> **Thesis: disputes are jumps, not locks, priced into the spread.** A dispute is a directional price jump, not a lock: the engine folds that jump intensity (λ) into pricing and pulls liquidity only when E[jump loss] > forgone rewards.
 
 | | |
 |---|---|

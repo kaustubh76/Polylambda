@@ -50,14 +50,14 @@ async def get_ablation(live: bool = False):
         return await _with_timeout(lambda: services.ablation(live=True), LIVE_TIMEOUT_S)
     except asyncio.TimeoutError:
         out = services.ablation(live=False)
-        out["live_error"] = "live replay timed out — showing the pre-computed artifact"
+        out["live_error"] = "live replay timed out; showing the pre-computed artifact"
         return out
 
 
 @api.get("/backtest")
 def get_backtest():
     """The clean-USD strategy backtest (forwardtest.replay_full → pnl_usd): the real 'what would this
-    have made' figure over the historical tape, led by the Δ(λ-jump − diffusion) edge + bootstrap CI."""
+    have made' figure over the historical tape, led by the Δ(λ-jump minus diffusion) edge + bootstrap CI."""
     return services.backtest_full()
 
 
@@ -86,7 +86,7 @@ async def get_recon_live():
     except asyncio.TimeoutError:
         base = services.recon()
         base["source"] = "published"
-        base["live_error"] = "live reconciliation timed out — showing the published artifact"
+        base["live_error"] = "live reconciliation timed out; showing the published artifact"
         return base
 
 
@@ -125,7 +125,7 @@ async def get_hf_overview(live: bool = False):
         return await _with_timeout(lambda: services.hf_overview(live=True), LIVE_TIMEOUT_S)
     except asyncio.TimeoutError:
         out = services.hf_overview(live=False)
-        out["live_error"] = "live HF query timed out — showing the shipped cache"
+        out["live_error"] = "live HF query timed out; showing the shipped cache"
         return out
 
 
@@ -228,7 +228,7 @@ def get_testnet_risk():
 
 @api.post("/testnet/kill")
 def post_testnet_kill():
-    """Cross-process kill-switch: writes the kill file — every signing path halts within one tick."""
+    """Cross-process kill-switch: writes the kill file; every signing path halts within one tick."""
     r = _risk()
     r.kill("api")
     return r.status()

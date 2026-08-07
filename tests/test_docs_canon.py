@@ -140,11 +140,10 @@ def test_canon_strings_single_sourced(attr: str) -> None:
 
 # --- 3. the thesis of record -------------------------------------------------------------------
 EXPECTED_THESIS = (
-    "A dispute doesn't freeze the order book — only redemption. So it's a directional price jump "
-    "you can model and defend against, not a lock. The engine folds that jump intensity (λ) "
-    "straight into the pricing math, and only pulls liquidity when E[jump loss] > forgone rewards."
+    "A dispute is a directional price jump, not a lock: the engine folds that jump intensity (λ) "
+    "into pricing and pulls liquidity only when E[jump loss] > forgone rewards."
 )
-EXPECTED_TITLE = "Disputes are jumps, not locks — priced into the spread."
+EXPECTED_TITLE = "Disputes are jumps, not locks, priced into the spread."
 
 
 def test_thesis_is_of_record() -> None:

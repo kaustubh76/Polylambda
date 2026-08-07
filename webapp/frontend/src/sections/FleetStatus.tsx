@@ -69,7 +69,7 @@ export function FleetStatus() {
   return (
     <Section id="fleet" kicker="testnet execution · continuous engine"
       title="Fleet & keeper"
-      subtitle="The production quoting loop running LIVE against the Amoy fleet: engine-signed quotes, real on-chain fills, confirmed-dispute defense, and a risk governor in front of every transaction. No paper mode — nothing here is simulated."
+      subtitle="The production loop running LIVE on the Amoy fleet: engine-signed quotes, real on-chain fills, dispute defense, risk-governed. No paper mode."
       right={
         <div className="flex items-center gap-2">
           <Pill dot color={keeper?.running ? 'var(--ok)' : 'var(--warn)'}>
@@ -84,13 +84,13 @@ export function FleetStatus() {
       <div className="space-y-4">
         {killed && (
           <Caveat kind="calibration">
-            kill-switch engaged — the keeper keeps ticking but signs <b>zero</b> transactions until cleared
+            kill-switch engaged; the keeper keeps ticking but signs <b>zero</b> transactions until cleared
             {risk?.halt_reason ? ` (${risk.halt_reason})` : ''}.
           </Caveat>
         )}
         {keeper && !keeper.running && !killed && (
           <Caveat kind="calibration">
-            keeper idle — {keeper.engine_ready === false
+            keeper idle: {keeper.engine_ready === false
               ? <>the <span className="font-mono">ENGINE_PRIVATE_KEY</span> secret is missing on the host, so it can't sign.</>
               : keeper.autostart === false
                 ? <>autostart is off (<span className="font-mono">KEEPER_AUTOSTART</span> not set); it runs only in scheduled bursts until enabled.</>
@@ -102,7 +102,7 @@ export function FleetStatus() {
         )}
         {polLow && (
           <Caveat kind="note">
-            engine gas is low ({engine!.pol!.toFixed(3)} POL) — top up via the{' '}
+            engine gas is low ({engine!.pol!.toFixed(3)} POL); top up via the{' '}
             <a className="underline" href="https://www.alchemy.com/faucets/polygon-amoy" target="_blank" rel="noreferrer">Amoy faucet</a>.
           </Caveat>
         )}
@@ -160,13 +160,13 @@ export function FleetStatus() {
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-3">
                   <Stat label="POL (gas)" value={engine.pol != null ? engine.pol.toFixed(4) : '—'}
-                    tone={polLow ? 'warn' : undefined} sub={polLow ? 'LOW — faucet top-up' : 'funded'} />
+                    tone={polLow ? 'warn' : undefined} sub={polLow ? 'LOW · faucet top-up' : 'funded'} />
                   <Stat label="test USDC" value={engine.usdc != null ? engine.usdc.toFixed(2) : '—'} sub="collateral reserve" />
                 </div>
               </>
             ) : (
               <div className="py-4 text-center text-sm text-muted">
-                engine offline — the keeper has not run in this app instance yet
+                engine offline; the keeper hasn't run in this instance yet
               </div>
             )}
           </Panel>
@@ -189,7 +189,7 @@ export function FleetStatus() {
                 sub={`${abl.lambda_on.n_fills} fills · ${abl.lambda_on.n_exits} exits`} tone={abl.lambda_on.pnl >= 0 ? 'profit' : 'loss'} />
               <Stat label="λ-OFF P&L" value={`${abl.lambda_off.pnl >= 0 ? '+' : ''}${abl.lambda_off.pnl.toFixed(4)}`}
                 sub={`${abl.lambda_off.n_fills} fills · ${abl.lambda_off.n_exits} exits`} tone={abl.lambda_off.pnl >= 0 ? 'profit' : 'loss'} />
-              <Stat label="ON − OFF" value={`${(abl.delta_on_minus_off?.pnl ?? 0) >= 0 ? '+' : ''}${(abl.delta_on_minus_off?.pnl ?? 0).toFixed(4)}`}
+              <Stat label="ON minus OFF" value={`${(abl.delta_on_minus_off?.pnl ?? 0) >= 0 ? '+' : ''}${(abl.delta_on_minus_off?.pnl ?? 0).toFixed(4)}`}
                 sub="USDC (equity mark)" tone={(abl.delta_on_minus_off?.pnl ?? 0) >= 0 ? 'profit' : 'loss'} />
               <Stat label="disputes" value={String(abl.n_disputes ?? 0)} sub="survived on-chain" />
             </div>
@@ -240,7 +240,7 @@ export function FleetStatus() {
               <tbody>
                 {markets.length === 0 && (
                   <tr><td colSpan={8} className="px-4 py-6 text-center text-muted">
-                    {fleet?.note || 'no fleet deployed yet — run scripts/deploy_fleet.py'}
+                    {fleet?.note || 'no fleet deployed yet; run scripts/deploy_fleet.py'}
                   </td></tr>
                 )}
                 {markets.map((m) => (

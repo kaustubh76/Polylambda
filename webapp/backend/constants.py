@@ -15,11 +15,10 @@ from __future__ import annotations
 
 # --- C1 · product identity ---------------------------------------------------------------------
 # Home for the title: also webapp/frontend/src/lib/canon.ts + index.html (lint-checked equal).
-THESIS_TITLE = "Disputes are jumps, not locks — priced into the spread."
+THESIS_TITLE = "Disputes are jumps, not locks, priced into the spread."
 THESIS = (
-    "A dispute doesn't freeze the order book — only redemption. So it's a directional price jump "
-    "you can model and defend against, not a lock. The engine folds that jump intensity (λ) "
-    "straight into the pricing math, and only pulls liquidity when E[jump loss] > forgone rewards."
+    "A dispute is a directional price jump, not a lock: the engine folds that jump intensity (λ) "
+    "into pricing and pulls liquidity only when E[jump loss] > forgone rewards."
 )
 # --- C6 · the model ----------------------------------------------------------------------------
 JUMP_DIFFUSION = "dX = μ·dt + σ·dW + J·dN"  # log-odds jump-diffusion; glossed in notes/04 §1
@@ -32,13 +31,13 @@ EDGE_ONE_LINER = "The edge is the surgical jump-exit, not blanket avoidance."
 
 # --- C9 · statistical power (detail: notes/05-forwardtest-ablation.md) -------------------------
 POWER_CAVEAT = (
-    "The 18-day live ablation is pre-registered and explicitly underpowered (~0–3 disputes "
+    "The 18-day live ablation is pre-registered and explicitly underpowered (~0-3 disputes "
     "expected); the powered historical replay is the edge proof."
 )
 # --- C10 · reconciliation (detail: recon/check.py, DECISIONS.md §C.10) -------------------------
 RECON_CAVEAT = (
     "100% on the eligible set (settled · past confirmation depth · supported adapter), with "
-    "counted exclusion buckets — not a flat, unexamined 100%."
+    "counted exclusion buckets, not a flat 100%."
 )
 
 # --- category dispute base rates: THE λ_select signal (DATASET.md §5b) -----------------------
@@ -125,10 +124,9 @@ DATASET_ONE_LINER = (
 
 # the honest calibration caveat that must ride alongside the hazard AUC (DECISIONS.md #9).
 HAZARD_CAVEAT = (
-    "Disputes are ~1% of markets → CALIBRATION-LIMITED. Headline is held-out AUC "
-    "(discrimination). The deployed model is size-only; proposer-reputation is a proven null once "
-    "liquidity is matched. This is a directional structural signal, NOT a validated edge over the "
-    "category base rate — the base rate remains the honest default."
+    "Disputes are ~1% of markets, so this is calibration-limited: the held-out AUC measures "
+    "discrimination, not a validated edge over the category base rate (which stays the default). "
+    "Deployed model is size-only; proposer-reputation is a proven null once liquidity is matched."
 )
 
 # frozen model params (config/model.yaml) surfaced for the UI even if the loader can't read yaml.

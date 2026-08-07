@@ -248,13 +248,13 @@ def score_market(*, category: str, fill_count: int, price: float, proposer: str 
 
 def _gate_reason(lam, lam_star, e_loss, forgone, spread, inventory) -> str:
     if inventory == 0:
-        return "flat — no inventory at risk; the gate only fires against an open position."
+        return "flat: no inventory at risk; the gate only fires against an open position."
     trig = lam > lam_star
     if not trig:
-        return f"λ_jump {lam:.4f} ≤ λ* {lam_star} — dispute intensity below the exit threshold; hold & farm."
+        return f"λ_jump {lam:.4f} ≤ λ* {lam_star}: dispute intensity below the exit threshold; hold & farm."
     if e_loss > forgone + spread:
         return f"E[jump loss] ${e_loss:.2f} > forgone rewards ${forgone:.2f} + haircut ${spread:.2f} → EXIT."
-    return f"E[jump loss] ${e_loss:.2f} ≤ forgone ${forgone:.2f} + haircut ${spread:.2f} — rewards worth more; hold."
+    return f"E[jump loss] ${e_loss:.2f} ≤ forgone ${forgone:.2f} + haircut ${spread:.2f}: rewards worth more; hold."
 
 
 # ---------------------------------------------------------------------------------------------
@@ -276,8 +276,8 @@ def ablation(live: bool = False) -> dict:
         import os
         url = os.environ.get("INDEXER_GRAPHQL_URL") or os.environ.get("ENVIO_GRAPHQL_URL")
         if not url:
-            live_error = ("a live replay is a heavy offline job (~hours over the HF fill tape), not a "
-                          "per-request recompute — showing the committed powered replay below")
+            live_error = ("a live replay is a heavy offline job (~hours over the HF fill tape); "
+                          "showing the committed powered replay below")
         else:
             try:
                 from forwardtest.replay_ablation import run_replay
@@ -323,8 +323,8 @@ def ablation(live: bool = False) -> dict:
     out = {"source": source, "meta": meta, "lambda_star_grid": grid,
            "arms": list(arms.values()),
            "headline": "Reward-aware surgical exit is the edge; blanket avoidance destroys it.",
-           "caveat": ("The live forward test is statistically powerless (~1% dispute rate). This "
-                      f"is the powered historical counterfactual over {counts}.")}
+           "caveat": ("The live forward test is powerless (~1% dispute rate); this is the powered "
+                      f"historical counterfactual over {counts}.")}
     if live_error:
         out["live_error"] = live_error
     return out
@@ -441,7 +441,7 @@ def backtest_full() -> dict:
     data = _backtest_artifact()
     if not data:
         return {"available": False,
-                "note": "no committed backtest artifact yet — run "
+                "note": "no committed backtest artifact yet; run "
                         "`DATA_SOURCE=hf python -m forwardtest.replay_full "
                         "--out forwardtest/results/replay_full_<date>.json`"}
     rows = [dict(r) for r in data["results"]]
@@ -480,10 +480,9 @@ def backtest_full() -> dict:
                 "best_arm": best["arm"] if best else None}
     return {"available": True, "run_date": data.get("run_date"), "meta": meta,
             "lambda_star_grid": grid, "arms": ordered, "headline": headline,
-            "caveat": ("Clean-USD P&L: cash + inventory·mark, NO reward income folded in, queue-"
-                       "pessimistic tape fills, and the exit gate sees only EXPECTED loss (no "
-                       "hindsight). Absolute P&L understates a rewards-live deployment — the signal is "
-                       "the Δ edge (λ-jump − diffusion), with its bootstrap 95% CI.")}
+            "caveat": ("Clean-USD P&L (cash + inventory·mark, no reward income, queue-pessimistic "
+                       "fills, expected-loss-only exit gate) understates a rewards-live deployment; "
+                       "the signal is the Δ edge (λ-jump minus diffusion) with its bootstrap 95% CI.")}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -544,8 +543,8 @@ def hazard() -> dict:
             "matched_eval": card(hz.get("matched_eval"), "Matched held-out eval (proposer null)"),
             "caveat": K.HAZARD_CAVEAT,
             "null_finding": ("proposer_reliability discriminates on raw data (AUC 0.70) but collapses "
-                             "to a coin-flip (AUC 0.50) once markets are matched on liquidity — a "
-                             "clean null. The deployed model is category base-rate + size only.")}
+                             "to a coin-flip (AUC 0.50) once markets are liquidity-matched: a clean "
+                             "null. Deployed model is category base-rate + size only.")}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -658,11 +657,11 @@ def hf_overview(live: bool = False) -> dict:
         return out
     from data.hf import has_hf_token
     if not has_hf_token():
-        out["live_error"] = "no HF token configured (set HF_TOKEN or HF_ACCESS_TOKEN) — showing the shipped cache"
+        out["live_error"] = "no HF token configured (set HF_TOKEN or HF_ACCESS_TOKEN); showing the shipped cache"
         return out
     if not _hf_local_parquet_ready():
         out["live_error"] = ("live HF rebuild needs the local parquet cache (this host ships only the "
-                             "precomputed JSON) — the shipped snapshot is authoritative")
+                             "precomputed JSON); the shipped snapshot is authoritative")
         return out
     try:
         from webapp.backend.precompute import build_hf_overview
@@ -721,9 +720,9 @@ def recon() -> dict:
             "by_category": stats.get("by_category_joinable"),
             "total_disputes": stats.get("total_disputes"),
             "hf_joinable_pct": stats.get("hf_joinable_pct"), "source": "published",
-            "note": ("Reconciliation is 100% on the ELIGIBLE set — indexer finalOutcome vs the "
-                     "on-chain payout vector — with counted exclusion buckets (pending / in-dispute "
-                     "/ reorg / unsupported-adapter / no-ground-truth), not a flat 100%.")}
+            "note": ("Reconciliation is 100% on the eligible set (indexer finalOutcome vs the "
+                     "on-chain payout vector), with counted exclusion buckets (pending, in-dispute, "
+                     "reorg, unsupported-adapter, no-ground-truth), not a flat 100%.")}
 
 
 def sigma_surface() -> dict:
@@ -737,7 +736,7 @@ def sigma_surface() -> dict:
             continue
     cats = sorted({p["category"] for p in out})
     return {"points": out, "categories": cats, "n": len(out),
-            "note": "Belief-volatility (logit-space σ) prior by category × price level — the σ estimator's shrink target."}
+            "note": "Belief-volatility (logit-space σ) prior by category × price level: the σ estimator's shrink target."}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -748,7 +747,7 @@ def proposers(limit: int = 15) -> dict:
     rows = sorted(({"proposer": k, "disputes": int(v)} for k, v in by.items() if k and k != "null"),
                   key=lambda r: r["disputes"], reverse=True)[: max(1, int(limit))]
     return {"rows": rows, "total_proposers": len(by),
-            "note": ("Disputes attributed to each proposer address across the released layer — the raw "
+            "note": ("Per-proposer dispute counts across the released layer: the raw "
                      "proposer_reliability signal, which discriminates on raw data (AUC~0.70) but collapses "
                      "to a coin-flip once markets are CEM-matched on liquidity (see the model card).")}
 
@@ -840,7 +839,7 @@ def testnet_ablation() -> dict:
     from forwardtest.ablation import run_live_ablation
     path, is_live = latest_session_path()
     if not path:
-        return {"available": False, "note": "no on-chain session recorded yet — the keeper has not run"}
+        return {"available": False, "note": "no on-chain session recorded yet; the keeper has not run"}
     out = run_live_ablation(path)
     out["available"] = True
     out["is_live"] = is_live
@@ -855,7 +854,7 @@ def testnet_session(limit: int = 60) -> dict:
     from forwardtest.session_log import read
     path, is_live = latest_session_path()
     if not path:
-        return {"available": False, "note": "no on-chain session recorded yet — the keeper has not run"}
+        return {"available": False, "note": "no on-chain session recorded yet; the keeper has not run"}
     recs = read(path)
     end = next((r for r in reversed(recs) if r.get("type") == "session_end"), None)
     keep = {"fill", "exit", "dispute_flagged"}

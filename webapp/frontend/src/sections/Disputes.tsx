@@ -105,7 +105,7 @@ export function Disputes() {
   return (
     <Section id="disputes" kicker="the released dataset · polymarket-oov2-disputes-v1"
       title="Disputes explorer"
-      subtitle="The net-new UMA OptimisticOracle dispute layer (not in the HF dataset), 100% joinable across all adapters, enriched with real market titles. Sort any column across the full dataset; click a row for the full record.">
+      subtitle="The net-new UMA OptimisticOracle dispute layer (not in the HF dataset), 100% joinable across all adapters, enriched with real market titles. Sort any column; click a row for the record.">
       <Async q={q}>{(d) => {
         const rows = d.rows as DisputeRow[]
         const from = d.total === 0 ? 0 : page * limit + 1
@@ -255,7 +255,7 @@ function DisputeAnatomy({ category, adapter }: { category?: string; adapter?: st
               </ScatterChart>
             </ResponsiveContainer>
           </div>
-          <p className="mt-1 text-2xs text-muted">Points off the diagonal are the dispute jump — how far the market re-priced once the dispute landed.</p>
+          <p className="mt-1 text-2xs text-muted">Points off the diagonal are the dispute jump: how far the market re-priced when the dispute landed.</p>
         </Panel>
       </div>
     )}</Async>
